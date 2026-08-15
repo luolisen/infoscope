@@ -1,11 +1,36 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { fetchHealth } from "./api/health";
+import { fetchSession, sessionQueryKey } from "./api/session";
+import { AuthScreen } from "./features/auth/AuthScreen";
+import { OnboardingPending } from "./features/auth/OnboardingPending";
 
 const primaryNavigation = ["NOW", "BRIEF", "ARCHIVE"];
 const settingsNavigation = ["SCOPE", "SETTINGS"];
 
 export function App() {
+  const sessionQuery = useQuery({ queryKey: sessionQueryKey, queryFn: fetchSession });
+
+  if (sessionQuery.isPending) {
+    return <main className="state-page"><p>Checking your session…</p></main>;
+  }
+
+  if (sessionQuery.isError) {
+    return <main className="state-page"><p role="alert">We could not check your session. Please refresh and try again.</p></main>;
+  }
+
+  if (sessionQuery.data.state === "anonymous") {
+    return <AuthScreen />;
+  }
+
+  if (sessionQuery.data.state === "onboarding_required") {
+    return <OnboardingPending username={sessionQuery.data.user?.username} />;
+  }
+
+  return <ReadyApp />;
+}
+
+function ReadyApp() {
   const healthQuery = useQuery({ queryKey: ["health"], queryFn: fetchHealth });
 
   return (
