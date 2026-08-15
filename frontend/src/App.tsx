@@ -24,7 +24,7 @@ export function App() {
   }
 
   if (sessionQuery.data.state === "onboarding_required") {
-    return <OnboardingPending username={sessionQuery.data.user?.username} />;
+    return <OnboardingPending />;
   }
 
   return <ReadyApp />;

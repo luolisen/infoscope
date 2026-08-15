@@ -86,6 +86,17 @@ kbd { border: 1px solid #bac2c3; border-radius: .2rem; padding: .1rem .35rem; co
 .auth-submit { background: #172022; border: 1px solid #172022; border-radius: 0; color: #f5f6f5; cursor: pointer; font-weight: 700; margin-top: .5rem; min-height: 3rem; }
 .auth-submit:disabled { cursor: wait; opacity: .65; }
 .auth-error { color: #93423c; font-size: .9rem; line-height: 1.4; margin: -.25rem 0 0; }
+.onboarding-page { min-height: 100vh; padding: clamp(2rem, 9vw, 8rem); }
+.onboarding-step { animation: onboarding-enter 240ms ease-out; max-width: 48rem; }
+.onboarding-step h1 { font-family: Georgia, "Times New Roman", serif; font-size: clamp(2.8rem, 6vw, 5.5rem); font-weight: 500; letter-spacing: -.065em; line-height: .95; margin: 1rem 0 3rem; }
+.choice-list { border-top: 1px solid #bac2c3; }
+.choice-list button { align-items: center; background: transparent; border: 0; border-bottom: 1px solid #bac2c3; color: #526062; cursor: pointer; display: flex; font-size: clamp(1.2rem, 2.5vw, 2rem); justify-content: space-between; padding: 1rem 0; text-align: left; width: 100%; }
+.choice-list button[aria-pressed="true"] { color: #172022; font-weight: 750; }
+.onboarding-actions { display: flex; gap: 1rem; margin-top: 2rem; }
+.onboarding-actions .auth-submit { min-width: 10rem; padding: 0 1.25rem; }
+.text-button { background: transparent; border: 0; color: #526062; cursor: pointer; padding: 0 1rem; }
+.onboarding-hint { color: #667375; font-size: .78rem; margin-top: 3rem; }
+@keyframes onboarding-enter { from { opacity: 0; transform: translateY(.75rem); } to { opacity: 1; transform: translateY(0); } }
 
 @media (max-width: 640px) {
   .auth-preview__body { grid-template-columns: 1fr; }
