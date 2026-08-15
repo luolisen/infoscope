@@ -52,6 +52,12 @@ Completing onboarding changes the Session state to `ready`. Updating SCOPE
 records a durable personalization refresh request timestamp; no external model
 or AI API is called by this slice.
 
+The final Phase 2 backend slice exposes `GET /api/v1/now`. It requires a valid
+session with completed onboarding and returns the frozen NOW response shape. Its
+Phase 2 implementation is intentionally empty: current one-hour window counts
+are zero, `items` is empty, and `next_cursor` is null until acquisition and Event
+reconstruction are implemented in later phases.
+
 Checks:
 
 ```bash

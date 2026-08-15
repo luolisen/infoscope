@@ -58,6 +58,85 @@
         "title": "ErrorResponse",
         "type": "object"
       },
+      "EventState": {
+        "enum": [
+          "developing",
+          "confirmed",
+          "conflicting",
+          "cooling"
+        ],
+        "title": "EventState",
+        "type": "string"
+      },
+      "EventSummary": {
+        "properties": {
+          "conflict_count": {
+            "minimum": 0.0,
+            "title": "Conflict Count",
+            "type": "integer"
+          },
+          "display_time": {
+            "format": "date-time",
+            "title": "Display Time",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "new_claim_count": {
+            "minimum": 0.0,
+            "title": "New Claim Count",
+            "type": "integer"
+          },
+          "overview": {
+            "title": "Overview",
+            "type": "string"
+          },
+          "saved": {
+            "title": "Saved",
+            "type": "boolean"
+          },
+          "state": {
+            "$ref": "#/components/schemas/EventState"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "topics": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Topics",
+            "type": "array"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "why_it_matters": {
+            "title": "Why It Matters",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "overview",
+          "state",
+          "display_time",
+          "updated_at",
+          "why_it_matters",
+          "new_claim_count",
+          "conflict_count",
+          "topics",
+          "saved"
+        ],
+        "title": "EventSummary",
+        "type": "object"
+      },
       "FocusId": {
         "enum": [
           "technical_details",
@@ -156,6 +235,38 @@
           "label"
         ],
         "title": "InvestmentMarketOption",
+        "type": "object"
+      },
+      "NowResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EventSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "window_stats": {
+            "$ref": "#/components/schemas/WindowStats"
+          }
+        },
+        "required": [
+          "window_stats",
+          "items",
+          "next_cursor"
+        ],
+        "title": "NowResponse",
         "type": "object"
       },
       "OnboardingAnswers": {
@@ -377,6 +488,44 @@
         ],
         "title": "ValidationError",
         "type": "object"
+      },
+      "WindowStats": {
+        "properties": {
+          "event_count": {
+            "minimum": 0.0,
+            "title": "Event Count",
+            "type": "integer"
+          },
+          "raw_information_count": {
+            "minimum": 0.0,
+            "title": "Raw Information Count",
+            "type": "integer"
+          },
+          "relevant_event_count": {
+            "minimum": 0.0,
+            "title": "Relevant Event Count",
+            "type": "integer"
+          },
+          "window_ended_at": {
+            "format": "date-time",
+            "title": "Window Ended At",
+            "type": "string"
+          },
+          "window_started_at": {
+            "format": "date-time",
+            "title": "Window Started At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "window_started_at",
+          "window_ended_at",
+          "raw_information_count",
+          "event_count",
+          "relevant_event_count"
+        ],
+        "title": "WindowStats",
+        "type": "object"
       }
     }
   },
@@ -584,6 +733,104 @@
         "summary": "Get Health",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/api/v1/now": {
+      "get": {
+        "operationId": "get_now_api_v1_now_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "is_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NowResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Get Now",
+        "tags": [
+          "now"
         ]
       }
     },

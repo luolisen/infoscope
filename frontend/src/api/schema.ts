@@ -72,6 +72,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/now": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Now */
+        get: operations["get_now_api_v1_now_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/onboarding": {
         parameters: {
             query?: never;
@@ -150,6 +167,41 @@ export interface components {
             error: components["schemas"]["ErrorDetail"];
         };
         /**
+         * EventState
+         * @enum {string}
+         */
+        EventState: "developing" | "confirmed" | "conflicting" | "cooling";
+        /** EventSummary */
+        EventSummary: {
+            /** Conflict Count */
+            conflict_count: number;
+            /**
+             * Display Time
+             * Format: date-time
+             */
+            display_time: string;
+            /** Id */
+            id: string;
+            /** New Claim Count */
+            new_claim_count: number;
+            /** Overview */
+            overview: string;
+            /** Saved */
+            saved: boolean;
+            state: components["schemas"]["EventState"];
+            /** Title */
+            title: string;
+            /** Topics */
+            topics: string[];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Why It Matters */
+            why_it_matters: string;
+        };
+        /**
          * FocusId
          * @enum {string}
          */
@@ -202,6 +254,14 @@ export interface components {
             id: components["schemas"]["InvestmentMarketId"];
             /** Label */
             label: string;
+        };
+        /** NowResponse */
+        NowResponse: {
+            /** Items */
+            items: components["schemas"]["EventSummary"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+            window_stats: components["schemas"]["WindowStats"];
         };
         /** OnboardingAnswers */
         OnboardingAnswers: {
@@ -271,6 +331,25 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /** WindowStats */
+        WindowStats: {
+            /** Event Count */
+            event_count: number;
+            /** Raw Information Count */
+            raw_information_count: number;
+            /** Relevant Event Count */
+            relevant_event_count: number;
+            /**
+             * Window Ended At
+             * Format: date-time
+             */
+            window_ended_at: string;
+            /**
+             * Window Started At
+             * Format: date-time
+             */
+            window_started_at: string;
         };
     };
     responses: never;
@@ -427,6 +506,58 @@ export interface operations {
             };
             /** @description Internal Server Error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_now_api_v1_now_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                is_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NowResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
