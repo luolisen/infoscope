@@ -5,6 +5,7 @@ import asyncio
 import logging
 import signal
 from datetime import UTC, datetime
+from uuid import UUID
 
 import httpx
 
@@ -116,21 +117,33 @@ async def deduplicate_once() -> DeduplicationResult:
     return result
 
 
-async def analyze_windows_once() -> WindowRunResult:
+async def analyze_windows_once(
+    *,
+    retry_run_id: UUID | None = None,
+    replay_run_id: UUID | None = None,
+) -> WindowRunResult:
+    if retry_run_id is not None and replay_run_id is not None:
+        raise ValueError("retry_run_id and replay_run_id are mutually exclusive")
     settings = get_settings()
     config = load_analysis_config(settings)
     async with httpx.AsyncClient() as client:
         async with session_factory() as database:
-            result = await WindowAnalysisRunner(
+            runner = WindowAnalysisRunner(
                 acquisition=AcquisitionRepository(database),
                 pipeline=PipelineRepository(database),
                 client=DeepSeekAnalysisClient(client=client, config=config),
                 max_signals=settings.window_analysis_max_signals,
                 max_input_chars=settings.window_analysis_max_input_chars,
-            ).run_available(
-                watermark=datetime.now(UTC),
-                max_windows=settings.window_analysis_max_windows,
             )
+            if retry_run_id is not None:
+                result = await runner.retry_run(retry_run_id)
+            elif replay_run_id is not None:
+                result = await runner.replay_run(replay_run_id)
+            else:
+                result = await runner.run_available(
+                    watermark=datetime.now(UTC),
+                    max_windows=settings.window_analysis_max_windows,
+                )
     logger.info(
         "window analysis complete succeeded=%d failed=%d raws=%d signals=%d",
         result.windows_succeeded,
@@ -150,6 +163,8 @@ async def run(
     retry_normalization: bool = False,
     deduplicate: bool = False,
     analyze_windows: bool = False,
+    retry_window_run: UUID | None = None,
+    replay_window_run: UUID | None = None,
 ) -> None:
     settings = get_settings()
     stop = asyncio.Event()
@@ -169,8 +184,11 @@ async def run(
                 await normalize_once(retry_failed=retry_normalization)
             if deduplicate:
                 await deduplicate_once()
-            if analyze_windows:
-                await analyze_windows_once()
+            if analyze_windows or retry_window_run is not None or replay_window_run is not None:
+                await analyze_windows_once(
+                    retry_run_id=retry_window_run,
+                    replay_run_id=replay_window_run,
+                )
             logger.info("worker heartbeat")
             if (
                 once
@@ -180,6 +198,8 @@ async def run(
                 or retry_normalization
                 or deduplicate
                 or analyze_windows
+                or retry_window_run is not None
+                or replay_window_run is not None
             ):
                 return
             try:
@@ -224,10 +244,23 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Link exact normalized-text duplicate Signals",
     )
-    parser.add_argument(
+    window_group = parser.add_mutually_exclusive_group()
+    window_group.add_argument(
         "--analyze-windows",
         action="store_true",
         help="Analyze available complete one-hour windows",
+    )
+    window_group.add_argument(
+        "--retry-window-run",
+        type=UUID,
+        metavar="RUN_ID",
+        help="Immediately retry one failed Window Analysis run",
+    )
+    window_group.add_argument(
+        "--replay-window-run",
+        type=UUID,
+        metavar="RUN_ID",
+        help="Replay one terminal Window Analysis run without recollection",
     )
     return parser.parse_args()
 
@@ -247,6 +280,8 @@ def main() -> int:
                 retry_normalization=args.retry_normalization,
                 deduplicate=args.deduplicate,
                 analyze_windows=args.analyze_windows,
+                retry_window_run=args.retry_window_run,
+                replay_window_run=args.replay_window_run,
             )
         )
     return 0

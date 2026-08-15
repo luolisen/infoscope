@@ -1,4 +1,5 @@
 from unittest.mock import AsyncMock, patch
+from uuid import uuid4
 
 from infoscope.worker.main import run
 
@@ -98,5 +99,23 @@ async def test_worker_window_analysis_mode_runs_and_exits() -> None:
         await run(analyze_windows=True)
 
     database_ping.assert_awaited_once()
-    analyze.assert_awaited_once_with()
+    analyze.assert_awaited_once_with(retry_run_id=None, replay_run_id=None)
+    database_close.assert_awaited_once()
+
+
+async def test_worker_replays_a_window_run_and_exits() -> None:
+    database_ping = AsyncMock()
+    database_close = AsyncMock()
+    analyze = AsyncMock()
+    run_id = uuid4()
+
+    with (
+        patch("infoscope.worker.main.ping_database", database_ping),
+        patch("infoscope.worker.main.close_database", database_close),
+        patch("infoscope.worker.main.analyze_windows_once", analyze),
+    ):
+        await run(replay_window_run=run_id)
+
+    database_ping.assert_awaited_once()
+    analyze.assert_awaited_once_with(retry_run_id=None, replay_run_id=run_id)
     database_close.assert_awaited_once()

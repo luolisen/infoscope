@@ -727,6 +727,10 @@ TG News 不直接生成 NOW、Event 或 Brief。
   本步骤不生成 Event / NOW / Brief，也不改写 Signal。
 - 超过 Signal 数量或输入字符上限的窗口在调用模型前以稳定错误码失败；在未冻结跨批聚合
   Contract 前，不得静默截断或拆分逻辑窗口。
+- 同一窗口失败后必须复用原窗口和 lower cursor 创建递增 attempt；到达 `next_retry_at`
+  后自动重试，也允许按 run UUID 立即 retry 或 replay terminal run，不重新采集 Raw。
+- 审计日志只记录 pipeline/run ID、窗口边界、attempt、计数、状态、稳定错误码与重试时间，
+  禁止记录 Signal 正文、私密 provenance、Prompt、模型响应或 API Key。
 
 ---
 

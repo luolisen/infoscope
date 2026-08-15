@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from sqlalchemy import func, select, tuple_
 from sqlalchemy.dialects.postgresql import insert
@@ -42,6 +42,27 @@ class PipelineRepository:
         if checkpoint.last_raw_id is None:
             raise ValueError("pipeline checkpoint has an incomplete cursor")
         return AcquisitionCursor(checkpoint.last_acquired_at, checkpoint.last_raw_id)
+
+    async def get_run(self, run_id: UUID) -> PipelineRun | None:
+        return await self.database.get(PipelineRun, run_id)
+
+    async def latest_window_run(
+        self,
+        *,
+        pipeline_name: str,
+        window: LogicalWindow,
+    ) -> PipelineRun | None:
+        result = await self.database.execute(
+            select(PipelineRun)
+            .where(
+                PipelineRun.pipeline_name == pipeline_name,
+                PipelineRun.window_start == window.start,
+                PipelineRun.window_end == window.end,
+            )
+            .order_by(PipelineRun.attempt.desc(), PipelineRun.created_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
 
     async def start_run(
         self,

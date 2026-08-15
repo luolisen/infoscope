@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
+from uuid import UUID
 
 from infoscope.analysis.client import AnalysisError
 from infoscope.analysis.schemas import (
@@ -15,13 +17,20 @@ from infoscope.analysis.schemas import (
     TokenUsage,
     WindowAnalysisPayload,
 )
-from infoscope.models import EvidenceVisibility, NormalizationStatus, RawInformation
+from infoscope.models import (
+    EvidenceVisibility,
+    NormalizationStatus,
+    PipelineRun,
+    PipelineRunStatus,
+    RawInformation,
+)
 from infoscope.pipeline import AcquisitionCursor, LogicalWindow, completed_windows
 from infoscope.services.acquisition import AcquisitionRepository, cursor_for
 from infoscope.services.pipeline import PipelineRepository
 
 PIPELINE_NAME = "window_analysis"
 ARTIFACT_TYPE = "window_analysis"
+logger = logging.getLogger("infoscope.pipeline.window_analysis")
 
 
 class AnalysisClientProtocol(Protocol):
@@ -94,48 +103,164 @@ class WindowAnalysisRunner:
 
         for window in windows:
             lower_cursor = await self.pipeline.checkpoint_cursor(PIPELINE_NAME)
-            run = await self.pipeline.start_run(
-                pipeline_name=PIPELINE_NAME,
-                window=window,
-                started_at=self.clock(),
-                lower_cursor=lower_cursor,
-            )
-            try:
-                raws = await self._load_raws(window=window, lower_cursor=lower_cursor)
-                signals = await self._analysis_signals(raws)
-                self._validate_input_size(signals)
-                response = await self._analyze(window=window, signals=signals)
-                self._validate_coverage(response.payload, signals)
-                input_hash = self._input_hash(window=window, signals=signals)
-                await self.pipeline.persist_artifact(
-                    run=run,
-                    artifact_type=ARTIFACT_TYPE,
-                    schema_version=SCHEMA_VERSION,
-                    input_hash=input_hash,
-                    payload=response.payload.model_dump(mode="json"),
-                    provider=response.provider,
-                    model=response.model,
-                    token_usage=response.token_usage.model_dump(mode="json"),
-                )
-                await self.pipeline.complete_run(
-                    run,
-                    finished_at=self.clock(),
-                    upper_cursor=cursor_for(raws[-1]) if raws else None,
-                )
-            except (AnalysisError, WindowAnalysisError) as error:
-                await self.pipeline.fail_run(
-                    run,
-                    finished_at=self.clock(),
-                    next_retry_at=self.clock() + timedelta(minutes=5),
-                    error_code=error.error_code,
-                )
-                failed += 1
+            run = await self._prepare_window_run(window=window, lower_cursor=lower_cursor)
+            if run is None:
                 break
-            succeeded += 1
-            raws_scanned += len(raws)
-            signals_analyzed += len(signals)
+            result = await self._execute_run(run)
+            succeeded += result.windows_succeeded
+            failed += result.windows_failed
+            raws_scanned += result.raws_scanned
+            signals_analyzed += result.signals_analyzed
+            if result.windows_failed:
+                break
 
         return WindowRunResult(succeeded, failed, raws_scanned, signals_analyzed)
+
+    async def retry_run(self, run_id: UUID) -> WindowRunResult:
+        previous = await self._require_pipeline_run(run_id)
+        if previous.status != PipelineRunStatus.FAILED.value:
+            raise WindowAnalysisError("WINDOW_RUN_NOT_FAILED")
+        run = await self.pipeline.retry_run(previous, started_at=self.clock())
+        return await self._execute_run(run)
+
+    async def replay_run(self, run_id: UUID) -> WindowRunResult:
+        previous = await self._require_pipeline_run(run_id)
+        if previous.status not in {
+            PipelineRunStatus.SUCCEEDED.value,
+            PipelineRunStatus.FAILED.value,
+        }:
+            raise WindowAnalysisError("WINDOW_RUN_NOT_TERMINAL")
+        run = await self.pipeline.replay_run(previous, started_at=self.clock())
+        return await self._execute_run(run)
+
+    async def _require_pipeline_run(self, run_id: UUID) -> PipelineRun:
+        run = await self.pipeline.get_run(run_id)
+        if run is None:
+            raise WindowAnalysisError("WINDOW_RUN_NOT_FOUND")
+        if run.pipeline_name != PIPELINE_NAME:
+            raise WindowAnalysisError("WINDOW_RUN_PIPELINE_MISMATCH")
+        return run
+
+    async def _prepare_window_run(
+        self,
+        *,
+        window: LogicalWindow,
+        lower_cursor: AcquisitionCursor | None,
+    ) -> PipelineRun | None:
+        previous = await self.pipeline.latest_window_run(
+            pipeline_name=PIPELINE_NAME,
+            window=window,
+        )
+        now = self.clock()
+        if previous is None:
+            return await self.pipeline.start_run(
+                pipeline_name=PIPELINE_NAME,
+                window=window,
+                started_at=now,
+                lower_cursor=lower_cursor,
+            )
+        if previous.status == PipelineRunStatus.FAILED.value:
+            if previous.next_retry_at is not None and previous.next_retry_at > now:
+                logger.info(
+                    "pipeline run deferred pipeline=%s run_id=%s window_start=%s "
+                    "window_end=%s attempt=%s next_retry_at=%s",
+                    PIPELINE_NAME,
+                    previous.id,
+                    window.start.isoformat(),
+                    window.end.isoformat(),
+                    previous.attempt,
+                    previous.next_retry_at.isoformat(),
+                )
+                return None
+            return await self.pipeline.retry_run(previous, started_at=now)
+        logger.info(
+            "pipeline window skipped pipeline=%s run_id=%s status=%s window_start=%s "
+            "window_end=%s attempt=%s",
+            PIPELINE_NAME,
+            previous.id,
+            previous.status,
+            window.start.isoformat(),
+            window.end.isoformat(),
+            previous.attempt,
+        )
+        return None
+
+    async def _execute_run(self, run: PipelineRun) -> WindowRunResult:
+        window = LogicalWindow(start=run.window_start, end=run.window_end)
+        lower_cursor = self._lower_cursor(run)
+        logger.info(
+            "pipeline run started pipeline=%s run_id=%s window_start=%s window_end=%s "
+            "attempt=%s",
+            PIPELINE_NAME,
+            run.id,
+            window.start.isoformat(),
+            window.end.isoformat(),
+            run.attempt,
+        )
+        try:
+            raws = await self._load_raws(window=window, lower_cursor=lower_cursor)
+            signals = await self._analysis_signals(raws)
+            self._validate_input_size(signals)
+            response = await self._analyze(window=window, signals=signals)
+            self._validate_coverage(response.payload, signals)
+            input_hash = self._input_hash(window=window, signals=signals)
+            await self.pipeline.persist_artifact(
+                run=run,
+                artifact_type=ARTIFACT_TYPE,
+                schema_version=SCHEMA_VERSION,
+                input_hash=input_hash,
+                payload=response.payload.model_dump(mode="json"),
+                provider=response.provider,
+                model=response.model,
+                token_usage=response.token_usage.model_dump(mode="json"),
+            )
+            await self.pipeline.complete_run(
+                run,
+                finished_at=self.clock(),
+                upper_cursor=cursor_for(raws[-1]) if raws else None,
+            )
+        except (AnalysisError, WindowAnalysisError) as error:
+            retry_at = self.clock() + timedelta(minutes=5)
+            await self.pipeline.fail_run(
+                run,
+                finished_at=self.clock(),
+                next_retry_at=retry_at,
+                error_code=error.error_code,
+            )
+            logger.warning(
+                "pipeline run failed pipeline=%s run_id=%s window_start=%s window_end=%s "
+                "attempt=%s error_code=%s next_retry_at=%s",
+                PIPELINE_NAME,
+                run.id,
+                window.start.isoformat(),
+                window.end.isoformat(),
+                run.attempt,
+                error.error_code,
+                retry_at.isoformat(),
+            )
+            return WindowRunResult(0, 1, 0, 0)
+        logger.info(
+            "pipeline run succeeded pipeline=%s run_id=%s window_start=%s window_end=%s "
+            "attempt=%s raws=%d signals=%d",
+            PIPELINE_NAME,
+            run.id,
+            window.start.isoformat(),
+            window.end.isoformat(),
+            run.attempt,
+            len(raws),
+            len(signals),
+        )
+        return WindowRunResult(1, 0, len(raws), len(signals))
+
+    @staticmethod
+    def _lower_cursor(run: PipelineRun) -> AcquisitionCursor | None:
+        if run.lower_cursor_acquired_at is None:
+            if run.lower_cursor_raw_id is not None:
+                raise WindowAnalysisError("WINDOW_RUN_CURSOR_INVALID")
+            return None
+        if run.lower_cursor_raw_id is None:
+            raise WindowAnalysisError("WINDOW_RUN_CURSOR_INVALID")
+        return AcquisitionCursor(run.lower_cursor_acquired_at, run.lower_cursor_raw_id)
 
     async def _load_raws(
         self,
