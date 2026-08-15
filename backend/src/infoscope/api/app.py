@@ -7,8 +7,10 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from infoscope.api.routes.auth import router as auth_router
 from infoscope.api.routes.health import router as health_router
 from infoscope.db import close_database
+from infoscope.errors import ApiError
 from infoscope.schemas.common import ErrorDetail, ErrorResponse
 
 
@@ -23,6 +25,7 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+app.include_router(auth_router, prefix="/api/v1")
 app.include_router(health_router, prefix="/api/v1")
 
 
@@ -50,6 +53,23 @@ async def validation_error_handler(request: Request, _: RequestValidationError) 
     )
     return JSONResponse(
         status_code=422,
+        content=payload.model_dump(),
+        headers={"x-request-id": current_request_id},
+    )
+
+
+@app.exception_handler(ApiError)
+async def api_error_handler(request: Request, error: ApiError) -> JSONResponse:
+    current_request_id = request_id(request)
+    payload = ErrorResponse(
+        error=ErrorDetail(
+            code=error.code,
+            message=error.message,
+            request_id=current_request_id,
+        )
+    )
+    return JSONResponse(
+        status_code=error.status_code,
         content=payload.model_dump(),
         headers={"x-request-id": current_request_id},
     )

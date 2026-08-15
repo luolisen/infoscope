@@ -7,14 +7,8 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
-from sqlalchemy.orm import DeclarativeBase
 
 from infoscope.config import get_settings
-
-
-class Base(DeclarativeBase):
-    pass
-
 
 engine: AsyncEngine = create_async_engine(get_settings().database_url, pool_pre_ping=True)
 session_factory = async_sessionmaker(engine, expire_on_commit=False)
