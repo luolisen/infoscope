@@ -58,6 +58,37 @@
         "title": "ErrorResponse",
         "type": "object"
       },
+      "FocusId": {
+        "enum": [
+          "technical_details",
+          "research_progress",
+          "major_changes",
+          "breaking_events",
+          "niche_trends",
+          "industry_changes",
+          "controversy_changes",
+          "deep_context"
+        ],
+        "title": "FocusId",
+        "type": "string"
+      },
+      "FocusOption": {
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/FocusId"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "FocusOption",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -99,6 +130,167 @@
           }
         },
         "title": "HealthResponse",
+        "type": "object"
+      },
+      "InvestmentMarketId": {
+        "enum": [
+          "china_market",
+          "us_stock",
+          "crypto_market"
+        ],
+        "title": "InvestmentMarketId",
+        "type": "string"
+      },
+      "InvestmentMarketOption": {
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/InvestmentMarketId"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "InvestmentMarketOption",
+        "type": "object"
+      },
+      "OnboardingAnswers": {
+        "properties": {
+          "focus_ids": {
+            "items": {
+              "$ref": "#/components/schemas/FocusId"
+            },
+            "title": "Focus Ids",
+            "type": "array"
+          },
+          "investment_market_ids": {
+            "items": {
+              "$ref": "#/components/schemas/InvestmentMarketId"
+            },
+            "title": "Investment Market Ids",
+            "type": "array"
+          },
+          "scope_ids": {
+            "items": {
+              "$ref": "#/components/schemas/ScopeId"
+            },
+            "title": "Scope Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "scope_ids",
+          "investment_market_ids",
+          "focus_ids"
+        ],
+        "title": "OnboardingAnswers",
+        "type": "object"
+      },
+      "OnboardingResponse": {
+        "properties": {
+          "answers": {
+            "$ref": "#/components/schemas/OnboardingAnswers"
+          },
+          "completed": {
+            "title": "Completed",
+            "type": "boolean"
+          },
+          "focus_options": {
+            "items": {
+              "$ref": "#/components/schemas/FocusOption"
+            },
+            "title": "Focus Options",
+            "type": "array"
+          },
+          "investment_market_options": {
+            "items": {
+              "$ref": "#/components/schemas/InvestmentMarketOption"
+            },
+            "title": "Investment Market Options",
+            "type": "array"
+          },
+          "scope_options": {
+            "items": {
+              "$ref": "#/components/schemas/ScopeOption"
+            },
+            "title": "Scope Options",
+            "type": "array"
+          }
+        },
+        "required": [
+          "completed",
+          "scope_options",
+          "investment_market_options",
+          "focus_options",
+          "answers"
+        ],
+        "title": "OnboardingResponse",
+        "type": "object"
+      },
+      "OnboardingSelection": {
+        "properties": {
+          "focus_ids": {
+            "items": {
+              "$ref": "#/components/schemas/FocusId"
+            },
+            "minItems": 1,
+            "title": "Focus Ids",
+            "type": "array"
+          },
+          "investment_market_ids": {
+            "items": {
+              "$ref": "#/components/schemas/InvestmentMarketId"
+            },
+            "title": "Investment Market Ids",
+            "type": "array"
+          },
+          "scope_ids": {
+            "items": {
+              "$ref": "#/components/schemas/ScopeId"
+            },
+            "minItems": 1,
+            "title": "Scope Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "scope_ids",
+          "investment_market_ids",
+          "focus_ids"
+        ],
+        "title": "OnboardingSelection",
+        "type": "object"
+      },
+      "ScopeId": {
+        "enum": [
+          "ai",
+          "open_source",
+          "technology",
+          "science",
+          "investment"
+        ],
+        "title": "ScopeId",
+        "type": "string"
+      },
+      "ScopeOption": {
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ScopeId"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "ScopeOption",
         "type": "object"
       },
       "SessionResponse": {
@@ -392,6 +584,288 @@
         "summary": "Get Health",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/api/v1/onboarding": {
+      "get": {
+        "operationId": "get_onboarding_api_v1_onboarding_get",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "is_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardingResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Onboarding",
+        "tags": [
+          "onboarding"
+        ]
+      },
+      "put": {
+        "operationId": "update_onboarding_api_v1_onboarding_put",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "is_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OnboardingSelection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardingResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Update Onboarding",
+        "tags": [
+          "onboarding"
+        ]
+      }
+    },
+    "/api/v1/scope": {
+      "get": {
+        "operationId": "get_scope_api_v1_scope_get",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "is_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardingResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Scope",
+        "tags": [
+          "onboarding"
+        ]
+      },
+      "put": {
+        "operationId": "update_scope_api_v1_scope_put",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "is_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OnboardingSelection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardingResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Update Scope",
+        "tags": [
+          "onboarding"
         ]
       }
     },

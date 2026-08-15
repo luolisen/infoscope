@@ -38,6 +38,20 @@ POST /api/v1/auth/logout
 Set `SESSION_COOKIE_SECURE=true` outside the localhost HTTP demo when the API is
 served over HTTPS.
 
+The next Phase 2 slice persists the frozen SCOPE, investment-market, and FOCUS
+selections. It exposes:
+
+```text
+GET  /api/v1/onboarding
+PUT  /api/v1/onboarding
+GET  /api/v1/scope
+PUT  /api/v1/scope
+```
+
+Completing onboarding changes the Session state to `ready`. Updating SCOPE
+records a durable personalization refresh request timestamp; no external model
+or AI API is called by this slice.
+
 Checks:
 
 ```bash

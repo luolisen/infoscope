@@ -72,6 +72,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/onboarding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Onboarding */
+        get: operations["get_onboarding_api_v1_onboarding_get"];
+        /** Update Onboarding */
+        put: operations["update_onboarding_api_v1_onboarding_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/scope": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Scope */
+        get: operations["get_scope_api_v1_scope_get"];
+        /** Update Scope */
+        put: operations["update_scope_api_v1_scope_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/session": {
         parameters: {
             query?: never;
@@ -113,6 +149,17 @@ export interface components {
         ErrorResponse: {
             error: components["schemas"]["ErrorDetail"];
         };
+        /**
+         * FocusId
+         * @enum {string}
+         */
+        FocusId: "technical_details" | "research_progress" | "major_changes" | "breaking_events" | "niche_trends" | "industry_changes" | "controversy_changes" | "deep_context";
+        /** FocusOption */
+        FocusOption: {
+            id: components["schemas"]["FocusId"];
+            /** Label */
+            label: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -144,6 +191,58 @@ export interface components {
              * @constant
              */
             worker: "ok";
+        };
+        /**
+         * InvestmentMarketId
+         * @enum {string}
+         */
+        InvestmentMarketId: "china_market" | "us_stock" | "crypto_market";
+        /** InvestmentMarketOption */
+        InvestmentMarketOption: {
+            id: components["schemas"]["InvestmentMarketId"];
+            /** Label */
+            label: string;
+        };
+        /** OnboardingAnswers */
+        OnboardingAnswers: {
+            /** Focus Ids */
+            focus_ids: components["schemas"]["FocusId"][];
+            /** Investment Market Ids */
+            investment_market_ids: components["schemas"]["InvestmentMarketId"][];
+            /** Scope Ids */
+            scope_ids: components["schemas"]["ScopeId"][];
+        };
+        /** OnboardingResponse */
+        OnboardingResponse: {
+            answers: components["schemas"]["OnboardingAnswers"];
+            /** Completed */
+            completed: boolean;
+            /** Focus Options */
+            focus_options: components["schemas"]["FocusOption"][];
+            /** Investment Market Options */
+            investment_market_options: components["schemas"]["InvestmentMarketOption"][];
+            /** Scope Options */
+            scope_options: components["schemas"]["ScopeOption"][];
+        };
+        /** OnboardingSelection */
+        OnboardingSelection: {
+            /** Focus Ids */
+            focus_ids: components["schemas"]["FocusId"][];
+            /** Investment Market Ids */
+            investment_market_ids: components["schemas"]["InvestmentMarketId"][];
+            /** Scope Ids */
+            scope_ids: components["schemas"]["ScopeId"][];
+        };
+        /**
+         * ScopeId
+         * @enum {string}
+         */
+        ScopeId: "ai" | "open_source" | "technology" | "science" | "investment";
+        /** ScopeOption */
+        ScopeOption: {
+            id: components["schemas"]["ScopeId"];
+            /** Label */
+            label: string;
         };
         /** SessionResponse */
         SessionResponse: {
@@ -328,6 +427,201 @@ export interface operations {
             };
             /** @description Internal Server Error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_onboarding_api_v1_onboarding_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                is_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_onboarding_api_v1_onboarding_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                is_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OnboardingSelection"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_scope_api_v1_scope_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                is_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_scope_api_v1_scope_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                is_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OnboardingSelection"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

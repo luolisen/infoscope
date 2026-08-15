@@ -33,6 +33,12 @@ class AuthService:
             return SessionResponse(state=SessionState.ANONYMOUS, user=None)
         return self._session_response(user)
 
+    async def require_user(self, token: str | None) -> User:
+        user = await self._user_for_token(token)
+        if user is None:
+            raise self._auth_required()
+        return user
+
     async def register(self, username: str, password: str) -> tuple[SessionResponse, str]:
         user = User(
             username=username,

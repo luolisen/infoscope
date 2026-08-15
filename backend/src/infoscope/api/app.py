@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 
 from infoscope.api.routes.auth import router as auth_router
 from infoscope.api.routes.health import router as health_router
+from infoscope.api.routes.onboarding import router as onboarding_router
 from infoscope.db import close_database
 from infoscope.errors import ApiError
 from infoscope.schemas.common import ErrorDetail, ErrorResponse
@@ -27,6 +28,7 @@ app = FastAPI(
 )
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(health_router, prefix="/api/v1")
+app.include_router(onboarding_router, prefix="/api/v1")
 
 
 def request_id(request: Request) -> str:
@@ -44,10 +46,22 @@ async def attach_request_id(request: Request, call_next):
 @app.exception_handler(RequestValidationError)
 async def validation_error_handler(request: Request, _: RequestValidationError) -> JSONResponse:
     current_request_id = request_id(request)
+    onboarding_selection_path = request.method == "PUT" and request.url.path in {
+        "/api/v1/onboarding",
+        "/api/v1/scope",
+    }
     payload = ErrorResponse(
         error=ErrorDetail(
-            code="VALIDATION_ERROR",
-            message="Request validation failed.",
+            code=(
+                "INVALID_ONBOARDING_SELECTION"
+                if onboarding_selection_path
+                else "VALIDATION_ERROR"
+            ),
+            message=(
+                "The onboarding selection is invalid."
+                if onboarding_selection_path
+                else "Request validation failed."
+            ),
             request_id=current_request_id,
         )
     )
