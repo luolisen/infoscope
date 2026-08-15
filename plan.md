@@ -872,6 +872,22 @@ TG News 是 IS 内部模块。
 
 TG News 不直接生成最终 NOW / Event / Brief。
 
+### TG News Integration v1（已冻结）
+
+TG News v1 自行实现为内部 Telethon 薄 Adapter。它使用用户账号 MTProto API
+读取标题严格等于 `News` 的 Telegram Dialog Filter，只接收该文件夹中的群组与
+频道，并把文本 / caption 作为 `telegram` Raw Information 立即持久化。
+
+固定边界：
+
+- 不使用 Bot API，不采集私聊 / bot，不下载媒体文件。
+- 首次每个会话回溯最近 100 条（可配置）；后续从该会话已持久化的最大
+  message ID 开始增量获取，重复消息由 Raw 唯一键幂等处理。
+- 有公开 username 的群组 / 频道为 `public`，其余为 `private`；私密来源身份只
+  保存在内部 Raw，普通日志不得输出群名、username、邀请链接或 peer ID。
+- credential 与 Telethon session 只保存在本地环境，禁止进入 Git。
+- 不新增 Public API，不调用 AI，不直接生成 Signal / Event / NOW / Brief。
+
 ---
 
 ## 7.3 Hermes / OpenClaw / Agent-Reach

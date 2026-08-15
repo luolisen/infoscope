@@ -15,6 +15,7 @@ dependencies = [
   "pydantic-settings>=2.10,<3",
   "sqlalchemy[asyncio]>=2.0,<3",
   "uvicorn>=0.35,<1",
+  "telethon>=1.44,<2",
 ]
 
 [dependency-groups]

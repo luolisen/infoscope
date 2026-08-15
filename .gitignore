@@ -29,3 +29,6 @@ coverage/
 # Local logs and runtime files
 *.log
 *.pid
+.state/
+*.session
+*.session-journal
