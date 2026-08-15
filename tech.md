@@ -695,6 +695,18 @@ TG News 不直接生成 NOW、Event 或 Brief。
 - Pending 与 Failed 使用独立 worker 命令批处理；单条确定性失败不阻断同批其他 Raw。
 - 本步骤不调用 AI，不执行 Deduplicate，不生成 Event / NOW / Brief，不新增 Public API。
 
+## Deduplicate v1（已冻结）
+
+- 只处理 Normalize 已生成的 Signal，以标准化正文 SHA-256 完全相同作为 exact
+  duplicate；不执行 embedding、语义近似或模型判断。
+- 同一 content hash 中 `(created_at, id)` 最早的 Signal 为 canonical，后续完全相同
+  Signal 通过 `duplicate_of_signal_id` 直接指向它，不允许 duplicate chain。
+- 所有 Signal 继续保留，不删除正文、不合并 provenance、不改变
+  `evidence_visibility`；跨来源链接只是 Backend Internal 关系。
+- 按稳定 `(created_at, id)` 游标分批扫描；重复执行幂等。
+- 本步骤与 Event Reconstruction 分离，不生成 Event / NOW / Brief，不新增 Public API。
+- 语义 / 模糊去重继续冻结，待 embedding API、阈值和 output schema 共同确认后另行实现。
+
 ---
 
 # 十、完整数据 Pipeline

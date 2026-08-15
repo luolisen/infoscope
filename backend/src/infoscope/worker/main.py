@@ -17,6 +17,7 @@ from infoscope.integrations.telegram import (
 from infoscope.integrations.trendradar import TrendRadarCollector, load_trendradar_config
 from infoscope.integrations.trendradar.client import NewsNowClient, RSSClient
 from infoscope.services.acquisition import AcquisitionRepository
+from infoscope.services.deduplication import DeduplicationResult, ExactDeduplicationRunner
 from infoscope.services.normalization import NormalizationResult, NormalizationRunner
 
 logger = logging.getLogger("infoscope.worker")
@@ -97,6 +98,20 @@ async def normalize_once(*, retry_failed: bool = False) -> NormalizationResult:
     return result
 
 
+async def deduplicate_once() -> DeduplicationResult:
+    settings = get_settings()
+    async with session_factory() as database:
+        result = await ExactDeduplicationRunner(
+            repository=AcquisitionRepository(database),
+        ).run(batch_size=settings.deduplication_batch_size)
+    logger.info(
+        "deduplication complete scanned=%d duplicates_linked=%d",
+        result.scanned,
+        result.duplicates_linked,
+    )
+    return result
+
+
 async def run(
     *,
     once: bool = False,
@@ -104,6 +119,7 @@ async def run(
     collect_telegram: bool = False,
     normalize: bool = False,
     retry_normalization: bool = False,
+    deduplicate: bool = False,
 ) -> None:
     settings = get_settings()
     stop = asyncio.Event()
@@ -121,8 +137,17 @@ async def run(
                 await collect_telegram_once()
             if normalize or retry_normalization:
                 await normalize_once(retry_failed=retry_normalization)
+            if deduplicate:
+                await deduplicate_once()
             logger.info("worker heartbeat")
-            if once or collect_trendradar or collect_telegram or normalize or retry_normalization:
+            if (
+                once
+                or collect_trendradar
+                or collect_telegram
+                or normalize
+                or retry_normalization
+                or deduplicate
+            ):
                 return
             try:
                 await asyncio.wait_for(stop.wait(), timeout=settings.worker_poll_seconds)
@@ -161,6 +186,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Retry one batch of failed Raw normalization records",
     )
+    parser.add_argument(
+        "--deduplicate",
+        action="store_true",
+        help="Link exact normalized-text duplicate Signals",
+    )
     return parser.parse_args()
 
 
@@ -177,6 +207,7 @@ def main() -> int:
                 collect_telegram=args.collect_telegram,
                 normalize=args.normalize,
                 retry_normalization=args.retry_normalization,
+                deduplicate=args.deduplicate,
             )
         )
     return 0

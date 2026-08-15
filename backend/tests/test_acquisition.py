@@ -140,3 +140,33 @@ async def test_signal_persistence_sanitizes_private_provenance_and_completes_raw
     assert signal is persisted_signal
     database.execute.assert_awaited_once()
     assert database.commits == 1
+
+
+async def test_mark_signal_duplicate_rejects_self_or_mismatched_hash() -> None:
+    database = FakeDatabase()
+    repository = AcquisitionRepository(database)  # type: ignore[arg-type]
+    signal = Signal(
+        id=uuid4(),
+        raw_information_id=uuid4(),
+        signal_index=0,
+        normalized_text="one",
+        source_type="telegram",
+        evidence_visibility=EvidenceVisibility.PUBLIC.value,
+        content_hash="a" * 64,
+    )
+    different = Signal(
+        id=uuid4(),
+        raw_information_id=uuid4(),
+        signal_index=0,
+        normalized_text="two",
+        source_type="telegram",
+        evidence_visibility=EvidenceVisibility.PUBLIC.value,
+        content_hash="b" * 64,
+    )
+
+    with pytest.raises(ValueError, match="itself"):
+        await repository.mark_signal_duplicate(signal, canonical=signal)
+    with pytest.raises(ValueError, match="same content hash"):
+        await repository.mark_signal_duplicate(signal, canonical=different)
+
+    assert database.commits == 0
