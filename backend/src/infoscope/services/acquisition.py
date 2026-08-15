@@ -152,6 +152,18 @@ class AcquisitionRepository:
         )
         return list(result.scalars())
 
+    async def earliest_raw_acquired_at(self) -> datetime | None:
+        result = await self.database.execute(select(func.min(RawInformation.acquired_at)))
+        return result.scalar_one()
+
+    async def list_signals_for_raw(self, raw_id: UUID) -> list[Signal]:
+        result = await self.database.execute(
+            select(Signal)
+            .where(Signal.raw_information_id == raw_id)
+            .order_by(Signal.signal_index)
+        )
+        return list(result.scalars())
+
     async def latest_telegram_message_id(self, *, peer_id: int) -> int | None:
         """Return the durable per-dialog lower bound for Telegram collection."""
         metadata = RawInformation.collector_metadata

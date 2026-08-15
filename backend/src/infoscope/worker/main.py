@@ -4,9 +4,11 @@ import argparse
 import asyncio
 import logging
 import signal
+from datetime import UTC, datetime
 
 import httpx
 
+from infoscope.analysis import DeepSeekAnalysisClient, load_analysis_config
 from infoscope.config import get_settings
 from infoscope.db import close_database, ping_database, session_factory
 from infoscope.integrations.telegram import (
@@ -19,6 +21,8 @@ from infoscope.integrations.trendradar.client import NewsNowClient, RSSClient
 from infoscope.services.acquisition import AcquisitionRepository
 from infoscope.services.deduplication import DeduplicationResult, ExactDeduplicationRunner
 from infoscope.services.normalization import NormalizationResult, NormalizationRunner
+from infoscope.services.pipeline import PipelineRepository
+from infoscope.services.window_analysis import WindowAnalysisRunner, WindowRunResult
 
 logger = logging.getLogger("infoscope.worker")
 
@@ -112,6 +116,31 @@ async def deduplicate_once() -> DeduplicationResult:
     return result
 
 
+async def analyze_windows_once() -> WindowRunResult:
+    settings = get_settings()
+    config = load_analysis_config(settings)
+    async with httpx.AsyncClient() as client:
+        async with session_factory() as database:
+            result = await WindowAnalysisRunner(
+                acquisition=AcquisitionRepository(database),
+                pipeline=PipelineRepository(database),
+                client=DeepSeekAnalysisClient(client=client, config=config),
+                max_signals=settings.window_analysis_max_signals,
+                max_input_chars=settings.window_analysis_max_input_chars,
+            ).run_available(
+                watermark=datetime.now(UTC),
+                max_windows=settings.window_analysis_max_windows,
+            )
+    logger.info(
+        "window analysis complete succeeded=%d failed=%d raws=%d signals=%d",
+        result.windows_succeeded,
+        result.windows_failed,
+        result.raws_scanned,
+        result.signals_analyzed,
+    )
+    return result
+
+
 async def run(
     *,
     once: bool = False,
@@ -120,6 +149,7 @@ async def run(
     normalize: bool = False,
     retry_normalization: bool = False,
     deduplicate: bool = False,
+    analyze_windows: bool = False,
 ) -> None:
     settings = get_settings()
     stop = asyncio.Event()
@@ -139,6 +169,8 @@ async def run(
                 await normalize_once(retry_failed=retry_normalization)
             if deduplicate:
                 await deduplicate_once()
+            if analyze_windows:
+                await analyze_windows_once()
             logger.info("worker heartbeat")
             if (
                 once
@@ -147,6 +179,7 @@ async def run(
                 or normalize
                 or retry_normalization
                 or deduplicate
+                or analyze_windows
             ):
                 return
             try:
@@ -191,6 +224,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Link exact normalized-text duplicate Signals",
     )
+    parser.add_argument(
+        "--analyze-windows",
+        action="store_true",
+        help="Analyze available complete one-hour windows",
+    )
     return parser.parse_args()
 
 
@@ -208,6 +246,7 @@ def main() -> int:
                 normalize=args.normalize,
                 retry_normalization=args.retry_normalization,
                 deduplicate=args.deduplicate,
+                analyze_windows=args.analyze_windows,
             )
         )
     return 0

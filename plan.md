@@ -910,6 +910,26 @@ Deduplicate v1 仅把标准化正文 SHA-256 完全相同的 Signal 标记为 ex
 该步骤使用稳定游标批量扫描且可幂等重跑，与 Event Reconstruction 严格分离。
 语义 / 模糊去重涉及 embedding API、阈值与 output schema，当前继续冻结，不自行猜测。
 
+### Window Analysis Artifact v1（已冻结）
+
+Window Analysis 按 Raw `acquired_at` 运行连续的一小时 `[start, end)` 窗口。首个窗口
+从最早 Raw 开始，只执行 `end <= watermark` 的完整窗口；积压补偿从最近成功窗口的
+`end` 连续推进，窗口内使用 `(acquired_at, raw_id)` 复合游标。
+
+模型仅接收 Normalize 成功的非重复 Signal、已脱敏正文和 public-safe provenance。
+`private_sanitized` Signal 不允许携带公开 provenance，也禁止模型反推 Telegram 私密
+群名、用户名、邀请链接或内部 ID。exact duplicate Signal 不重复进入模型，但 Raw 仍
+推进采集游标。
+
+冻结输出 `window_analysis.v1` 包含逐 Signal 分类与事实声明、聚类建议、关系、缺失上下文
+和未归类 Signal，不生成 Event ID。结果必须通过 JSON Schema 与完整覆盖校验，并先写入
+Backend Internal `pipeline_artifacts`，再完成 run 与 checkpoint。API、Schema、覆盖或
+前置条件失败会停止后续窗口且不推进 checkpoint；本步骤不新增 Public API、前端 Contract、
+Event、NOW 或 Brief。
+
+超过 Signal 数量或输入字符上限的窗口必须在调用模型前以稳定错误码失败。在跨批聚合
+Contract 尚未共同冻结前，禁止静默截断输入或把一个逻辑窗口拆成互不关联的模型结果。
+
 ---
 
 ## 7.3 Hermes / OpenClaw / Agent-Reach
