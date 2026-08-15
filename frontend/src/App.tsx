@@ -4,6 +4,7 @@ import { fetchHealth } from "./api/health";
 import { fetchSession, sessionQueryKey } from "./api/session";
 import { AuthScreen } from "./features/auth/AuthScreen";
 import { OnboardingPending } from "./features/auth/OnboardingPending";
+import { NowShell } from "./features/now/NowShell";
 
 const primaryNavigation = ["NOW", "BRIEF", "ARCHIVE"];
 const settingsNavigation = ["SCOPE", "SETTINGS"];
@@ -37,6 +38,7 @@ function ReadyApp() {
     <div className="app-shell">
       <header className="topbar">
         <a className="wordmark" href="/" aria-label="Infoscope home">IS</a>
+        <span className="meta">{healthQuery.isSuccess ? "SYSTEM / ONLINE" : "SYSTEM / CHECKING"}</span>
         <button className="search-trigger" type="button" aria-label="Search, shortcut Command K">
           <span>Search</span>
           <kbd>⌘K</kbd>
@@ -62,25 +64,7 @@ function ReadyApp() {
         </nav>
       </aside>
 
-      <main className="main-content" id="now">
-        <p className="editorial-label">NOW / SYSTEM</p>
-        <section className="welcome" aria-labelledby="welcome-heading">
-          <p className="meta">INFOSCOPE · 观澜</p>
-          <h1 id="welcome-heading">See the event,<br />not the feed.</h1>
-          <p className="introduction">The intelligence interface is ready for its first signal.</p>
-        </section>
-        <section className="service-status" aria-live="polite" aria-label="Service status">
-          <p className="editorial-label">API / HEALTH</p>
-          {healthQuery.isPending && <p>Checking system availability…</p>}
-          {healthQuery.isError && <p role="alert">The API is unavailable. Start the local API and try again.</p>}
-          {healthQuery.data && (
-            <p>
-              <span className="status-marker" aria-hidden="true" />
-              API, database, and worker are operational.
-            </p>
-          )}
-        </section>
-      </main>
+      <NowShell />
     </div>
   );
 }

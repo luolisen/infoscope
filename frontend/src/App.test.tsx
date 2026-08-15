@@ -7,10 +7,12 @@ vi.mock("./api/session", () => ({
   fetchSession: vi.fn(),
   sessionQueryKey: ["session"],
 }));
+vi.mock("./api/now", () => ({ fetchNow: vi.fn(), nowQueryKey: ["now"] }));
 
 import { App } from "./App";
 import { fetchHealth } from "./api/health";
 import { fetchSession } from "./api/session";
+import { fetchNow } from "./api/now";
 
 afterEach(() => {
   cleanup();
@@ -41,11 +43,12 @@ describe("App", () => {
     vi.mocked(fetchHealth).mockResolvedValue({
       status: "ok", api: "ok", database: "ok", worker: "ok",
     });
+    vi.mocked(fetchNow).mockResolvedValue({ items: [], next_cursor: null, window_stats: { raw_information_count: 0, event_count: 0, relevant_event_count: 0, window_started_at: "2026-01-01T00:00:00Z", window_ended_at: "2026-01-01T01:00:00Z" } });
 
     renderApp();
 
-    expect(await screen.findByRole("heading", { name: /see the event/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /what matters now/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "NOW" })).toHaveAttribute("aria-current", "page");
-    expect(await screen.findByText(/API, database, and worker are operational/i)).toBeInTheDocument();
+    expect(await screen.findByText(/nothing requires your attention/i)).toBeInTheDocument();
   });
 });
