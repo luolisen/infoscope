@@ -888,6 +888,18 @@ TG News v1 自行实现为内部 Telethon 薄 Adapter。它使用用户账号 MT
 - credential 与 Telethon session 只保存在本地环境，禁止进入 Git。
 - 不新增 Public API，不调用 AI，不直接生成 Signal / Event / NOW / Brief。
 
+### Normalize v1（已冻结）
+
+Normalize v1 是确定性 `Raw → Signal` 映射：每条 `telegram` 或 `trend_radar`
+Raw 生成一个 `signal_index=0` Signal，只清理 Unicode NFC、换行和首尾空白，映射
+来源字段并计算标准化正文哈希。它不进行摘要、分类、筛选、Deduplicate 或任何 AI
+调用。
+
+公开 provenance 采用来源专属 allowlist；私密 Telegram 最终必须由 Signal 持久化
+边界强制转成 `private_sanitized` 并清空 `public_provenance`，正文中的群名、
+username、邀请链接和长 peer ID 以 `[PRIVATE_SOURCE_REDACTED]` 明确替换。空正文和
+未知来源使用稳定错误码并隔离失败；Pending 与 Failed 分开批处理，重试不需要重新采集 Raw。
+
 ---
 
 ## 7.3 Hermes / OpenClaw / Agent-Reach

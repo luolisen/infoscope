@@ -679,6 +679,22 @@ TG News 不直接生成 NOW、Event 或 Brief。
 - Raw 唯一键由 peer ID 与 message ID 的 SHA-256 生成；重复采集幂等。
 - 本模块不新增 Public API，不调用 AI，不直接写 Signal、Event、NOW 或 Brief。
 
+## Normalize v1（已冻结）
+
+- 每条受支持 Raw 固定生成一个 `signal_index=0` 的 Signal。
+- 仅执行 Unicode NFC、换行统一、首尾空白清理、来源字段映射、公开 provenance
+  allowlist 与标准化正文 SHA-256；不得摘要、分类、关键词筛选或语义改写。
+- 支持 `telegram` 与 `trend_radar`；未知来源使用
+  `NORMALIZE_UNSUPPORTED_SOURCE`，空正文使用 `NORMALIZE_EMPTY_CONTENT`。
+- Telegram Signal 不自行生成标题；TrendRadar 标题只从采集 payload 的既有标题映射。
+- 公开 Telegram provenance 只允许平台、公开频道 / 群组名称、公开 username 与公开
+  消息 URL；TrendRadar 只允许来源类型、公开来源名与公开 URL。
+- 私密 Raw 即使传入 public provenance，也必须由持久化边界强制写为
+  `private_sanitized` 且 `public_provenance=null`；正文中的群名、username、邀请
+  链接与长 peer ID 使用明确的 `[PRIVATE_SOURCE_REDACTED]` 占位符替换。
+- Pending 与 Failed 使用独立 worker 命令批处理；单条确定性失败不阻断同批其他 Raw。
+- 本步骤不调用 AI，不执行 Deduplicate，不生成 Event / NOW / Brief，不新增 Public API。
+
 ---
 
 # 十、完整数据 Pipeline

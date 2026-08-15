@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     telegram_session_path: Path = Path(".state/telegram/infoscope")
     telegram_folder_title: str = Field(default="News", min_length=1)
     telegram_initial_message_limit: int = Field(default=100, gt=0)
+    normalization_batch_size: int = Field(default=500, gt=0, le=5000)
 
     @property
     def resolved_trendradar_config_path(self) -> Path:

@@ -49,3 +49,20 @@ async def test_worker_telegram_mode_collects_once_and_exits() -> None:
     database_ping.assert_awaited_once()
     collect.assert_awaited_once()
     database_close.assert_awaited_once()
+
+
+async def test_worker_normalization_mode_runs_one_batch_and_exits() -> None:
+    database_ping = AsyncMock()
+    database_close = AsyncMock()
+    normalize = AsyncMock()
+
+    with (
+        patch("infoscope.worker.main.ping_database", database_ping),
+        patch("infoscope.worker.main.close_database", database_close),
+        patch("infoscope.worker.main.normalize_once", normalize),
+    ):
+        await run(normalize=True)
+
+    database_ping.assert_awaited_once()
+    normalize.assert_awaited_once_with(retry_failed=False)
+    database_close.assert_awaited_once()
