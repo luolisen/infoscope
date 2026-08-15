@@ -6,6 +6,8 @@
 # Python
 __pycache__/
 *.py[cod]
+.coverage
+.python-version.local
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
