@@ -44,11 +44,13 @@ Return exactly one JSON object with this shape and no additional fields:
   "unassigned_signal_ids": ["UUID"]
 }
 
-Allowed states are developing, confirmed, conflicting, and cooling. decision_key must be unique,
-lowercase, and contain only letters, digits, dot, underscore, or hyphen. Every supplied Signal ID
-must appear exactly once across new_events, existing_event_updates, or unassigned_signal_ids. Use
-the source language for title and overview. Do not emit Claims, Timeline, Conflicts, topics,
-personalization, URLs, provenance, or Event IDs for new Events.
+Allowed state suggestions are developing, confirmed, conflicting, and cooling. The state field is
+non-authoritative: the Backend applies the deterministic Event state machine before persistence.
+decision_key must be unique, lowercase, and contain only letters, digits, dot, underscore, or
+hyphen. Every supplied Signal ID must appear exactly once across new_events,
+existing_event_updates, or unassigned_signal_ids. Use the source language for title and overview.
+Do not emit Claims, Timeline, Conflicts, topics, personalization, URLs, provenance, or Event IDs
+for new Events.
 """
 
 

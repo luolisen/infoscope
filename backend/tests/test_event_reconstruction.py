@@ -21,6 +21,7 @@ from infoscope.models import (
 from infoscope.services.event_reconstruction import (
     EventReconstructionError,
     EventReconstructionRunner,
+    EventRepository,
 )
 
 
@@ -90,6 +91,7 @@ class FakeEvents:
         self.candidate_values = candidates or []
         self.persisted = False
         self.rolled_back = False
+        self.locked = False
         self.persist_error = persist_error
 
     async def rollback(self):
@@ -98,6 +100,10 @@ class FakeEvents:
     async def source_artifact(self, artifact_id):
         return (self.artifact, self.source_run) if artifact_id == self.artifact.id else None
 
+    async def lock_source_artifact(self, source_artifact_id):
+        assert source_artifact_id == self.artifact.id
+        self.locked = True
+
     async def signals(self, signal_ids):
         return [self.signal]
 
@@ -105,13 +111,14 @@ class FakeEvents:
         return self.candidate_values
 
     async def prior_source_artifact(self, source_artifact_id):
+        assert self.locked is True
         return self.prior
 
     async def persist_reconstruction(self, **kwargs):
         if self.persist_error:
             raise SQLAlchemyError("synthetic persistence failure")
         self.persisted = True
-        return PipelineArtifact(), 1, 0, 1
+        return PipelineArtifact(), 1, 0, 1, False
 
 
 class FakePipeline:
@@ -213,6 +220,7 @@ async def test_reconstruction_persists_events_before_completing_run() -> None:
     result = await runner.reconstruct(artifact.id)
 
     assert events.persisted is True
+    assert events.locked is True
     assert pipeline.events == ["start", "complete"]
     assert result.events_created == 1
     assert result.signals_attached == 1
@@ -255,7 +263,21 @@ async def test_same_input_reuses_prior_artifact_without_model_call() -> None:
 
     assert result.reused_artifact is True
     assert client.calls == 0
-    assert pipeline.events == ["start", "artifact", "complete"]
+    assert events.locked is True
+    assert pipeline.events == ["start", "complete"]
+
+
+def test_event_state_policy_is_deterministic() -> None:
+    assert EventRepository._next_event_state(current_state=None) == "developing"
+    for state in ("developing", "confirmed", "conflicting", "cooling"):
+        assert EventRepository._next_event_state(current_state=state) == state
+
+
+def test_event_state_policy_rejects_an_invalid_persisted_state() -> None:
+    with pytest.raises(EventReconstructionError) as captured:
+        EventRepository._next_event_state(current_state="model-decides")
+
+    assert captured.value.error_code == "RECONSTRUCTION_EVENT_STATE_INVALID"
 
 
 async def test_private_provenance_fails_before_model_call() -> None:

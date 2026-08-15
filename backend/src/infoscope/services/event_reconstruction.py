@@ -10,7 +10,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from infoscope.analysis.client import AnalysisError
@@ -33,6 +33,7 @@ from infoscope.models import (
     Signal,
 )
 from infoscope.pipeline import AcquisitionCursor, LogicalWindow
+from infoscope.schemas.now import EventState
 from infoscope.services.pipeline import PipelineRepository
 
 PIPELINE_NAME = "event_reconstruction"
@@ -84,6 +85,17 @@ class EventRepository:
             raise EventReconstructionError("RECONSTRUCTION_SOURCE_RUN_MISSING")
         return artifact, run
 
+    async def lock_source_artifact(self, source_artifact_id: UUID) -> None:
+        locked_id = (
+            await self.database.execute(
+                select(PipelineArtifact.id)
+                .where(PipelineArtifact.id == source_artifact_id)
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if locked_id is None:
+            raise EventReconstructionError("RECONSTRUCTION_SOURCE_ARTIFACT_NOT_FOUND")
+
     async def signals(self, signal_ids: list[UUID]) -> list[Signal]:
         if not signal_ids:
             return []
@@ -125,8 +137,7 @@ class EventRepository:
             select(PipelineArtifact)
             .where(
                 PipelineArtifact.artifact_type == ARTIFACT_TYPE,
-                PipelineArtifact.payload["source_artifact_id"].astext
-                == str(source_artifact_id),
+                PipelineArtifact.source_artifact_id == source_artifact_id,
             )
             .order_by(PipelineArtifact.created_at.desc(), PipelineArtifact.id)
             .limit(1)
@@ -141,7 +152,7 @@ class EventRepository:
         input_hash: str,
         response: EventReconstructionResponse,
         candidate_ids: set[UUID],
-    ) -> tuple[PipelineArtifact, int, int, int]:
+    ) -> tuple[PipelineArtifact, int, int, int, bool]:
         assignments: list[EventAssignment] = []
         created = 0
         updated = 0
@@ -154,7 +165,7 @@ class EventRepository:
                     id=event_id,
                     title=decision.title,
                     overview=decision.overview,
-                    state=decision.state.value,
+                    state=self._next_event_state(current_state=None),
                     display_time=decision.display_time,
                 )
             )
@@ -180,7 +191,7 @@ class EventRepository:
                 raise EventReconstructionError("RECONSTRUCTION_EVENT_MISSING")
             event.title = decision.title
             event.overview = decision.overview
-            event.state = decision.state.value
+            event.state = self._next_event_state(current_state=event.state)
             event.display_time = decision.display_time
             assignments.append(
                 EventAssignment(
@@ -204,6 +215,7 @@ class EventRepository:
         artifact = PipelineArtifact(
             id=uuid4(),
             pipeline_run_id=run.id,
+            source_artifact_id=source_artifact_id,
             artifact_type=ARTIFACT_TYPE,
             schema_version=RECONSTRUCTION_SCHEMA_VERSION,
             input_hash=input_hash,
@@ -213,8 +225,45 @@ class EventRepository:
             token_usage=response.token_usage.model_dump(mode="json"),
         )
         self.database.add(artifact)
-        await self.database.commit()
-        return artifact, created, updated, attached
+        run_id = run.id
+        try:
+            await self.database.commit()
+        except IntegrityError as error:
+            if self._constraint_name(error) != "uq_pipeline_artifacts_type_source":
+                raise
+            await self.database.rollback()
+            persisted_run = await self.database.get(PipelineRun, run_id)
+            if persisted_run is None:
+                raise EventReconstructionError("RECONSTRUCTION_RUN_MISSING") from error
+            await self.database.refresh(persisted_run)
+            prior = await self.prior_source_artifact(source_artifact_id)
+            if prior is None:
+                raise EventReconstructionError(
+                    "RECONSTRUCTION_IDEMPOTENCY_CONFLICT_MISSING"
+                ) from error
+            return prior, 0, 0, 0, True
+        return artifact, created, updated, attached, False
+
+    @staticmethod
+    def _next_event_state(*, current_state: str | None) -> str:
+        if current_state is None:
+            return EventState.DEVELOPING.value
+        try:
+            return EventState(current_state).value
+        except ValueError as error:
+            raise EventReconstructionError("RECONSTRUCTION_EVENT_STATE_INVALID") from error
+
+    @staticmethod
+    def _constraint_name(error: IntegrityError) -> str | None:
+        original = getattr(error, "orig", None)
+        for candidate in (original, getattr(original, "__cause__", None)):
+            diagnostic = getattr(candidate, "diag", None)
+            constraint_name = getattr(diagnostic, "constraint_name", None) or getattr(
+                candidate, "constraint_name", None
+            )
+            if constraint_name is not None:
+                return constraint_name
+        return None
 
     async def _attach_signals(
         self,
@@ -352,6 +401,7 @@ class EventReconstructionRunner:
             window_analysis = WindowAnalysisPayload.model_validate(source_artifact.payload)
         except ValueError as error:
             raise EventReconstructionError("RECONSTRUCTION_SOURCE_SCHEMA_INVALID") from error
+        await self.events.lock_source_artifact(source_artifact.id)
         prior = await self.events.prior_source_artifact(source_artifact.id)
         upper_cursor = self._cursor(
             source_run.upper_cursor_acquired_at,
@@ -364,16 +414,6 @@ class EventReconstructionRunner:
                 raise EventReconstructionError(
                     "RECONSTRUCTION_PRIOR_ARTIFACT_INVALID"
                 ) from error
-            await self.pipeline.persist_artifact(
-                run=run,
-                artifact_type=ARTIFACT_TYPE,
-                schema_version=RECONSTRUCTION_SCHEMA_VERSION,
-                input_hash=prior.input_hash,
-                payload=prior.payload,
-                provider=prior.provider,
-                model=prior.model,
-                token_usage=prior.token_usage,
-            )
             await self.pipeline.complete_run(
                 run,
                 finished_at=self.clock(),
@@ -400,7 +440,7 @@ class EventReconstructionRunner:
             expected_signal_ids=set(signal_ids),
             candidate_ids={candidate.event_id for candidate in candidates},
         )
-        _, created, updated, attached = await self.events.persist_reconstruction(
+        _, created, updated, attached, reused = await self.events.persist_reconstruction(
             run=run,
             source_artifact_id=source_artifact.id,
             input_hash=input_hash,
@@ -412,7 +452,7 @@ class EventReconstructionRunner:
             finished_at=self.clock(),
             upper_cursor=upper_cursor,
         )
-        return EventReconstructionResult(run.id, created, updated, attached, False)
+        return EventReconstructionResult(run.id, created, updated, attached, reused)
 
     @staticmethod
     def _validate_source(artifact: PipelineArtifact, run: PipelineRun) -> None:

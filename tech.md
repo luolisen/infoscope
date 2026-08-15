@@ -744,8 +744,13 @@ TG News 不直接生成 NOW、Event 或 Brief。
   New Event 生成 Event ID，更新只能引用 Backend 提供的 candidate ID。
 - Backend 校验 decision key、Candidate、UTC display time 和完整的一次性 Signal 覆盖，
   再分配 Event ID。
+- 模型输出的 state 仅是内部建议；Backend 对 New Event 固定使用 `developing`，Existing
+  Event 在本切片保持当前合法状态，后续状态转换必须由确定性 Claim / Conflict 规则驱动。
 - reconstruction artifact、Event 变化和 Event–Signal 关系必须原子持久化，之后才能完成
   pipeline run；相同 source artifact 永远复用首次 assignment，不再次调用模型或创建 Event。
+- Backend 在模型调用前锁定 source artifact 并在锁内复查结果；数据库以
+  `(artifact_type, source_artifact_id)` 唯一约束作为并发兜底，冲突时回滚并复用 canonical
+  artifact。重放 run 不复制第二份 reconstruction artifact。
 - Prompt 只接收脱敏 Signal；`private_sanitized` 携带 public provenance 时在 API 调用前失败。
 - 本切片不生成 Claim、Timeline、Conflict、Base Analysis、Personalization、Public API 或
   Frontend Contract。

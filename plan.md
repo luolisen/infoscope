@@ -948,8 +948,15 @@ New Event 生成 ID，Existing Event 更新只能引用 Backend 提供的 candid
 输入 Signal 必须且只能进入一个 decision 或 unassigned。Backend 校验 decision key、
 Candidate、UTC display time 与完整覆盖后分配或复用 Event ID。
 
+模型输出的 state 仅作为内部建议保留在 artifact；Backend 对 New Event 固定使用
+`developing`，Existing Event 在本切片保持当前合法状态。后续状态变化必须由确定性的
+Claim / Conflict 规则驱动，模型不得直接写入 Event state。
+
 reconstruction artifact、Event 变化与 Event–Signal 关系原子持久化，之后才能完成 pipeline
 run。同一个 source artifact 永远复用首次 assignment，不再次调用模型或重复创建 Event。
+Backend 在模型调用前对 source artifact 加锁并在锁内复查；数据库使用
+`(artifact_type, source_artifact_id)` 唯一约束兜底，冲突时回滚并复用 canonical artifact，
+重放 run 不复制第二份 reconstruction artifact。
 本切片不实现 Claim、Timeline、Conflict、Base Analysis、Personalization、Public API 或前端。
 
 ---
