@@ -150,6 +150,8 @@ ANALYSIS_API_KEYS=sk-first,sk-second,sk-third
 ```bash
 uv run --project backend alembic upgrade head
 uv run --project backend python -m infoscope.worker --analyze-windows
+uv run --project backend python -m infoscope.worker --retry-window-run RUN_ID
+uv run --project backend python -m infoscope.worker --replay-window-run RUN_ID
 ```
 
 The model receives normalized Signals only. Private Telegram provenance must
@@ -162,6 +164,13 @@ being logged. `WINDOW_ANALYSIS_MAX_SIGNALS` and
 `WINDOW_ANALYSIS_MAX_INPUT_CHARS` reject oversized windows before any model
 request; splitting a logical window requires a separately frozen aggregation
 contract and is not performed implicitly.
+
+Normal window execution reuses the newest failed run for the same window once
+its `next_retry_at` is due, incrementing `attempt` without recollecting Raw.
+Operators may retry a failed run immediately or replay any terminal run by UUID.
+Audit logs contain only pipeline/run identifiers, window boundaries, attempt,
+counts, status, stable error code, and retry time; Signal text and provenance
+are never logged.
 
 Checks:
 

@@ -930,6 +930,11 @@ Event、NOW 或 Brief。
 超过 Signal 数量或输入字符上限的窗口必须在调用模型前以稳定错误码失败。在跨批聚合
 Contract 尚未共同冻结前，禁止静默截断输入或把一个逻辑窗口拆成互不关联的模型结果。
 
+失败恢复复用同一窗口与 lower cursor，并创建递增 attempt；到达 `next_retry_at` 后自动
+重试，也可按 run UUID 立即 retry 或 replay terminal run，均不重新采集 Raw。审计日志
+仅包含 pipeline/run ID、窗口、attempt、计数、状态、稳定错误码和重试时间，不记录正文、
+私密 provenance、Prompt、模型响应或 API Key。
+
 ---
 
 ## 7.3 Hermes / OpenClaw / Agent-Reach
