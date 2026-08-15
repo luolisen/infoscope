@@ -172,6 +172,24 @@ Audit logs contain only pipeline/run identifiers, window boundaries, attempt,
 counts, status, stable error code, and retry time; Signal text and provenance
 are never logged.
 
+Phase 4 Event Reconstruction consumes one successful `window_analysis.v1`
+artifact by opaque UUID:
+
+```bash
+uv run --project backend alembic upgrade head
+uv run --project backend python -m infoscope.worker \
+  --reconstruct-window-artifact ARTIFACT_ID
+```
+
+The strict `event_reconstruction.v1` output may propose new Events, update only
+Backend-supplied candidate Event IDs, or leave Signals unassigned. The model
+never creates Event IDs. The Backend validates complete one-time Signal
+coverage, assigns IDs, and atomically persists the reconstruction artifact,
+Events, and Event–Signal links before completing the pipeline run. Reprocessing
+the same source artifact reuses its original assignments without another model
+call. This slice does not create Claims, Timeline, Conflicts, personalization,
+Public API fields, or frontend behavior.
+
 Checks:
 
 ```bash
