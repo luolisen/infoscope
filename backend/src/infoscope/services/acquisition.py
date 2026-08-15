@@ -161,6 +161,27 @@ class AcquisitionRepository:
         )
         return (await self.database.execute(statement)).scalar_one()
 
+    async def list_raw_for_normalization(
+        self,
+        *,
+        retry_failed: bool = False,
+        limit: int = 500,
+    ) -> list[RawInformation]:
+        if limit <= 0:
+            raise ValueError("limit must be positive")
+        status = (
+            NormalizationStatus.FAILED.value
+            if retry_failed
+            else NormalizationStatus.PENDING.value
+        )
+        result = await self.database.execute(
+            select(RawInformation)
+            .where(RawInformation.normalization_status == status)
+            .order_by(RawInformation.acquired_at, RawInformation.id)
+            .limit(limit)
+        )
+        return list(result.scalars())
+
     async def mark_normalization_started(self, raw: RawInformation) -> None:
         if raw.normalization_status not in {
             NormalizationStatus.PENDING.value,

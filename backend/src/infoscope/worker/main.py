@@ -17,6 +17,7 @@ from infoscope.integrations.telegram import (
 from infoscope.integrations.trendradar import TrendRadarCollector, load_trendradar_config
 from infoscope.integrations.trendradar.client import NewsNowClient, RSSClient
 from infoscope.services.acquisition import AcquisitionRepository
+from infoscope.services.normalization import NormalizationResult, NormalizationRunner
 
 logger = logging.getLogger("infoscope.worker")
 
@@ -77,11 +78,32 @@ async def collect_telegram_once() -> None:
         logger.warning("telegram dialog failed error_code=%s", failure.error_code)
 
 
+async def normalize_once(*, retry_failed: bool = False) -> NormalizationResult:
+    settings = get_settings()
+    async with session_factory() as database:
+        result = await NormalizationRunner(
+            repository=AcquisitionRepository(database),
+        ).run_once(
+            retry_failed=retry_failed,
+            limit=settings.normalization_batch_size,
+        )
+    logger.info(
+        "normalization complete processed=%d succeeded=%d failed=%d retry_failed=%s",
+        result.processed,
+        result.succeeded,
+        result.failed,
+        retry_failed,
+    )
+    return result
+
+
 async def run(
     *,
     once: bool = False,
     collect_trendradar: bool = False,
     collect_telegram: bool = False,
+    normalize: bool = False,
+    retry_normalization: bool = False,
 ) -> None:
     settings = get_settings()
     stop = asyncio.Event()
@@ -97,8 +119,10 @@ async def run(
                 await collect_trendradar_once()
             if collect_telegram:
                 await collect_telegram_once()
+            if normalize or retry_normalization:
+                await normalize_once(retry_failed=retry_normalization)
             logger.info("worker heartbeat")
-            if once or collect_trendradar or collect_telegram:
+            if once or collect_trendradar or collect_telegram or normalize or retry_normalization:
                 return
             try:
                 await asyncio.wait_for(stop.wait(), timeout=settings.worker_poll_seconds)
@@ -126,6 +150,17 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Collect text messages from the configured Telegram folder once",
     )
+    normalization_group = parser.add_mutually_exclusive_group()
+    normalization_group.add_argument(
+        "--normalize",
+        action="store_true",
+        help="Normalize one batch of pending Raw records",
+    )
+    normalization_group.add_argument(
+        "--retry-normalization",
+        action="store_true",
+        help="Retry one batch of failed Raw normalization records",
+    )
     return parser.parse_args()
 
 
@@ -140,6 +175,8 @@ def main() -> int:
                 once=args.once,
                 collect_trendradar=args.collect_trendradar,
                 collect_telegram=args.collect_telegram,
+                normalize=args.normalize,
+                retry_normalization=args.retry_normalization,
             )
         )
     return 0

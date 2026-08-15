@@ -104,6 +104,22 @@ message after that dialog's highest durable message ID. Publicly addressable
 groups/channels are `public`; all others are `private`. Direct-user and bot
 dialogs are never collected even if they are explicitly present in the folder.
 
+Phase 3 deterministic normalization maps each supported Raw record to one
+`signal_index=0` Signal. It performs only Unicode/line-ending cleanup,
+source-field mapping, public provenance allowlisting, and content hashing. It
+does not summarize, classify, filter, or call an AI service.
+
+```bash
+uv run --project backend python -m infoscope.worker --normalize
+uv run --project backend python -m infoscope.worker --retry-normalization
+```
+
+Each command processes one batch (`NORMALIZATION_BATCH_SIZE`, default 500).
+Deterministic record failures are isolated with stable error codes. Private
+Telegram provenance is removed by the Signal persistence boundary; identity in
+the body is replaced with `[PRIVATE_SOURCE_REDACTED]` before it is stored as
+`private_sanitized` evidence.
+
 Checks:
 
 ```bash
