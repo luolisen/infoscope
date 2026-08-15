@@ -609,6 +609,29 @@ TrendRadar 不作为独立服务部署，而是拆解其：
 
 能力，融合进入 IS。
 
+Phase 3 v1 的实现边界冻结为 IS 内部异步薄 Adapter：兼容 NewsNow Hotlist
+与 RSS / Atom / JSON Feed 输入，不复制或运行 TrendRadar 的 SQLite、通知、
+MCP、Scheduler 或 AI 模块。API 地址和来源由 Backend 配置提供，采集结果逐条
+幂等写入 Raw 后才允许进入后续处理。
+
+固定 Hotlist 来源为：
+
+- `baidu`
+- `weibo`
+- `thepaper`
+- `wallstreetcn-hot`
+- `cls-hot`
+- `zhihu`
+- `bilibili-hot-search`
+
+固定 RSS 来源为：
+
+- `hacker-news`：`https://hnrss.org/frontpage`
+
+采集阶段不执行 AI 分类或关键词丢弃。相同 NewsNow snapshot 与相同 RSS
+GUID / URL 保持幂等；新的 Hotlist snapshot 作为新的 Raw observation 保存，
+供后续排名变化与趋势逻辑使用。
+
 流程：
 
 ```text

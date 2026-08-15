@@ -58,6 +58,24 @@ Phase 2 implementation is intentionally empty: current one-hour window counts
 are zero, `items` is empty, and `next_cursor` is null until acquisition and Event
 reconstruction are implemented in later phases.
 
+Phase 3 adds a native TrendRadar-compatible acquisition adapter. Its frozen
+source list lives in `backend/config/trendradar.yaml`; the path can be replaced
+with `TRENDRADAR_CONFIG_PATH`. The adapter reads a NewsNow-compatible Hotlist
+API plus RSS/Atom/JSON Feed sources and commits each item to `RawInformation`
+before any normalization. It does not run TrendRadar AI, notification, MCP,
+SQLite, or scheduling code.
+
+Run one collection cycle from the repository root:
+
+```bash
+uv run --project backend python -m infoscope.worker --collect-trendradar
+```
+
+Source failures are isolated and logged only as stable error codes. A repeated
+NewsNow snapshot or RSS GUID/URL is idempotent; a newer Hotlist snapshot is kept
+as a new Raw observation so later Signal processing can reconstruct ranking
+changes.
+
 Checks:
 
 ```bash

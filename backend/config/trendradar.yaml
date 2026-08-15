@@ -1,0 +1,35 @@
+# Native IS adapter configuration. No TrendRadar AI, notification, or SQLite runtime is used.
+# NewsNow-compatible API: https://github.com/ourongxing/newsnow
+newsnow:
+  api_url: "https://newsnow.busiyi.world/api/s"
+  timeout_seconds: 10
+  max_retries: 2
+  sources:
+    - id: "baidu"
+      name: "百度热搜"
+      expected_domain: "baidu.com"
+    - id: "weibo"
+      name: "微博"
+      expected_domain: "weibo.com"
+    - id: "thepaper"
+      name: "澎湃新闻"
+      expected_domain: "thepaper.cn"
+    - id: "wallstreetcn-hot"
+      name: "华尔街见闻"
+      expected_domain: "wallstreetcn.com"
+    - id: "cls-hot"
+      name: "财联社热门"
+      expected_domain: "cls.cn"
+    - id: "zhihu"
+      name: "知乎"
+      expected_domain: "zhihu.com"
+    - id: "bilibili-hot-search"
+      name: "Bilibili 热搜"
+      expected_domain: "bilibili.com"
+
+rss:
+  timeout_seconds: 15
+  feeds:
+    - id: "hacker-news"
+      name: "Hacker News"
+      url: "https://hnrss.org/frontpage"
