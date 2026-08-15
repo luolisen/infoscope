@@ -8,7 +8,7 @@ from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from infoscope.config import get_settings
-from infoscope.db import Base
+from infoscope.models import Base
 
 config = context.config
 config.set_main_option("sqlalchemy.url", get_settings().database_url)

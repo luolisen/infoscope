@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     database_url: str = Field(
         default="postgresql+asyncpg://infoscope:infoscope-local@127.0.0.1:5432/infoscope"
     )
+    session_ttl_seconds: int = Field(default=60 * 60 * 24 * 30, gt=0)
+    session_cookie_secure: bool = False
     worker_poll_seconds: float = Field(default=30.0, gt=0)
 
 

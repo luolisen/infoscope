@@ -24,6 +24,20 @@ In a second terminal:
 uv run --project backend python -m infoscope.worker
 ```
 
+Phase 2 authentication uses a server-side session stored in PostgreSQL. The
+browser receives only the opaque `is_session` cookie, which is HttpOnly,
+SameSite=Lax, and scoped to `/`. Run migrations before testing these endpoints:
+
+```text
+GET  /api/v1/session
+POST /api/v1/auth/register
+POST /api/v1/auth/login
+POST /api/v1/auth/logout
+```
+
+Set `SESSION_COOKIE_SECURE=true` outside the localhost HTTP demo when the API is
+served over HTTPS.
+
 Checks:
 
 ```bash
