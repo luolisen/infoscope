@@ -120,6 +120,21 @@ Telegram provenance is removed by the Signal persistence boundary; identity in
 the body is replaced with `[PRIVATE_SOURCE_REDACTED]` before it is stored as
 `private_sanitized` evidence.
 
+Phase 3 exact deduplication links Signals whose normalized-text SHA-256 values
+are identical. The earliest `(created_at, id)` Signal remains canonical and all
+later exact matches point directly to it through `duplicate_of_signal_id`.
+Signals and their independent visibility/provenance are retained; this step
+does not merge content or reconstruct Events.
+
+```bash
+uv run --project backend python -m infoscope.worker --deduplicate
+```
+
+The command scans all current canonical candidates in stable batches
+(`DEDUPLICATION_BATCH_SIZE`, default 500) and is idempotent. Semantic or fuzzy
+deduplication remains frozen until its model, threshold, and output contract are
+confirmed.
+
 Checks:
 
 ```bash

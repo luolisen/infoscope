@@ -66,3 +66,20 @@ async def test_worker_normalization_mode_runs_one_batch_and_exits() -> None:
     database_ping.assert_awaited_once()
     normalize.assert_awaited_once_with(retry_failed=False)
     database_close.assert_awaited_once()
+
+
+async def test_worker_deduplication_mode_runs_and_exits() -> None:
+    database_ping = AsyncMock()
+    database_close = AsyncMock()
+    deduplicate = AsyncMock()
+
+    with (
+        patch("infoscope.worker.main.ping_database", database_ping),
+        patch("infoscope.worker.main.close_database", database_close),
+        patch("infoscope.worker.main.deduplicate_once", deduplicate),
+    ):
+        await run(deduplicate=True)
+
+    database_ping.assert_awaited_once()
+    deduplicate.assert_awaited_once_with()
+    database_close.assert_awaited_once()

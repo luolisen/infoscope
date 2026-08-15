@@ -900,6 +900,16 @@ Raw 生成一个 `signal_index=0` Signal，只清理 Unicode NFC、换行和首�
 username、邀请链接和长 peer ID 以 `[PRIVATE_SOURCE_REDACTED]` 明确替换。空正文和
 未知来源使用稳定错误码并隔离失败；Pending 与 Failed 分开批处理，重试不需要重新采集 Raw。
 
+### Deduplicate v1（已冻结）
+
+Deduplicate v1 仅把标准化正文 SHA-256 完全相同的 Signal 标记为 exact duplicate。
+同一 hash 中 `(created_at, id)` 最早者保持 canonical，后续 Signal 通过
+`duplicate_of_signal_id` 直接指向它。所有 Signal、独立 provenance 和 visibility
+继续保留，不删除或合并 Evidence。
+
+该步骤使用稳定游标批量扫描且可幂等重跑，与 Event Reconstruction 严格分离。
+语义 / 模糊去重涉及 embedding API、阈值与 output schema，当前继续冻结，不自行猜测。
+
 ---
 
 ## 7.3 Hermes / OpenClaw / Agent-Reach

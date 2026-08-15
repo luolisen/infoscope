@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from sqlalchemy import BigInteger, cast, func, select, tuple_
 from sqlalchemy.dialects.postgresql import insert
@@ -249,6 +249,52 @@ class AcquisitionRepository:
         raw.normalized_at = normalized_at
         await self.database.commit()
         return signal
+
+    async def list_signals_for_deduplication(
+        self,
+        *,
+        after_created_at: datetime | None = None,
+        after_signal_id: UUID | None = None,
+        limit: int = 500,
+    ) -> list[Signal]:
+        if limit <= 0:
+            raise ValueError("limit must be positive")
+        if (after_created_at is None) != (after_signal_id is None):
+            raise ValueError("deduplication cursor fields must both be set or both be null")
+        statement = select(Signal).where(Signal.duplicate_of_signal_id.is_(None))
+        if after_created_at is not None and after_signal_id is not None:
+            statement = statement.where(
+                tuple_(Signal.created_at, Signal.id) > tuple_(after_created_at, after_signal_id)
+            )
+        result = await self.database.execute(
+            statement.order_by(Signal.created_at, Signal.id).limit(limit)
+        )
+        return list(result.scalars())
+
+    async def find_exact_duplicate_canonical(self, signal: Signal) -> Signal | None:
+        if signal.created_at is None:
+            raise ValueError("persisted Signal must have created_at")
+        result = await self.database.execute(
+            select(Signal)
+            .where(
+                Signal.content_hash == signal.content_hash,
+                Signal.duplicate_of_signal_id.is_(None),
+                tuple_(Signal.created_at, Signal.id) < tuple_(signal.created_at, signal.id),
+            )
+            .order_by(Signal.created_at, Signal.id)
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    async def mark_signal_duplicate(self, signal: Signal, *, canonical: Signal) -> None:
+        if signal.id == canonical.id:
+            raise ValueError("a Signal cannot duplicate itself")
+        if signal.content_hash != canonical.content_hash:
+            raise ValueError("exact duplicates must have the same content hash")
+        if canonical.duplicate_of_signal_id is not None:
+            raise ValueError("duplicate target must be canonical")
+        signal.duplicate_of_signal_id = canonical.id
+        await self.database.commit()
 
 
 def cursor_for(raw: RawInformation) -> AcquisitionCursor:
