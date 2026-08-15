@@ -186,9 +186,12 @@ Backend-supplied candidate Event IDs, or leave Signals unassigned. The model
 never creates Event IDs. The Backend validates complete one-time Signal
 coverage, assigns IDs, and atomically persists the reconstruction artifact,
 Events, and Event–Signal links before completing the pipeline run. Reprocessing
-the same source artifact reuses its original assignments without another model
-call. This slice does not create Claims, Timeline, Conflicts, personalization,
-Public API fields, or frontend behavior.
+the same source artifact locks and reuses its canonical artifact without another
+model call. A database source key prevents concurrent duplicate persistence.
+Model state values are non-authoritative suggestions: new Events start as
+`developing`, while existing Events retain their valid state until deterministic
+Claim / Conflict rules are available. This slice does not create Claims,
+Timeline, Conflicts, personalization, Public API fields, or frontend behavior.
 
 Checks:
 

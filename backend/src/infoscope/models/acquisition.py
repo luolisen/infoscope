@@ -210,15 +210,27 @@ class PipelineArtifact(Base):
             "artifact_type",
             name="uq_pipeline_artifacts_run_type",
         ),
+        UniqueConstraint(
+            "artifact_type",
+            "source_artifact_id",
+            name="uq_pipeline_artifacts_type_source",
+        ),
         CheckConstraint(
             "input_hash ~ '^[0-9a-f]{64}$'",
             name="ck_pipeline_artifacts_input_hash",
+        ),
+        CheckConstraint(
+            "artifact_type != 'event_reconstruction' OR source_artifact_id IS NOT NULL",
+            name="ck_pipeline_artifacts_reconstruction_source",
         ),
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     pipeline_run_id: Mapped[UUID] = mapped_column(
         ForeignKey("pipeline_runs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    source_artifact_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("pipeline_artifacts.id", ondelete="RESTRICT"), nullable=True, index=True
     )
     artifact_type: Mapped[str] = mapped_column(String(64), nullable=False)
     schema_version: Mapped[str] = mapped_column(String(64), nullable=False)
