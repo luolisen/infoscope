@@ -1,0 +1,147 @@
+from __future__ import annotations
+
+from datetime import datetime
+
+from sqlalchemy import func, select, tuple_
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from infoscope.models import PipelineCheckpoint, PipelineRun, PipelineRunStatus
+from infoscope.pipeline import AcquisitionCursor, LogicalWindow
+
+
+def _require_aware(value: datetime, field_name: str) -> None:
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError(f"{field_name} must be timezone-aware")
+
+
+class PipelineRepository:
+    def __init__(self, database: AsyncSession) -> None:
+        self.database = database
+
+    async def latest_successful_window_end(self, pipeline_name: str) -> datetime | None:
+        result = await self.database.execute(
+            select(func.max(PipelineRun.window_end)).where(
+                PipelineRun.pipeline_name == pipeline_name,
+                PipelineRun.status == PipelineRunStatus.SUCCEEDED.value,
+            )
+        )
+        return result.scalar_one()
+
+    async def start_run(
+        self,
+        *,
+        pipeline_name: str,
+        window: LogicalWindow,
+        started_at: datetime,
+        lower_cursor: AcquisitionCursor | None,
+        attempt: int = 1,
+    ) -> PipelineRun:
+        if not pipeline_name:
+            raise ValueError("pipeline_name is required")
+        if attempt <= 0:
+            raise ValueError("attempt must be positive")
+        _require_aware(started_at, "started_at")
+        run = PipelineRun(
+            pipeline_name=pipeline_name,
+            status=PipelineRunStatus.RUNNING.value,
+            window_start=window.start,
+            window_end=window.end,
+            lower_cursor_acquired_at=lower_cursor.acquired_at if lower_cursor else None,
+            lower_cursor_raw_id=lower_cursor.raw_id if lower_cursor else None,
+            attempt=attempt,
+            started_at=started_at,
+        )
+        self.database.add(run)
+        await self.database.commit()
+        return run
+
+    async def retry_run(self, failed_run: PipelineRun, *, started_at: datetime) -> PipelineRun:
+        if failed_run.status != PipelineRunStatus.FAILED.value:
+            raise ValueError("only failed runs can be retried")
+        return await self._repeat_run(failed_run, started_at=started_at)
+
+    async def replay_run(self, terminal_run: PipelineRun, *, started_at: datetime) -> PipelineRun:
+        if terminal_run.status not in {
+            PipelineRunStatus.SUCCEEDED.value,
+            PipelineRunStatus.FAILED.value,
+        }:
+            raise ValueError("only terminal runs can be replayed")
+        return await self._repeat_run(terminal_run, started_at=started_at)
+
+    async def _repeat_run(self, previous_run: PipelineRun, *, started_at: datetime) -> PipelineRun:
+        lower_cursor = None
+        if previous_run.lower_cursor_acquired_at is not None:
+            if previous_run.lower_cursor_raw_id is None:
+                raise ValueError("previous run has an incomplete lower cursor")
+            lower_cursor = AcquisitionCursor(
+                acquired_at=previous_run.lower_cursor_acquired_at,
+                raw_id=previous_run.lower_cursor_raw_id,
+            )
+        return await self.start_run(
+            pipeline_name=previous_run.pipeline_name,
+            window=LogicalWindow(start=previous_run.window_start, end=previous_run.window_end),
+            started_at=started_at,
+            lower_cursor=lower_cursor,
+            attempt=previous_run.attempt + 1,
+        )
+
+    async def fail_run(
+        self,
+        run: PipelineRun,
+        *,
+        finished_at: datetime,
+        next_retry_at: datetime,
+        error_code: str,
+    ) -> None:
+        if run.status != PipelineRunStatus.RUNNING.value:
+            raise ValueError("only running pipeline runs can fail")
+        if not error_code:
+            raise ValueError("a stable error_code is required")
+        _require_aware(finished_at, "finished_at")
+        _require_aware(next_retry_at, "next_retry_at")
+        run.status = PipelineRunStatus.FAILED.value
+        run.finished_at = finished_at
+        run.next_retry_at = next_retry_at
+        run.error_code = error_code
+        await self.database.commit()
+
+    async def complete_run(
+        self,
+        run: PipelineRun,
+        *,
+        finished_at: datetime,
+        upper_cursor: AcquisitionCursor | None,
+    ) -> None:
+        if run.status != PipelineRunStatus.RUNNING.value:
+            raise ValueError("only running pipeline runs can complete")
+        _require_aware(finished_at, "finished_at")
+        run.status = PipelineRunStatus.SUCCEEDED.value
+        run.finished_at = finished_at
+        run.next_retry_at = None
+        run.error_code = None
+        if upper_cursor is not None:
+            run.upper_cursor_acquired_at = upper_cursor.acquired_at
+            run.upper_cursor_raw_id = upper_cursor.raw_id
+            excluded = insert(PipelineCheckpoint).excluded
+            checkpoint = insert(PipelineCheckpoint).values(
+                pipeline_name=run.pipeline_name,
+                last_acquired_at=upper_cursor.acquired_at,
+                last_raw_id=upper_cursor.raw_id,
+            )
+            await self.database.execute(
+                checkpoint.on_conflict_do_update(
+                    index_elements=[PipelineCheckpoint.pipeline_name],
+                    set_={
+                        "last_acquired_at": excluded.last_acquired_at,
+                        "last_raw_id": excluded.last_raw_id,
+                        "updated_at": func.now(),
+                    },
+                    where=tuple_(
+                        PipelineCheckpoint.last_acquired_at,
+                        PipelineCheckpoint.last_raw_id,
+                    )
+                    < tuple_(excluded.last_acquired_at, excluded.last_raw_id),
+                )
+            )
+        await self.database.commit()
