@@ -32,3 +32,20 @@ async def test_worker_trendradar_mode_collects_once_and_exits() -> None:
     database_ping.assert_awaited_once()
     collect.assert_awaited_once()
     database_close.assert_awaited_once()
+
+
+async def test_worker_telegram_mode_collects_once_and_exits() -> None:
+    database_ping = AsyncMock()
+    database_close = AsyncMock()
+    collect = AsyncMock()
+
+    with (
+        patch("infoscope.worker.main.ping_database", database_ping),
+        patch("infoscope.worker.main.close_database", database_close),
+        patch("infoscope.worker.main.collect_telegram_once", collect),
+    ):
+        await run(collect_telegram=True)
+
+    database_ping.assert_awaited_once()
+    collect.assert_awaited_once()
+    database_close.assert_awaited_once()

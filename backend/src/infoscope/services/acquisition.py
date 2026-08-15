@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import select, tuple_
+from sqlalchemy import BigInteger, cast, func, select, tuple_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -151,6 +151,15 @@ class AcquisitionRepository:
             statement.order_by(RawInformation.acquired_at, RawInformation.id).limit(limit)
         )
         return list(result.scalars())
+
+    async def latest_telegram_message_id(self, *, peer_id: int) -> int | None:
+        """Return the durable per-dialog lower bound for Telegram collection."""
+        metadata = RawInformation.collector_metadata
+        statement = select(func.max(cast(metadata["message_id"].astext, BigInteger))).where(
+            RawInformation.source_type == "telegram",
+            metadata["peer_id"].astext == str(peer_id),
+        )
+        return (await self.database.execute(statement)).scalar_one()
 
     async def mark_normalization_started(self, raw: RawInformation) -> None:
         if raw.normalization_status not in {

@@ -664,6 +664,21 @@ Signal
 
 TG News 不直接生成 NOW、Event 或 Brief。
 
+### TG News Integration v1（已冻结）
+
+- 使用 Telegram 用户账号 MTProto API；Bot API 不具备聊天文件夹读取能力。
+- 通过 `messages.getDialogFilters` 精确匹配标题 `News`（可由环境变量覆盖），
+  按该 Filter 的显式 include / exclude、群组 / 频道规则解析会话。
+- 只采集群组和频道中的文本或媒体 caption；不采集私聊 / bot，不下载媒体。
+- `api_id`、`api_hash`、手机号与 Telethon session 只存在本地环境；session 不入 Git。
+- 首次按每个会话最近 100 条（可配置）回溯，随后以数据库中该会话最大
+  Telegram message ID 为 durable lower bound，逐条增量采集并立即持久化 Raw。
+- 有公开 username 的群组 / 频道标记为 `public`；其他会话标记为 `private`。
+  私密群名、username、peer ID 与链接只允许存在于内部 Raw provenance，普通日志
+  只记录计数与稳定错误码，后续 Signal 仍必须转为 `private_sanitized`。
+- Raw 唯一键由 peer ID 与 message ID 的 SHA-256 生成；重复采集幂等。
+- 本模块不新增 Public API，不调用 AI，不直接写 Signal、Event、NOW 或 Brief。
+
 ---
 
 # 十、完整数据 Pipeline

@@ -1,7 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPOSITORY_ENV_FILE = Path(__file__).resolve().parents[3] / ".env"
@@ -23,12 +23,24 @@ class Settings(BaseSettings):
     session_cookie_secure: bool = False
     worker_poll_seconds: float = Field(default=30.0, gt=0)
     trendradar_config_path: Path = Path("backend/config/trendradar.yaml")
+    telegram_api_id: int | None = Field(default=None, gt=0)
+    telegram_api_hash: SecretStr | None = None
+    telegram_phone: str | None = None
+    telegram_session_path: Path = Path(".state/telegram/infoscope")
+    telegram_folder_title: str = Field(default="News", min_length=1)
+    telegram_initial_message_limit: int = Field(default=100, gt=0)
 
     @property
     def resolved_trendradar_config_path(self) -> Path:
         if self.trendradar_config_path.is_absolute():
             return self.trendradar_config_path
         return REPOSITORY_ROOT / self.trendradar_config_path
+
+    @property
+    def resolved_telegram_session_path(self) -> Path:
+        if self.telegram_session_path.is_absolute():
+            return self.telegram_session_path
+        return REPOSITORY_ROOT / self.telegram_session_path
 
 
 @lru_cache

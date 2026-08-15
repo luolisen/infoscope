@@ -76,6 +76,34 @@ NewsNow snapshot or RSS GUID/URL is idempotent; a newer Hotlist snapshot is kept
 as a new Raw observation so later Signal processing can reconstruct ranking
 changes.
 
+TG News is a native Telegram user-API adapter. It resolves the dialog filter
+whose title exactly matches `TELEGRAM_FOLDER_TITLE` (`News` by default), then
+collects text and media captions from the groups and channels in that folder.
+It does not use the Bot API, call AI services, expose a public endpoint, or
+download media files.
+
+Keep `TELEGRAM_API_HASH` and the generated Telethon session local. Configure
+`TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, and optionally `TELEGRAM_PHONE` in
+`.env`, then authorize the user session interactively:
+
+```bash
+uv run --project backend python -m infoscope.worker --telegram-login
+```
+
+Enter the phone number, Telegram code, and optional 2FA password only in that
+local terminal. The generated session is stored below `.state/` by default and
+is ignored by Git. Run one collection cycle after authorization:
+
+```bash
+uv run --project backend python -m infoscope.worker --collect-telegram
+```
+
+The first collection keeps the newest `TELEGRAM_INITIAL_MESSAGE_LIMIT` messages
+per dialog (100 by default), persisted oldest-first. Later runs read every
+message after that dialog's highest durable message ID. Publicly addressable
+groups/channels are `public`; all others are `private`. Direct-user and bot
+dialogs are never collected even if they are explicitly present in the folder.
+
 Checks:
 
 ```bash
