@@ -9,7 +9,11 @@ from uuid import UUID
 
 import httpx
 
-from infoscope.analysis import DeepSeekAnalysisClient, load_analysis_config
+from infoscope.analysis import (
+    DeepSeekAnalysisClient,
+    DeepSeekEventReconstructionClient,
+    load_analysis_config,
+)
 from infoscope.config import get_settings
 from infoscope.db import close_database, ping_database, session_factory
 from infoscope.integrations.telegram import (
@@ -21,6 +25,11 @@ from infoscope.integrations.trendradar import TrendRadarCollector, load_trendrad
 from infoscope.integrations.trendradar.client import NewsNowClient, RSSClient
 from infoscope.services.acquisition import AcquisitionRepository
 from infoscope.services.deduplication import DeduplicationResult, ExactDeduplicationRunner
+from infoscope.services.event_reconstruction import (
+    EventReconstructionResult,
+    EventReconstructionRunner,
+    EventRepository,
+)
 from infoscope.services.normalization import NormalizationResult, NormalizationRunner
 from infoscope.services.pipeline import PipelineRepository
 from infoscope.services.window_analysis import WindowAnalysisRunner, WindowRunResult
@@ -154,6 +163,28 @@ async def analyze_windows_once(
     return result
 
 
+async def reconstruct_event_once(source_artifact_id: UUID) -> EventReconstructionResult:
+    settings = get_settings()
+    config = load_analysis_config(settings)
+    async with httpx.AsyncClient() as client:
+        async with session_factory() as database:
+            result = await EventReconstructionRunner(
+                events=EventRepository(database),
+                pipeline=PipelineRepository(database),
+                client=DeepSeekEventReconstructionClient(client=client, config=config),
+                candidate_limit=settings.event_reconstruction_candidate_limit,
+            ).reconstruct(source_artifact_id)
+    logger.info(
+        "event reconstruction complete run_id=%s created=%d updated=%d attached=%d reused=%s",
+        result.run_id,
+        result.events_created,
+        result.events_updated,
+        result.signals_attached,
+        result.reused_artifact,
+    )
+    return result
+
+
 async def run(
     *,
     once: bool = False,
@@ -165,6 +196,7 @@ async def run(
     analyze_windows: bool = False,
     retry_window_run: UUID | None = None,
     replay_window_run: UUID | None = None,
+    reconstruct_window_artifact: UUID | None = None,
 ) -> None:
     settings = get_settings()
     stop = asyncio.Event()
@@ -189,6 +221,8 @@ async def run(
                     retry_run_id=retry_window_run,
                     replay_run_id=replay_window_run,
                 )
+            if reconstruct_window_artifact is not None:
+                await reconstruct_event_once(reconstruct_window_artifact)
             logger.info("worker heartbeat")
             if (
                 once
@@ -200,6 +234,7 @@ async def run(
                 or analyze_windows
                 or retry_window_run is not None
                 or replay_window_run is not None
+                or reconstruct_window_artifact is not None
             ):
                 return
             try:
@@ -262,6 +297,12 @@ def parse_args() -> argparse.Namespace:
         metavar="RUN_ID",
         help="Replay one terminal Window Analysis run without recollection",
     )
+    parser.add_argument(
+        "--reconstruct-window-artifact",
+        type=UUID,
+        metavar="ARTIFACT_ID",
+        help="Reconstruct Events from one successful Window Analysis artifact",
+    )
     return parser.parse_args()
 
 
@@ -282,6 +323,7 @@ def main() -> int:
                 analyze_windows=args.analyze_windows,
                 retry_window_run=args.retry_window_run,
                 replay_window_run=args.replay_window_run,
+                reconstruct_window_artifact=args.reconstruct_window_artifact,
             )
         )
     return 0

@@ -935,6 +935,23 @@ Contract 尚未共同冻结前，禁止静默截断输入或把一个逻辑窗�
 仅包含 pipeline/run ID、窗口、attempt、计数、状态、稳定错误码和重试时间，不记录正文、
 私密 provenance、Prompt、模型响应或 API Key。
 
+### Event Reconstruction v1（已冻结）
+
+Event Reconstruction v1 消费一个成功的 `window_analysis.v1` artifact、其标准化 Signal
+和 Backend 提供的 Existing Event candidates。`events` 固定保存 `id`、`title`、
+`overview`、`state`、`display_time` 与审计时间；state 使用既有
+`developing / confirmed / conflicting / cooling`。`event_signals` 保存多对多 Evidence
+关系及首次 attached pipeline run，一个 Signal 可关联多个 Event。
+
+模型只输出 `new_events`、`existing_event_updates` 和 `unassigned_signal_ids`。模型不得为
+New Event 生成 ID，Existing Event 更新只能引用 Backend 提供的 candidate ID；每个本轮
+输入 Signal 必须且只能进入一个 decision 或 unassigned。Backend 校验 decision key、
+Candidate、UTC display time 与完整覆盖后分配或复用 Event ID。
+
+reconstruction artifact、Event 变化与 Event–Signal 关系原子持久化，之后才能完成 pipeline
+run。同一个 source artifact 永远复用首次 assignment，不再次调用模型或重复创建 Event。
+本切片不实现 Claim、Timeline、Conflict、Base Analysis、Personalization、Public API 或前端。
+
 ---
 
 ## 7.3 Hermes / OpenClaw / Agent-Reach

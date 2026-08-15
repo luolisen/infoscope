@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     window_analysis_max_windows: int = Field(default=24, gt=0, le=168)
     window_analysis_max_signals: int = Field(default=200, gt=0, le=5000)
     window_analysis_max_input_chars: int = Field(default=100_000, gt=0, le=10_000_000)
+    event_reconstruction_candidate_limit: int = Field(default=100, gt=0, le=1000)
 
     @property
     def resolved_trendradar_config_path(self) -> Path:

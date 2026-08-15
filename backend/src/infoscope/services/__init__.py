@@ -2,6 +2,7 @@
 
 from infoscope.services.acquisition import AcquisitionRepository
 from infoscope.services.deduplication import ExactDeduplicationRunner
+from infoscope.services.event_reconstruction import EventReconstructionRunner
 from infoscope.services.normalization import DeterministicNormalizer, NormalizationRunner
 from infoscope.services.pipeline import PipelineRepository
 from infoscope.services.window_analysis import WindowAnalysisRunner
@@ -10,6 +11,7 @@ __all__ = [
     "AcquisitionRepository",
     "DeterministicNormalizer",
     "ExactDeduplicationRunner",
+    "EventReconstructionRunner",
     "NormalizationRunner",
     "PipelineRepository",
     "WindowAnalysisRunner",

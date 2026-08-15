@@ -732,6 +732,24 @@ TG News 不直接生成 NOW、Event 或 Brief。
 - 审计日志只记录 pipeline/run ID、窗口边界、attempt、计数、状态、稳定错误码与重试时间，
   禁止记录 Signal 正文、私密 provenance、Prompt、模型响应或 API Key。
 
+## Event Reconstruction v1（已冻结）
+
+- 输入为一个已成功完成的 `window_analysis.v1` artifact、其中覆盖的标准化 Signal，以及
+  Backend 提供的 Existing Event candidates。
+- `events` 固定保存 `id`、`title`、`overview`、`state`、`display_time` 与审计时间；
+  state 继续使用 `developing / confirmed / conflicting / cooling`。
+- `event_signals` 保存 Event–Signal 多对多关系和首次 attached pipeline run；一个 Signal
+  可以关联多个 Event，但同一次 reconstruction decision 中只能出现一次。
+- 模型输出 `new_events`、`existing_event_updates` 与 `unassigned_signal_ids`；模型不得为
+  New Event 生成 Event ID，更新只能引用 Backend 提供的 candidate ID。
+- Backend 校验 decision key、Candidate、UTC display time 和完整的一次性 Signal 覆盖，
+  再分配 Event ID。
+- reconstruction artifact、Event 变化和 Event–Signal 关系必须原子持久化，之后才能完成
+  pipeline run；相同 source artifact 永远复用首次 assignment，不再次调用模型或创建 Event。
+- Prompt 只接收脱敏 Signal；`private_sanitized` 携带 public provenance 时在 API 调用前失败。
+- 本切片不生成 Claim、Timeline、Conflict、Base Analysis、Personalization、Public API 或
+  Frontend Contract。
+
 ---
 
 # 十、完整数据 Pipeline
