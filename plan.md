@@ -824,6 +824,27 @@ TrendRadar 不作为独立容器或外部服务部署。
 - 趋势 / 排名变化
 - 多平台聚合方法
 
+Phase 3 v1 已冻结为 IS 内部异步薄 Adapter，不复制或运行 TrendRadar 的
+SQLite、通知、MCP、Scheduler 或 AI 模块。Adapter 兼容 NewsNow Hotlist
+和 RSS / Atom / JSON Feed，并在任何 Normalize、筛选或分析前逐条持久化 Raw。
+
+固定 Hotlist 来源：
+
+- `baidu`
+- `weibo`
+- `thepaper`
+- `wallstreetcn-hot`
+- `cls-hot`
+- `zhihu`
+- `bilibili-hot-search`
+
+固定 RSS 来源：
+
+- `hacker-news`：`https://hnrss.org/frontpage`
+
+相同 NewsNow snapshot 与相同 RSS GUID / URL 必须幂等；新的 Hotlist
+snapshot 必须作为新的 Raw observation 保存，以保留后续排名变化分析所需证据。
+
 必须输出到：
 
 ```text
@@ -3571,7 +3592,6 @@ Glass 只用于：
 - Analysis Model API 供应商与模型
 - Analysis Adapter SDK
 - Hermes / OpenClaw / Agent-Reach 实际调用接口
-- TrendRadar 具体拆分边界
 - TG News 当前源码输入输出
 - 精确 Database ER Model
 - 最终字体
@@ -3592,6 +3612,9 @@ Glass 只用于：
 - Backwrite Queue：本轮 Snapshot 后冻结，用户 Event 列表更新不改变本轮剩余顺序。
 - Backwrite / Window Analysis 调度：完整更新流程结束后开始计时，1 小时后启动下一轮。
 - Window Analysis 逻辑窗口长度：1 小时。
+- TrendRadar Phase 3 v1 拆分边界与固定来源：IS 内部 NewsNow / RSS 薄
+  Adapter；7 个固定 Hotlist 与 Hacker News RSS；不引入其 AI、SQLite、通知、
+  MCP 或 Scheduler。
 
 未冻结前：
 
