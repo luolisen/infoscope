@@ -1,12 +1,19 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
+from uuid import uuid4
 
 from sqlalchemy import func, select, tuple_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from infoscope.models import PipelineCheckpoint, PipelineRun, PipelineRunStatus
+from infoscope.models import (
+    PipelineArtifact,
+    PipelineCheckpoint,
+    PipelineRun,
+    PipelineRunStatus,
+)
 from infoscope.pipeline import AcquisitionCursor, LogicalWindow
 
 
@@ -27,6 +34,14 @@ class PipelineRepository:
             )
         )
         return result.scalar_one()
+
+    async def checkpoint_cursor(self, pipeline_name: str) -> AcquisitionCursor | None:
+        checkpoint = await self.database.get(PipelineCheckpoint, pipeline_name)
+        if checkpoint is None or checkpoint.last_acquired_at is None:
+            return None
+        if checkpoint.last_raw_id is None:
+            raise ValueError("pipeline checkpoint has an incomplete cursor")
+        return AcquisitionCursor(checkpoint.last_acquired_at, checkpoint.last_raw_id)
 
     async def start_run(
         self,
@@ -145,3 +160,55 @@ class PipelineRepository:
                 )
             )
         await self.database.commit()
+
+    async def persist_artifact(
+        self,
+        *,
+        run: PipelineRun,
+        artifact_type: str,
+        schema_version: str,
+        input_hash: str,
+        payload: dict[str, Any],
+        provider: str,
+        model: str,
+        token_usage: dict[str, Any],
+    ) -> PipelineArtifact:
+        if run.status != PipelineRunStatus.RUNNING.value:
+            raise ValueError("only running pipeline runs can persist artifacts")
+        if len(input_hash) != 64 or any(value not in "0123456789abcdef" for value in input_hash):
+            raise ValueError("input_hash must be a lowercase SHA-256 hex digest")
+        statement = (
+            insert(PipelineArtifact)
+            .values(
+                id=uuid4(),
+                pipeline_run_id=run.id,
+                artifact_type=artifact_type,
+                schema_version=schema_version,
+                input_hash=input_hash,
+                payload=payload,
+                provider=provider,
+                model=model,
+                token_usage=token_usage,
+            )
+            .on_conflict_do_nothing(
+                index_elements=[
+                    PipelineArtifact.pipeline_run_id,
+                    PipelineArtifact.artifact_type,
+                ]
+            )
+            .returning(PipelineArtifact)
+        )
+        artifact = (await self.database.execute(statement)).scalar_one_or_none()
+        if artifact is None:
+            artifact = (
+                await self.database.execute(
+                    select(PipelineArtifact).where(
+                        PipelineArtifact.pipeline_run_id == run.id,
+                        PipelineArtifact.artifact_type == artifact_type,
+                    )
+                )
+            ).scalar_one()
+            if artifact.input_hash != input_hash or artifact.schema_version != schema_version:
+                raise ValueError("existing artifact does not match replay input")
+        await self.database.commit()
+        return artifact

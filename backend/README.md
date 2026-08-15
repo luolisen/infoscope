@@ -135,6 +135,34 @@ The command scans all current canonical candidates in stable batches
 deduplication remains frozen until its model, threshold, and output contract are
 confirmed.
 
+Phase 3 Window Analysis consumes consecutive one-hour acquisition windows using
+`Raw.acquired_at` and left-closed/right-open `[start, end)` boundaries. The
+first window begins at the earliest Raw; only complete windows whose end is at
+or before the current watermark are eligible. Configure the OpenAI-compatible
+DeepSeek endpoint locally (never commit real keys):
+
+```dotenv
+ANALYSIS_API_BASE_URL=https://api.deepseek.com
+ANALYSIS_MODEL=deepseek-v4-pro
+ANALYSIS_API_KEYS=sk-first,sk-second,sk-third
+```
+
+```bash
+uv run --project backend alembic upgrade head
+uv run --project backend python -m infoscope.worker --analyze-windows
+```
+
+The model receives normalized Signals only. Private Telegram provenance must
+already be absent and is rejected if it reaches this boundary. Validated JSON
+is persisted as an internal `window_analysis.v1` artifact before the pipeline
+checkpoint advances; it does not create Events, Signals, NOW data, or a Public
+API. API, schema, coverage, and prerequisite failures stop later windows and do
+not advance the checkpoint. Multiple local keys rotate across retries without
+being logged. `WINDOW_ANALYSIS_MAX_SIGNALS` and
+`WINDOW_ANALYSIS_MAX_INPUT_CHARS` reject oversized windows before any model
+request; splitting a logical window requires a separately frozen aggregation
+contract and is not performed implicitly.
+
 Checks:
 
 ```bash

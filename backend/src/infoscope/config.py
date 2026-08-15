@@ -31,6 +31,15 @@ class Settings(BaseSettings):
     telegram_initial_message_limit: int = Field(default=100, gt=0)
     normalization_batch_size: int = Field(default=500, gt=0, le=5000)
     deduplication_batch_size: int = Field(default=500, gt=0, le=5000)
+    analysis_api_base_url: str = "https://api.deepseek.com"
+    analysis_model: str = "deepseek-v4-pro"
+    analysis_api_keys: SecretStr | None = None
+    analysis_timeout_seconds: float = Field(default=180, gt=0)
+    analysis_max_retries: int = Field(default=3, ge=0, le=10)
+    analysis_max_tokens: int = Field(default=8192, gt=0, le=384000)
+    window_analysis_max_windows: int = Field(default=24, gt=0, le=168)
+    window_analysis_max_signals: int = Field(default=200, gt=0, le=5000)
+    window_analysis_max_input_chars: int = Field(default=100_000, gt=0, le=10_000_000)
 
     @property
     def resolved_trendradar_config_path(self) -> Path:

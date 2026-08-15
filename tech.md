@@ -707,6 +707,27 @@ TG News 不直接生成 NOW、Event 或 Brief。
 - 本步骤与 Event Reconstruction 分离，不生成 Event / NOW / Brief，不新增 Public API。
 - 语义 / 模糊去重继续冻结，待 embedding API、阈值和 output schema 共同确认后另行实现。
 
+## Window Analysis Artifact v1（已冻结）
+
+- 以 Raw `acquired_at` 切分连续一小时窗口，使用左闭右开 `[start, end)`；首个窗口从
+  最早 Raw 开始，只处理 `end <= watermark` 的完整窗口。
+- 积压补偿从最近成功窗口的 `end` 连续推进；窗口内 Raw 使用
+  `(acquired_at, raw_id)` 复合游标，不能跳过失败窗口。
+- 输入仅允许 Normalize 成功且已生成 Signal 的 Raw；exact duplicate Signal 不重复发送
+  给模型，但对应 Raw 仍参与游标推进。
+- 模型适配器使用 DeepSeek OpenAI-compatible Chat Completions 与 JSON 输出；多 Key 仅存
+  本地环境并轮换重试，不写入日志、数据库或版本库。
+- Prompt 只提供已标准化正文和 public-safe provenance；`private_sanitized` 必须无公开
+  provenance，禁止反推私密 Telegram 身份。
+- `window_analysis.v1` 输出包括逐 Signal 分类与事实声明、聚类建议、关系、缺失上下文和
+  未归类 Signal；禁止提前分配 Event ID。
+- 校验后的结果先写入内部 `pipeline_artifacts`，再完成 run 和 checkpoint；该表不是
+  Public API，也不供前端直接消费。
+- API、JSON Schema、Signal 覆盖或前置条件失败时停止后续窗口且不推进 checkpoint；
+  本步骤不生成 Event / NOW / Brief，也不改写 Signal。
+- 超过 Signal 数量或输入字符上限的窗口在调用模型前以稳定错误码失败；在未冻结跨批聚合
+  Contract 前，不得静默截断或拆分逻辑窗口。
+
 ---
 
 # 十、完整数据 Pipeline

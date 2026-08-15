@@ -1,6 +1,7 @@
 from infoscope.models.acquisition import (
     EvidenceVisibility,
     NormalizationStatus,
+    PipelineArtifact,
     PipelineCheckpoint,
     PipelineRun,
     PipelineRunStatus,
@@ -15,6 +16,7 @@ __all__ = [
     "Base",
     "EvidenceVisibility",
     "NormalizationStatus",
+    "PipelineArtifact",
     "PipelineCheckpoint",
     "PipelineRun",
     "PipelineRunStatus",

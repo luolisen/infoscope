@@ -200,3 +200,33 @@ class PipelineCheckpoint(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
+
+
+class PipelineArtifact(Base):
+    __tablename__ = "pipeline_artifacts"
+    __table_args__ = (
+        UniqueConstraint(
+            "pipeline_run_id",
+            "artifact_type",
+            name="uq_pipeline_artifacts_run_type",
+        ),
+        CheckConstraint(
+            "input_hash ~ '^[0-9a-f]{64}$'",
+            name="ck_pipeline_artifacts_input_hash",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    pipeline_run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("pipeline_runs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    artifact_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    schema_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    input_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    provider: Mapped[str] = mapped_column(String(64), nullable=False)
+    model: Mapped[str] = mapped_column(String(128), nullable=False)
+    token_usage: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
