@@ -7,7 +7,10 @@ from infoscope.analysis.config import AnalysisConfig
 from infoscope.analysis.intelligence_client import DeepSeekIntelligenceClient
 from infoscope.analysis.intelligence_schemas import (
     ClaimTimelineInput,
+    ConflictClaimInput,
+    ConflictEvidenceSignal,
     EventClaimInput,
+    EventConflictInput,
     EventTimelineInput,
 )
 from infoscope.analysis.schemas import AnalysisSignal
@@ -55,6 +58,21 @@ async def test_intelligence_client_parses_claim_and_timeline_contracts() -> None
             ],
             "existing_entry_updates": [],
             "unused_claim_ids": [],
+        },
+        {
+            "schema_version": "conflict_analysis.v1",
+            "new_conflicts": [
+                {
+                    "decision_key": "conflict",
+                    "event_id": str(event_id),
+                    "summary": "Contradiction",
+                    "claim_ids": [str(claim_id)],
+                    "evidence_signal_ids": [str(signal_id)],
+                    "rationale": "Evidence differs",
+                }
+            ],
+            "existing_conflict_updates": [],
+            "unconflicted_claim_ids": [],
         },
     ]
 
@@ -127,11 +145,43 @@ async def test_intelligence_client_parses_claim_and_timeline_contracts() -> None
             ],
             candidates=[],
         )
+        conflict_response = await client.analyze_conflicts(
+            events=[
+                EventConflictInput(
+                    event_id=event_id,
+                    title="Event",
+                    overview="Overview",
+                    state="developing",
+                    claims=[
+                        ConflictClaimInput(
+                            claim_id=claim_id,
+                            event_id=event_id,
+                            text="A fact",
+                            state="unresolved",
+                            evidence_signals=[
+                                ConflictEvidenceSignal(
+                                    signal_id=signal_id,
+                                    published_at=None,
+                                    sanitized_text="Sanitized text",
+                                    public_safe_provenance=None,
+                                )
+                            ],
+                        )
+                    ],
+                )
+            ],
+            candidates=[],
+        )
 
     assert claim_response.payload.new_claims[0].event_id == event_id
     assert timeline_response.payload.new_entries[0].claim_ids == [claim_id]
+    assert conflict_response.payload.new_conflicts[0].claim_ids == [claim_id]
     timeline_prompt = requests[1]["messages"][1]["content"]
     assert '"title":"Event"' in timeline_prompt
     assert '"text":"Text"' in timeline_prompt
     assert '"published_at":"2026-08-16T08:55:00Z"' in timeline_prompt
     assert '"public_provenance":{"platform":"web"}' in timeline_prompt
+    conflict_prompt = requests[2]["messages"][1]["content"]
+    assert '"published_at":null' in conflict_prompt
+    assert '"sanitized_text":"Sanitized text"' in conflict_prompt
+    assert '"occurred_at"' not in conflict_prompt

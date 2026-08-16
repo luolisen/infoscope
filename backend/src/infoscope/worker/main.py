@@ -27,6 +27,7 @@ from infoscope.integrations.trendradar.client import NewsNowClient, RSSClient
 from infoscope.services.acquisition import AcquisitionRepository
 from infoscope.services.claims_timeline import (
     ClaimExtractionRunner,
+    ConflictAnalysisRunner,
     IntelligenceRepository,
     IntelligenceResult,
     TimelineReconstructionRunner,
@@ -232,6 +233,26 @@ async def reconstruct_timeline_once(source_artifact_id: UUID) -> IntelligenceRes
     return result
 
 
+async def analyze_conflicts_once(source_artifact_id: UUID) -> IntelligenceResult:
+    config = load_analysis_config(get_settings())
+    async with httpx.AsyncClient() as client:
+        async with session_factory() as database:
+            result = await ConflictAnalysisRunner(
+                repository=IntelligenceRepository(database),
+                pipeline=PipelineRepository(database),
+                client=DeepSeekIntelligenceClient(client=client, config=config),
+            ).run(source_artifact_id)
+    logger.info(
+        "conflict analysis complete run_id=%s created=%d updated=%d attached=%d reused=%s",
+        result.run_id,
+        result.created,
+        result.updated,
+        result.attached,
+        result.reused_artifact,
+    )
+    return result
+
+
 async def run(
     *,
     once: bool = False,
@@ -246,6 +267,7 @@ async def run(
     reconstruct_window_artifact: UUID | None = None,
     extract_claims_artifact: UUID | None = None,
     reconstruct_timeline_artifact: UUID | None = None,
+    analyze_conflicts_artifact: UUID | None = None,
 ) -> None:
     settings = get_settings()
     stop = asyncio.Event()
@@ -276,6 +298,8 @@ async def run(
                 await extract_claims_once(extract_claims_artifact)
             if reconstruct_timeline_artifact is not None:
                 await reconstruct_timeline_once(reconstruct_timeline_artifact)
+            if analyze_conflicts_artifact is not None:
+                await analyze_conflicts_once(analyze_conflicts_artifact)
             logger.info("worker heartbeat")
             if (
                 once
@@ -290,6 +314,7 @@ async def run(
                 or reconstruct_window_artifact is not None
                 or extract_claims_artifact is not None
                 or reconstruct_timeline_artifact is not None
+                or analyze_conflicts_artifact is not None
             ):
                 return
             try:
@@ -370,6 +395,12 @@ def parse_args() -> argparse.Namespace:
         metavar="ARTIFACT_ID",
         help="Reconstruct Timeline from one canonical Claim Extraction artifact",
     )
+    parser.add_argument(
+        "--analyze-conflicts-artifact",
+        type=UUID,
+        metavar="ARTIFACT_ID",
+        help="Analyze Conflicts from one canonical Timeline Reconstruction artifact",
+    )
     return parser.parse_args()
 
 
@@ -393,6 +424,7 @@ def main() -> int:
                 reconstruct_window_artifact=args.reconstruct_window_artifact,
                 extract_claims_artifact=args.extract_claims_artifact,
                 reconstruct_timeline_artifact=args.reconstruct_timeline_artifact,
+                analyze_conflicts_artifact=args.analyze_conflicts_artifact,
             )
         )
     return 0

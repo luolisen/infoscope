@@ -774,6 +774,29 @@ TG News 不直接生成 NOW、Event 或 Brief。
   `(artifact_type, source_artifact_id)` 唯一约束兜底；数据、关系与 artifact 原子持久化。
 - 本切片不实现 Conflict、Base Analysis、Public API、Event Detail 或 Frontend Contract。
 
+## Conflict Analysis v1（已冻结）
+
+- 消费 canonical `timeline_reconstruction.v1` artifact，并加载对应 Events、当前全部 Claims、
+  Claims 通过 `claim_signals` 关联的真实 Evidence Signals 与 Existing Conflict candidates。
+- 模型输入 Evidence 仅包含 `signal_id / published_at（可空）/ sanitized_text /
+  public_safe_provenance`；不得为 Conflict 推导或新增 Signal `occurred_at`。冲突语义由模型基于
+  受限输入判断，Backend 不根据 ID 判断 Evidence 是否语义相反，rationale 只进入内部 artifact。
+- `conflicts` 保存 `id / event_id / summary` 与审计时间；`conflict_claims`、
+  `conflict_signals` 保存多对多关系、首次 attached pipeline run 与唯一关系约束。
+- 模型输出 `new_conflicts / existing_conflict_updates / unconflicted_claim_ids`。每个 decision
+  固定包含 `decision_key / event_id / summary / claim_ids / evidence_signal_ids / rationale`，update
+  另含 Backend candidate `existing_conflict_id`。New ID 只能由 Backend 分配。
+- `claim_ids` 非空。合法结构为至少两个 Claim，或单 Claim 加至少一个关联 Evidence；Evidence
+  必须通过 `claim_signals` 关联到该 decision 至少一个 Claim，且 Claim、Signal 均属于同 Event。
+- Existing update 只追加 Claim/Evidence 关系，summary 使用本轮值；不删除或替换历史关系，首次
+  attached run 不覆盖。`unconflicted_claim_ids` 仅表示本轮无新增或更新，不解除历史 Conflict，
+  也不触发状态恢复。used 与 unconflicted 必须互斥并完整覆盖全部输入 Claim。
+- Backend 确定性执行 `confirmed/unresolved → conflicting`，保留 `conflicting/contradicted`，涉及
+  Conflict 的 Event 固定转为 `conflicting`；模型不得输出 Claim/Event state，v1 不实现恢复或解决。
+- 调用模型前锁定 source artifact 并复查，以 `(artifact_type, source_artifact_id)` 唯一约束兜底；
+  Conflict、追加关系、状态与 artifact 原子持久化。私密 provenance 在模型调用前阻断。
+- 本切片不实现 Base Analysis、Public API、Event Detail 或 Frontend Contract。
+
 ---
 
 # 十、完整数据 Pipeline

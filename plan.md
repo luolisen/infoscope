@@ -979,6 +979,28 @@ Signal 正文、时间和 public-safe provenance。`timeline_entries` 保存
 artifact 并复查，以 `(artifact_type, source_artifact_id)` 唯一约束兜底；实体、关系与 artifact
 原子持久化后才完成 run。本切片不实现 Conflict、Base Analysis、Public API 或前端。
 
+### Conflict Analysis v1（已冻结）
+
+Conflict Analysis 消费 canonical `timeline_reconstruction.v1` artifact、对应 Events、当前全部
+Claims、Claims 通过 `claim_signals` 关联的真实 Evidence Signals 与 Existing Conflict candidates。
+模型只接收 `signal_id / published_at（可空）/ sanitized_text / public_safe_provenance`，不得推导
+Signal `occurred_at`。冲突语义由模型基于受限输入判断；Backend 只验证结构、同 Event 归属、
+Claim–Signal Evidence 关联、候选范围与完整覆盖，rationale 只用于内部审计，不是 Evidence。
+
+模型输出 `new_conflicts / existing_conflict_updates / unconflicted_claim_ids`。每个 decision 包含
+`decision_key / event_id / summary / claim_ids / evidence_signal_ids / rationale`，update 另含
+`existing_conflict_id`。Claim 非空；合法结构为至少两个 Claim，或单 Claim 加至少一个关联
+Evidence。New Conflict ID 由 Backend 分配，update 只能引用同 Event 的 Backend candidate。
+
+Existing update 对 `conflict_claims` 与 `conflict_signals` 只追加，summary 使用本轮值；不删除关系，
+不覆盖首次 attached run。`unconflicted_claim_ids` 仅表示本轮无新增或更新，不解除历史关系或恢复
+状态。used 与 unconflicted 互斥并完整覆盖全部输入 Claim；一个 Claim 可参与多个 Conflict。
+
+Backend 确定性执行 `confirmed/unresolved → conflicting`，保留 `conflicting/contradicted`，涉及
+Conflict 的 Event 转为 `conflicting`。模型不得输出状态，v1 不实现 Conflict resolution 或自动恢复。
+Pipeline 沿用来源锁、canonical artifact 复用、数据库并发唯一约束、原子持久化与私密 provenance
+调用前阻断。本切片不新增 Base Analysis、Public API、Event Detail 或 Frontend Contract。
+
 ---
 
 ## 7.3 Hermes / OpenClaw / Agent-Reach

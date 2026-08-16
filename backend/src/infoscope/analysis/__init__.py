@@ -4,6 +4,8 @@ from infoscope.analysis.intelligence_client import DeepSeekIntelligenceClient
 from infoscope.analysis.intelligence_schemas import (
     ClaimExtractionPayload,
     ClaimExtractionResponse,
+    ConflictAnalysisPayload,
+    ConflictAnalysisResponse,
     TimelineReconstructionPayload,
     TimelineReconstructionResponse,
 )
@@ -23,6 +25,8 @@ __all__ = [
     "DeepSeekIntelligenceClient",
     "ClaimExtractionPayload",
     "ClaimExtractionResponse",
+    "ConflictAnalysisPayload",
+    "ConflictAnalysisResponse",
     "EventReconstructionPayload",
     "EventReconstructionResponse",
     "WindowAnalysisPayload",

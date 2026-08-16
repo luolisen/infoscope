@@ -199,6 +199,7 @@ artifacts by UUID:
 ```bash
 uv run --project backend python -m infoscope.worker --extract-claims-artifact ARTIFACT_ID
 uv run --project backend python -m infoscope.worker --reconstruct-timeline-artifact ARTIFACT_ID
+uv run --project backend python -m infoscope.worker --analyze-conflicts-artifact ARTIFACT_ID
 ```
 
 Claims start deterministically as `unresolved`; the model cannot write Claim
@@ -209,6 +210,15 @@ by the Backend for the same Event. Both pipelines lock
 their source artifact before the model call, reuse canonical outputs, validate
 complete used/unused coverage, and atomically persist entities, links, and the
 internal artifact. No Public API or frontend contract is added in this slice.
+
+Conflict Analysis consumes a canonical `timeline_reconstruction.v1` artifact. Its model input
+contains current Claims and only their attached sanitized Evidence text, nullable `published_at`,
+and public-safe provenance. The Backend validates Event/Claim/Evidence scope and full Claim
+coverage; semantic contradiction remains the model's constrained judgment. Existing Conflict
+updates append relations without removing history, while `unconflicted_claim_ids` means only that
+the current run made no Conflict decision for those Claims. Conflict persistence deterministically
+moves unresolved or confirmed Claims and their Event to `conflicting`, preserves contradicted
+Claims, and atomically stores the internal artifact. No Public API or frontend contract is added.
 
 Checks:
 

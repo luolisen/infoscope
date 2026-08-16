@@ -221,7 +221,7 @@ class PipelineArtifact(Base):
         ),
         CheckConstraint(
             "artifact_type NOT IN ('event_reconstruction', 'claim_extraction', "
-            "'timeline_reconstruction') OR source_artifact_id IS NOT NULL",
+            "'timeline_reconstruction', 'conflict_analysis') OR source_artifact_id IS NOT NULL",
             name="ck_pipeline_artifacts_derived_source",
         ),
     )
