@@ -10,21 +10,27 @@ from pydantic import BaseModel, ValidationError
 from infoscope.analysis.client import AnalysisError
 from infoscope.analysis.config import AnalysisConfig
 from infoscope.analysis.intelligence_prompt import (
+    BASE_ANALYSIS_SYSTEM_PROMPT,
     CLAIM_SYSTEM_PROMPT,
     CONFLICT_SYSTEM_PROMPT,
     TIMELINE_SYSTEM_PROMPT,
+    build_base_analysis_prompt,
     build_claim_prompt,
     build_conflict_prompt,
     build_timeline_prompt,
 )
 from infoscope.analysis.intelligence_schemas import (
+    BaseAnalysisPayload,
+    BaseAnalysisResponse,
     ClaimExtractionPayload,
     ClaimExtractionResponse,
     ConflictAnalysisPayload,
     ConflictAnalysisResponse,
+    EventBaseAnalysisInput,
     EventClaimInput,
     EventConflictInput,
     EventTimelineInput,
+    ExistingBaseAnalysisCandidate,
     ExistingClaimCandidate,
     ExistingConflictCandidate,
     ExistingTimelineCandidate,
@@ -76,6 +82,21 @@ class DeepSeekIntelligenceClient:
             payload_type=ConflictAnalysisPayload,
         )
         return ConflictAnalysisResponse(
+            payload=payload, provider="deepseek", model=model, token_usage=usage
+        )
+
+    async def analyze_base(
+        self,
+        *,
+        events: list[EventBaseAnalysisInput],
+        candidates: list[ExistingBaseAnalysisCandidate],
+    ) -> BaseAnalysisResponse:
+        payload, model, usage = await self._request(
+            system=BASE_ANALYSIS_SYSTEM_PROMPT,
+            user=build_base_analysis_prompt(events, candidates),
+            payload_type=BaseAnalysisPayload,
+        )
+        return BaseAnalysisResponse(
             payload=payload, provider="deepseek", model=model, token_usage=usage
         )
 

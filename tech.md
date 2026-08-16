@@ -797,6 +797,25 @@ TG News 不直接生成 NOW、Event 或 Brief。
   Conflict、追加关系、状态与 artifact 原子持久化。私密 provenance 在模型调用前阻断。
 - 本切片不实现 Base Analysis、Public API、Event Detail 或 Frontend Contract。
 
+## Base Analysis v1（已冻结）
+
+- 消费 canonical `conflict_analysis.v1` artifact。`source_event_ids` 固定为所有 Conflict
+  decisions 的 `event_id`，并入全部 `unconflicted_claim_ids` 反查得到的 Claim `event_id`；不得
+  只依赖 Conflict assignments。空集合不调用模型，但生成 canonical 空 artifact。
+- 每个 source Event 输入当前完整的 Event、Claims、Timeline、Conflicts、受限 Evidence 与
+  Existing Base Analysis candidate。Signal 输入仍固定为 `signal_id / published_at（可空）/
+  sanitized_text / public_safe_provenance`，私密 provenance 在调用前阻断。
+- `base_analyses` 是 Event 一对一的用户无关当前快照，保存 Backend ID、Event、source artifact、
+  summary、event type、`low/medium/high/critical` importance、topics、entities 与审计时间。
+- 模型输出 `new_analyses / existing_analysis_updates`，每个 Event 恰好一个 decision。New ID 由
+  Backend 分配，update 只能引用同 Event candidate；不存在静默跳过或部分成功。
+- Existing update 完整替换 summary、event type、importance、topics、entities 与 source artifact；
+  immutable pipeline artifact 保留历史。Topics/Entities 不使用追加语义，v1 不建立全局实体表。
+- 模型只能总结已持久化事实；Evidence 不得被提升为尚不存在的 Claim/Timeline/Conflict。
+  rationale 只供内部审计。Base Analysis 不修改 Event/Claim state 或任何事实关系。
+- source artifact 行锁、`(artifact_type, source_artifact_id)` 唯一幂等键、全批原子提交与失败
+  rollback 沿用既有规则。本切片不新增 Public API、Event Detail、NOW 或 Frontend Contract。
+
 ---
 
 # 十、完整数据 Pipeline

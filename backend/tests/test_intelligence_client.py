@@ -6,9 +6,13 @@ import httpx
 from infoscope.analysis.config import AnalysisConfig
 from infoscope.analysis.intelligence_client import DeepSeekIntelligenceClient
 from infoscope.analysis.intelligence_schemas import (
+    BaseAnalysisClaimInput,
+    BaseAnalysisConflictInput,
+    BaseAnalysisTimelineInput,
     ClaimTimelineInput,
     ConflictClaimInput,
     ConflictEvidenceSignal,
+    EventBaseAnalysisInput,
     EventClaimInput,
     EventConflictInput,
     EventTimelineInput,
@@ -73,6 +77,22 @@ async def test_intelligence_client_parses_claim_and_timeline_contracts() -> None
             ],
             "existing_conflict_updates": [],
             "unconflicted_claim_ids": [],
+        },
+        {
+            "schema_version": "base_analysis.v1",
+            "new_analyses": [
+                {
+                    "decision_key": "base",
+                    "event_id": str(event_id),
+                    "summary": "Current summary",
+                    "event_type": "technology.release",
+                    "importance": "high",
+                    "topics": ["AI"],
+                    "entities": [{"name": "Example Corp", "entity_type": "organization"}],
+                    "rationale": "Persisted facts",
+                }
+            ],
+            "existing_analysis_updates": [],
         },
     ]
 
@@ -172,10 +192,55 @@ async def test_intelligence_client_parses_claim_and_timeline_contracts() -> None
             ],
             candidates=[],
         )
+        base_response = await client.analyze_base(
+            events=[
+                EventBaseAnalysisInput(
+                    event_id=event_id,
+                    title="Event",
+                    overview="Overview",
+                    state="developing",
+                    display_time="2026-08-16T09:00:00Z",
+                    claims=[
+                        BaseAnalysisClaimInput(
+                            claim_id=claim_id,
+                            text="A fact",
+                            state="unresolved",
+                            evidence_signal_ids=[signal_id],
+                        )
+                    ],
+                    timeline=[
+                        BaseAnalysisTimelineInput(
+                            timeline_entry_id=uuid4(),
+                            occurred_at="2026-08-16T08:50:00Z",
+                            summary="Change",
+                            claim_ids=[claim_id],
+                        )
+                    ],
+                    conflicts=[
+                        BaseAnalysisConflictInput(
+                            conflict_id=uuid4(),
+                            summary="Conflict",
+                            claim_ids=[claim_id],
+                            evidence_signal_ids=[signal_id],
+                        )
+                    ],
+                    evidence_signals=[
+                        ConflictEvidenceSignal(
+                            signal_id=signal_id,
+                            published_at=None,
+                            sanitized_text="Sanitized text",
+                            public_safe_provenance=None,
+                        )
+                    ],
+                )
+            ],
+            candidates=[],
+        )
 
     assert claim_response.payload.new_claims[0].event_id == event_id
     assert timeline_response.payload.new_entries[0].claim_ids == [claim_id]
     assert conflict_response.payload.new_conflicts[0].claim_ids == [claim_id]
+    assert base_response.payload.new_analyses[0].importance == "high"
     timeline_prompt = requests[1]["messages"][1]["content"]
     assert '"title":"Event"' in timeline_prompt
     assert '"text":"Text"' in timeline_prompt
@@ -185,3 +250,11 @@ async def test_intelligence_client_parses_claim_and_timeline_contracts() -> None
     assert '"published_at":null' in conflict_prompt
     assert '"sanitized_text":"Sanitized text"' in conflict_prompt
     assert '"occurred_at"' not in conflict_prompt
+    base_prompt_document = json.loads(requests[3]["messages"][1]["content"].split("\n", 1)[1])
+    evidence = base_prompt_document["events"][0]["evidence_signals"][0]
+    assert evidence == {
+        "public_safe_provenance": None,
+        "published_at": None,
+        "sanitized_text": "Sanitized text",
+        "signal_id": str(signal_id),
+    }

@@ -1001,6 +1001,32 @@ Conflict 的 Event 转为 `conflicting`。模型不得输出状态，v1 不实�
 Pipeline 沿用来源锁、canonical artifact 复用、数据库并发唯一约束、原子持久化与私密 provenance
 调用前阻断。本切片不新增 Base Analysis、Public API、Event Detail 或 Frontend Contract。
 
+### Base Analysis v1（已冻结）
+
+Base Analysis 消费 canonical `conflict_analysis.v1` artifact。Source Event 集合为所有
+`new_conflicts / existing_conflict_updates` 的 `event_id`，并入全部 `unconflicted_claim_ids`
+反查得到的 Claim `event_id`；不得只依赖 Conflict assignments。空 Event 集合不调用模型，但仍
+生成 canonical 空 artifact，保持 pipeline 链和 replay 幂等。
+
+每个 Event 输入当前完整的 Event、Claims、Timeline、Conflicts、受限 Evidence 与 Existing Base
+Analysis candidate。Signal 仅包含 `signal_id / published_at（可空）/ sanitized_text /
+public_safe_provenance`。模型只能总结已持久化事实层，不得把 Evidence 中尚未进入 Claim、Timeline
+或 Conflict 的内容提升为新事实。
+
+`base_analyses` 是 Event 一对一的用户无关当前快照，保存 `id / event_id / source_artifact_id /
+summary / event_type / importance / topics / entities` 与审计时间。Importance 固定为
+`low / medium / high / critical`；Topics 与 Event 内 Entity 注释使用严格受限 JSONB，v1 不建立
+全局 Topic、Entity 或实体合并系统。
+
+模型输出 `new_analyses / existing_analysis_updates`，每个 source Event 必须且只能有一个 decision。
+New ID 由 Backend 分配，update 只能引用同 Event candidate。Existing update 对 summary、event
+type、importance、topics、entities 与 source artifact 执行完整快照替换，历史由 immutable
+pipeline artifact 保留；不允许静默跳过或部分成功。
+
+Base Analysis 不修改 Event title/overview/state/display_time、Claim state、Timeline、Conflict 或
+Evidence 关系，也不产生 Personalization。来源锁、唯一幂等键、全批原子提交、rollback 与私密
+provenance 调用前阻断沿用既有规则。本切片不新增 Public API、Event Detail、NOW 或前端 Contract。
+
 ---
 
 ## 7.3 Hermes / OpenClaw / Agent-Reach

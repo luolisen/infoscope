@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String, Text, UniqueConstraint, func
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from infoscope.models.base import Base
@@ -146,4 +148,34 @@ class ConflictSignal(Base):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class BaseAnalysis(Base):
+    __tablename__ = "base_analyses"
+    __table_args__ = (
+        CheckConstraint(
+            "importance IN ('low', 'medium', 'high', 'critical')",
+            name="ck_base_analyses_importance",
+        ),
+        UniqueConstraint("event_id", name="uq_base_analyses_event"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    event_id: Mapped[UUID] = mapped_column(
+        ForeignKey("events.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    source_artifact_id: Mapped[UUID] = mapped_column(
+        ForeignKey("pipeline_artifacts.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    importance: Mapped[str] = mapped_column(String(16), nullable=False)
+    topics: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    entities: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )

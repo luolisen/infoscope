@@ -200,6 +200,7 @@ artifacts by UUID:
 uv run --project backend python -m infoscope.worker --extract-claims-artifact ARTIFACT_ID
 uv run --project backend python -m infoscope.worker --reconstruct-timeline-artifact ARTIFACT_ID
 uv run --project backend python -m infoscope.worker --analyze-conflicts-artifact ARTIFACT_ID
+uv run --project backend python -m infoscope.worker --analyze-base-artifact ARTIFACT_ID
 ```
 
 Claims start deterministically as `unresolved`; the model cannot write Claim
@@ -219,6 +220,14 @@ updates append relations without removing history, while `unconflicted_claim_ids
 the current run made no Conflict decision for those Claims. Conflict persistence deterministically
 moves unresolved or confirmed Claims and their Event to `conflicting`, preserves contradicted
 Claims, and atomically stores the internal artifact. No Public API or frontend contract is added.
+
+Base Analysis consumes canonical `conflict_analysis.v1` artifacts. Its Event scope combines
+Conflict decision Event IDs with Event IDs resolved from every unconflicted Claim, so an all-
+unconflicted result is not lost. An empty scope writes a canonical no-op artifact without calling
+the model. Each Event receives one user-independent current snapshot containing summary, event
+type, categorical importance, topics, and Event-local entities. Existing snapshots are fully
+replaced while immutable pipeline artifacts retain history. The model cannot change Event or Claim
+state or promote unstructured Evidence into new facts. No Public API or frontend contract is added.
 
 Checks:
 
