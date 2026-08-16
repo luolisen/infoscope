@@ -32,6 +32,7 @@ from infoscope.models.backwrite import (
     BackwriteResearchArtifact,
 )
 from infoscope.models.base import Base
+from infoscope.models.brief import BriefArtifact, BriefItem, BriefRun
 from infoscope.models.events import Event, EventSignal
 from infoscope.models.intelligence import (
     BaseAnalysis,
@@ -81,6 +82,9 @@ __all__ = [
     "BackwriteReconciliationArtifact",
     "BackwriteReconciliationRun",
     "BackwriteResearchArtifact",
+    "BriefArtifact",
+    "BriefItem",
+    "BriefRun",
     "Claim",
     "ClaimSignal",
     "Conflict",

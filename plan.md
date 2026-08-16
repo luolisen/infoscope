@@ -1262,6 +1262,24 @@ User FOCUS
   Backwrite 使用本轮开始前 Snapshot，本轮 Personalization 供下一周期使用。独立 Worker 处理
   `personalization_update_requested_at`，与 Maintenance 共享用户级数据库 active lock。
 
+### Brief v1 冻结补充
+
+- Brief 只消费用户当前最新 completed Personalization artifact。只选择 relevant Event，固定按
+  `critical → high → normal → low`、同优先级 `snapshot_display_time DESC, event_id ASC`，最多 8 个。
+- `brief_input.v1` 仅包含 Event、Base Analysis、Claims、Timeline、Conflicts 与 Personalization
+  文案；禁止 Raw、Signal/Evidence、provenance、collector metadata 和 Research。canonical input
+  最大 2,097,152 UTF-8 bytes，超限整体失败，不截断、分页或拆分。
+- `brief.v1` 必须按输入顺序完整覆盖 Event，只输出 `event_id / summary / rationale`。Backend 从
+  Personalization snapshot 注入 `why_it_matters`；输出最大 1,048,576 bytes。
+- `brief_artifacts.source_personalization_artifact_id` 数据库唯一；Artifact 与成功 Run 一对一且
+  immutable。Brief Item 保存 `snapshot_title`，Public API 不重新读取当前 Event title。
+- `GET /api/v1/brief/latest` 只读取与当前最新 completed Personalization artifact 精确相等的 Brief。
+  新 Personalization 已完成但 Brief 尚未完成时返回 `generated_at=null, items=[]`，不得回退旧 Brief。
+- 空 relevant 集合生成 deterministic empty artifact 且不调用模型。模型返回后在 SERIALIZABLE
+  事务中锁定并重建完整输入；source 被替代或 input hash 变化时 fail-closed。
+- Brief 由独立 `--process-brief-queue` Worker 生成；FastAPI 不运行后台模型任务，Brief 失败不回滚
+  Personalization，也不修改 Event 事实层。
+
 ---
 
 ## 8.5 Ask Infoscope / 询问观澜

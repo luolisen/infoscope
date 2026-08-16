@@ -1039,11 +1039,17 @@ PostgreSQL 不仅保存用户资料，还负责：
 - Conflict
 - Analysis
 - Personalization
+- Brief Run / immutable Brief Artifact / Brief Item snapshot
 - Job State
 
 第一版不额外引入 Redis。
 
 Worker 可以先基于 PostgreSQL 的 Job Table 工作。
+
+Brief 使用 `brief_runs`、`brief_artifacts`、`brief_items`。每个 Personalization artifact 最多对应
+一个 Brief artifact；Item 通过复合外键绑定同一个 user、Personalization artifact、
+Personalized Event 和 Event，并持久化公开标题快照。`GET /api/v1/brief/latest` 只在当前最新
+Personalization artifact 已有 canonical Brief 时返回内容，否则返回合法空结果，绝不回退旧快照。
 
 逻辑状态：
 
