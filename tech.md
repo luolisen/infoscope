@@ -764,9 +764,10 @@ TG News 不直接生成 NOW、Event 或 Brief。
   `unresolved`，Existing Claim 保持当前合法状态。
 - `claim_signals` 保存 Claim–Signal 多对多 Evidence 关系；Signal 可支撑多个 Claim，模型
   只能引用同 Event 已关联的真实 Signal。
-- Timeline Reconstruction 消费 canonical `claim_extraction.v1` artifact、Claims 与 Existing
-  Timeline candidates。`timeline_entries` 保存 Event、UTC `occurred_at` 与 summary，
-  `timeline_claims` 保存 Timeline–Claim 多对多关系。
+- Timeline Reconstruction 消费 canonical `claim_extraction.v1` artifact、对应 Events、Claims、
+  已脱敏 Evidence Signals 与 Existing Timeline candidates。模型只接收同 Event 的真实 Signal
+  正文、时间和 public-safe provenance。`timeline_entries` 保存 Event、UTC `occurred_at` 与
+  summary，`timeline_claims` 保存 Timeline–Claim 多对多关系。
 - 两个模型 Contract 都使用 Backend candidates、Backend 分配 ID、完整 used/unused 覆盖；
   rationale 仅供内部审计，不是 Evidence。
 - 两条 pipeline 都在模型调用前锁定 source artifact 并复查，使用

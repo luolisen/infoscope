@@ -8,11 +8,13 @@ from infoscope.analysis.intelligence_schemas import (
     ClaimExtractionPayload,
     ClaimTimelineInput,
     EventClaimInput,
+    EventTimelineInput,
     ExistingClaimCandidate,
     ExistingTimelineCandidate,
     TimelineReconstructionPayload,
 )
 from infoscope.analysis.schemas import AnalysisSignal
+from infoscope.models import Claim, Event, Signal
 from infoscope.services.claims_timeline import (
     ClaimExtractionRunner,
     IntelligenceError,
@@ -138,13 +140,22 @@ def test_claim_validation_rejects_unknown_existing_claim() -> None:
 
 def test_timeline_validation_requires_aware_time_and_same_event_claims() -> None:
     event_id, claim_id = uuid4(), uuid4()
-    claims = [
-        ClaimTimelineInput(
-            claim_id=claim_id,
+    events = [
+        EventTimelineInput(
             event_id=event_id,
-            text="Claim",
-            state="unresolved",
-            evidence_signal_ids=[uuid4()],
+            title="Event",
+            overview="Overview",
+            state="developing",
+            display_time=datetime(2026, 8, 16, 9, tzinfo=UTC),
+            claims=[
+                ClaimTimelineInput(
+                    claim_id=claim_id,
+                    event_id=event_id,
+                    text="Claim",
+                    state="unresolved",
+                    evidence_signals=[_signal(uuid4())],
+                )
+            ],
         )
     ]
     payload = TimelineReconstructionPayload.model_validate(
@@ -164,18 +175,27 @@ def test_timeline_validation_requires_aware_time_and_same_event_claims() -> None
         }
     )
     with pytest.raises(IntelligenceError, match="TIMELINE_OCCURRED_AT_INVALID"):
-        TimelineReconstructionRunner._validate(payload, claims, [])
+        TimelineReconstructionRunner._validate(payload, events, [])
 
 
 def test_timeline_validation_rejects_unknown_update_candidate() -> None:
     event_id, claim_id = uuid4(), uuid4()
-    claims = [
-        ClaimTimelineInput(
-            claim_id=claim_id,
+    events = [
+        EventTimelineInput(
             event_id=event_id,
-            text="Claim",
-            state="unresolved",
-            evidence_signal_ids=[],
+            title="Event",
+            overview="Overview",
+            state="developing",
+            display_time=datetime(2026, 8, 16, 9, tzinfo=UTC),
+            claims=[
+                ClaimTimelineInput(
+                    claim_id=claim_id,
+                    event_id=event_id,
+                    text="Claim",
+                    state="unresolved",
+                    evidence_signals=[],
+                )
+            ],
         )
     ]
     payload = TimelineReconstructionPayload.model_validate(
@@ -203,18 +223,108 @@ def test_timeline_validation_rejects_unknown_update_candidate() -> None:
         claim_ids=[],
     )
     with pytest.raises(IntelligenceError, match="TIMELINE_OUTSIDE_CANDIDATES"):
-        TimelineReconstructionRunner._validate(payload, claims, [candidate])
+        TimelineReconstructionRunner._validate(payload, events, [candidate])
 
 
-def test_private_provenance_is_rejected_before_model_input() -> None:
-    class StoredSignal:
-        id = uuid4()
-        title = "Private"
-        normalized_text = "Sanitized"
-        published_at = None
-        source_type = "telegram"
-        evidence_visibility = "private_sanitized"
-        public_provenance = {"username": "forbidden"}
+async def test_timeline_input_rejects_private_public_provenance_before_model() -> None:
+    event_id, claim_id, signal_id = uuid4(), uuid4(), uuid4()
+    event = Event(
+        id=event_id,
+        title="Event",
+        overview="Overview",
+        state="developing",
+        display_time=datetime(2026, 8, 16, 9, tzinfo=UTC),
+    )
+    claim = Claim(id=claim_id, event_id=event_id, text="Claim", state="unresolved")
+    signal = Signal(
+        id=signal_id,
+        raw_information_id=uuid4(),
+        signal_index=0,
+        title="Private",
+        normalized_text="Sanitized",
+        source_type="telegram",
+        evidence_visibility="private_sanitized",
+        public_provenance={"username": "forbidden"},
+        content_hash="b" * 64,
+    )
 
+    class Result:
+        def __init__(self, *, scalar_values=None, rows=None):
+            self.scalar_values = scalar_values or []
+            self.rows = rows or []
+
+        def scalars(self):
+            return self.scalar_values
+
+        def all(self):
+            return self.rows
+
+    class Database:
+        def __init__(self):
+            self.results = iter(
+                [
+                    Result(scalar_values=[event]),
+                    Result(scalar_values=[claim]),
+                    Result(rows=[(claim_id, signal)]),
+                    Result(rows=[(event_id, signal_id)]),
+                ]
+            )
+
+        async def execute(self, _statement):
+            return next(self.results)
+
+    repository = IntelligenceRepository(Database())  # type: ignore[arg-type]
     with pytest.raises(IntelligenceError, match="INTELLIGENCE_PRIVATE_PROVENANCE_INVALID"):
-        IntelligenceRepository._analysis_signal(StoredSignal())  # type: ignore[arg-type]
+        await repository.timeline_inputs({event_id})
+
+
+async def test_timeline_input_rejects_claim_evidence_outside_event() -> None:
+    event_id, other_event_id, claim_id, signal_id = uuid4(), uuid4(), uuid4(), uuid4()
+    event = Event(
+        id=event_id,
+        title="Event",
+        overview="Overview",
+        state="developing",
+        display_time=datetime(2026, 8, 16, 9, tzinfo=UTC),
+    )
+    claim = Claim(id=claim_id, event_id=event_id, text="Claim", state="unresolved")
+    signal = Signal(
+        id=signal_id,
+        raw_information_id=uuid4(),
+        signal_index=0,
+        title="Evidence",
+        normalized_text="Evidence text",
+        source_type="web",
+        evidence_visibility="public",
+        public_provenance={"platform": "web"},
+        content_hash="a" * 64,
+    )
+
+    class Result:
+        def __init__(self, *, scalar_values=None, rows=None):
+            self.scalar_values = scalar_values or []
+            self.rows = rows or []
+
+        def scalars(self):
+            return self.scalar_values
+
+        def all(self):
+            return self.rows
+
+    class Database:
+        def __init__(self):
+            self.results = iter(
+                [
+                    Result(scalar_values=[event]),
+                    Result(scalar_values=[claim]),
+                    Result(rows=[(claim_id, signal)]),
+                    Result(rows=[(other_event_id, signal_id)]),
+                ]
+            )
+
+        async def execute(self, _statement):
+            return next(self.results)
+
+    repository = IntelligenceRepository(Database())  # type: ignore[arg-type]
+    with pytest.raises(IntelligenceError, match="TIMELINE_EVIDENCE_OUTSIDE_EVENT"):
+        await repository.timeline_inputs({event_id})

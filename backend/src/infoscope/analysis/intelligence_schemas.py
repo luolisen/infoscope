@@ -114,7 +114,32 @@ class ClaimTimelineInput(StrictModel):
     event_id: UUID
     text: str
     state: str
-    evidence_signal_ids: list[UUID]
+    evidence_signals: list[AnalysisSignal]
+
+    @model_validator(mode="after")
+    def evidence_is_unique(self) -> ClaimTimelineInput:
+        signal_ids = [item.signal_id for item in self.evidence_signals]
+        if len(signal_ids) != len(set(signal_ids)):
+            raise ValueError("evidence_signals contains duplicates")
+        return self
+
+
+class EventTimelineInput(StrictModel):
+    event_id: UUID
+    title: str
+    overview: str
+    state: str
+    display_time: datetime
+    claims: list[ClaimTimelineInput]
+
+    @model_validator(mode="after")
+    def claims_belong_to_event(self) -> EventTimelineInput:
+        if any(item.event_id != self.event_id for item in self.claims):
+            raise ValueError("timeline claims must belong to the containing event")
+        claim_ids = [item.claim_id for item in self.claims]
+        if len(claim_ids) != len(set(claim_ids)):
+            raise ValueError("timeline event contains duplicate claims")
+        return self
 
 
 class ExistingTimelineCandidate(StrictModel):

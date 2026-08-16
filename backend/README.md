@@ -202,8 +202,10 @@ uv run --project backend python -m infoscope.worker --reconstruct-timeline-artif
 ```
 
 Claims start deterministically as `unresolved`; the model cannot write Claim
-state. Claim–Signal and Timeline–Claim links are many-to-many and may reference
-only entities supplied by the Backend for the same Event. Both pipelines lock
+state. Timeline input includes the corresponding Event, Claims, and sanitized
+Evidence Signal text, timestamps, and public-safe provenance. Claim–Signal and
+Timeline–Claim links are many-to-many and may reference only entities supplied
+by the Backend for the same Event. Both pipelines lock
 their source artifact before the model call, reuse canonical outputs, validate
 complete used/unused coverage, and atomically persist entities, links, and the
 internal artifact. No Public API or frontend contract is added in this slice.

@@ -5,7 +5,11 @@ import httpx
 
 from infoscope.analysis.config import AnalysisConfig
 from infoscope.analysis.intelligence_client import DeepSeekIntelligenceClient
-from infoscope.analysis.intelligence_schemas import ClaimTimelineInput, EventClaimInput
+from infoscope.analysis.intelligence_schemas import (
+    ClaimTimelineInput,
+    EventClaimInput,
+    EventTimelineInput,
+)
 from infoscope.analysis.schemas import AnalysisSignal
 
 
@@ -54,7 +58,10 @@ async def test_intelligence_client_parses_claim_and_timeline_contracts() -> None
         },
     ]
 
+    requests: list[dict] = []
+
     def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(json.loads(request.content))
         payload = responses.pop(0)
         return httpx.Response(
             200,
@@ -90,13 +97,32 @@ async def test_intelligence_client_parses_claim_and_timeline_contracts() -> None
             candidates=[],
         )
         timeline_response = await client.reconstruct_timeline(
-            claims=[
-                ClaimTimelineInput(
-                    claim_id=claim_id,
+            events=[
+                EventTimelineInput(
                     event_id=event_id,
-                    text="A fact",
-                    state="unresolved",
-                    evidence_signal_ids=[signal_id],
+                    title="Event",
+                    overview="Overview",
+                    state="developing",
+                    display_time="2026-08-16T09:00:00Z",
+                    claims=[
+                        ClaimTimelineInput(
+                            claim_id=claim_id,
+                            event_id=event_id,
+                            text="A fact",
+                            state="unresolved",
+                            evidence_signals=[
+                                AnalysisSignal(
+                                    signal_id=signal_id,
+                                    title="Evidence",
+                                    text="Text",
+                                    published_at="2026-08-16T08:55:00Z",
+                                    source_type="web",
+                                    evidence_visibility="public",
+                                    public_provenance={"platform": "web"},
+                                )
+                            ],
+                        )
+                    ],
                 )
             ],
             candidates=[],
@@ -104,3 +130,8 @@ async def test_intelligence_client_parses_claim_and_timeline_contracts() -> None
 
     assert claim_response.payload.new_claims[0].event_id == event_id
     assert timeline_response.payload.new_entries[0].claim_ids == [claim_id]
+    timeline_prompt = requests[1]["messages"][1]["content"]
+    assert '"title":"Event"' in timeline_prompt
+    assert '"text":"Text"' in timeline_prompt
+    assert '"published_at":"2026-08-16T08:55:00Z"' in timeline_prompt
+    assert '"public_provenance":{"platform":"web"}' in timeline_prompt

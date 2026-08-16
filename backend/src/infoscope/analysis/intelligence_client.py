@@ -18,8 +18,8 @@ from infoscope.analysis.intelligence_prompt import (
 from infoscope.analysis.intelligence_schemas import (
     ClaimExtractionPayload,
     ClaimExtractionResponse,
-    ClaimTimelineInput,
     EventClaimInput,
+    EventTimelineInput,
     ExistingClaimCandidate,
     ExistingTimelineCandidate,
     TimelineReconstructionPayload,
@@ -50,11 +50,11 @@ class DeepSeekIntelligenceClient:
         )
 
     async def reconstruct_timeline(
-        self, *, claims: list[ClaimTimelineInput], candidates: list[ExistingTimelineCandidate]
+        self, *, events: list[EventTimelineInput], candidates: list[ExistingTimelineCandidate]
     ) -> TimelineReconstructionResponse:
         payload, model, usage = await self._request(
             system=TIMELINE_SYSTEM_PROMPT,
-            user=build_timeline_prompt(claims, candidates),
+            user=build_timeline_prompt(events, candidates),
             payload_type=TimelineReconstructionPayload,
         )
         return TimelineReconstructionResponse(
