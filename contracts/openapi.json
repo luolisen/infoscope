@@ -1,6 +1,231 @@
 {
   "components": {
     "schemas": {
+      "AskAcceptedResponse": {
+        "properties": {
+          "ask_id": {
+            "format": "uuid",
+            "title": "Ask Id",
+            "type": "string"
+          },
+          "status": {
+            "const": "pending",
+            "default": "pending",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ask_id"
+        ],
+        "title": "AskAcceptedResponse",
+        "type": "object"
+      },
+      "AskCompletedResponse": {
+        "properties": {
+          "ask_id": {
+            "format": "uuid",
+            "title": "Ask Id",
+            "type": "string"
+          },
+          "error": {
+            "title": "Error",
+            "type": "null"
+          },
+          "result": {
+            "$ref": "#/components/schemas/AskResult"
+          },
+          "status": {
+            "const": "completed",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ask_id",
+          "status",
+          "result"
+        ],
+        "title": "AskCompletedResponse",
+        "type": "object"
+      },
+      "AskCreateRequest": {
+        "properties": {
+          "event_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Event Ids",
+            "type": "array"
+          },
+          "question": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Question",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event_ids",
+          "question"
+        ],
+        "title": "AskCreateRequest",
+        "type": "object"
+      },
+      "AskFailedResponse": {
+        "properties": {
+          "ask_id": {
+            "format": "uuid",
+            "title": "Ask Id",
+            "type": "string"
+          },
+          "error": {
+            "$ref": "#/components/schemas/ErrorDetail"
+          },
+          "result": {
+            "title": "Result",
+            "type": "null"
+          },
+          "status": {
+            "const": "failed",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ask_id",
+          "status",
+          "error"
+        ],
+        "title": "AskFailedResponse",
+        "type": "object"
+      },
+      "AskPendingResponse": {
+        "properties": {
+          "ask_id": {
+            "format": "uuid",
+            "title": "Ask Id",
+            "type": "string"
+          },
+          "error": {
+            "title": "Error",
+            "type": "null"
+          },
+          "result": {
+            "title": "Result",
+            "type": "null"
+          },
+          "status": {
+            "const": "pending",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ask_id",
+          "status"
+        ],
+        "title": "AskPendingResponse",
+        "type": "object"
+      },
+      "AskResult": {
+        "properties": {
+          "answer": {
+            "title": "Answer",
+            "type": "string"
+          },
+          "claim_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Claim Ids",
+            "type": "array"
+          },
+          "conflict_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Conflict Ids",
+            "type": "array"
+          },
+          "event_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Event Ids",
+            "type": "array"
+          },
+          "evidence_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Evidence Ids",
+            "type": "array"
+          },
+          "timeline_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Timeline Ids",
+            "type": "array"
+          },
+          "updated_event_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Updated Event Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "answer",
+          "event_ids",
+          "claim_ids",
+          "timeline_ids",
+          "conflict_ids",
+          "evidence_ids",
+          "updated_event_ids"
+        ],
+        "title": "AskResult",
+        "type": "object"
+      },
+      "AskRunningResponse": {
+        "properties": {
+          "ask_id": {
+            "format": "uuid",
+            "title": "Ask Id",
+            "type": "string"
+          },
+          "error": {
+            "title": "Error",
+            "type": "null"
+          },
+          "result": {
+            "title": "Result",
+            "type": "null"
+          },
+          "status": {
+            "const": "running",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ask_id",
+          "status"
+        ],
+        "title": "AskRunningResponse",
+        "type": "object"
+      },
       "CredentialsRequest": {
         "properties": {
           "password": {
@@ -535,6 +760,217 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/ask": {
+      "post": {
+        "operationId": "create_ask_api_v1_ask_post",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "is_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AskCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AskAcceptedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Create Ask",
+        "tags": [
+          "ask"
+        ]
+      }
+    },
+    "/api/v1/ask/{ask_id}": {
+      "get": {
+        "operationId": "get_ask_api_v1_ask__ask_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ask_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Ask Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "is_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "discriminator": {
+                    "mapping": {
+                      "completed": "#/components/schemas/AskCompletedResponse",
+                      "failed": "#/components/schemas/AskFailedResponse",
+                      "pending": "#/components/schemas/AskPendingResponse",
+                      "running": "#/components/schemas/AskRunningResponse"
+                    },
+                    "propertyName": "status"
+                  },
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/AskPendingResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AskRunningResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AskCompletedResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AskFailedResponse"
+                    }
+                  ],
+                  "title": "Response Get Ask Api V1 Ask  Ask Id  Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Ask",
+        "tags": [
+          "ask"
+        ]
+      }
+    },
     "/api/v1/auth/login": {
       "post": {
         "operationId": "login_api_v1_auth_login_post",

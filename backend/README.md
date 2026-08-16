@@ -310,7 +310,20 @@ uv run --project backend python -m infoscope.worker \
 This performs targeted exact deduplication, sends a strict current Event snapshot plus canonical
 Signals to the Analysis adapter, then locks and rebuilds the full input before commit. It only
 appends EventSignal relations, preserves Event state, and stops at `pending / finalizing`; it does
-not generate the final Ask answer or expose a Public API.
+not treat the model answer as Evidence.
+
+Finalize one Ask explicitly, or run the persisted Ask queue continuously for the Public API:
+
+```bash
+uv run --project backend python -m infoscope.worker --run-ask-finalization ASK_ID
+uv run --project backend python -m infoscope.worker --process-ask-queue
+```
+
+`POST /api/v1/ask` only creates a `pending / comparing` request and returns 202. The queue worker
+drives comparison, optional Research, reconciliation, and finalization from database state. A
+direct answer reuses the canonical Comparison without another model call; a researched answer is
+generated from the updated current Event facts. `GET /api/v1/ask/{ask_id}` is owner-only and never
+returns completed until the immutable final artifact has committed.
 
 Checks:
 

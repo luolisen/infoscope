@@ -9,6 +9,7 @@ from pathlib import Path
 from uuid import UUID
 
 import httpx
+from sqlalchemy import select
 
 from infoscope.analysis import (
     DeepSeekAnalysisClient,
@@ -30,12 +31,14 @@ from infoscope.integrations.telegram import (
 )
 from infoscope.integrations.trendradar import TrendRadarCollector, load_trendradar_config
 from infoscope.integrations.trendradar.client import NewsNowClient, RSSClient
+from infoscope.models import AskRequest
 from infoscope.services.acquisition import AcquisitionRepository
 from infoscope.services.ask_comparison import AskComparisonRepository, AskComparisonRunner
 from infoscope.services.ask_event_reconciliation import (
     AskEventReconciliationRepository,
     AskEventReconciliationRunner,
 )
+from infoscope.services.ask_finalization import AskFinalizationRepository, AskFinalizationRunner
 from infoscope.services.ask_research_bridge import (
     AskResearchBridgeRepository,
     AskResearchBridgeRunner,
@@ -434,6 +437,56 @@ async def run_ask_event_reconciliation_once(ask_id: UUID) -> None:
     )
 
 
+async def run_ask_finalization_once(ask_id: UUID) -> None:
+    settings = get_settings()
+    config = load_analysis_config(settings)
+    async with httpx.AsyncClient() as client:
+        async with session_factory() as database:
+            request = await AskFinalizationRunner(
+                repository=AskFinalizationRepository(database),
+                client=DeepSeekIntelligenceClient(client=client, config=config),
+                max_attempts=settings.ask_finalization_max_attempts,
+            ).run(ask_id)
+    logger.info(
+        "Ask Finalization complete request_id=%s status=%s stage=%s error_code=%s",
+        request.id,
+        request.status,
+        request.stage,
+        request.error_code,
+    )
+
+
+async def process_ask_queue_once() -> bool:
+    async with session_factory() as database:
+        request = (
+            await database.execute(
+                select(AskRequest)
+                .where(AskRequest.status == "pending")
+                .order_by(AskRequest.created_at, AskRequest.id)
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+    if request is None:
+        return False
+    try:
+        if request.stage == "comparing":
+            await compare_ask_once(retry_request_id=request.id)
+        elif request.stage == "awaiting_research":
+            await run_ask_research_bridge_once(request.id)
+        elif request.stage == "awaiting_reconciliation":
+            await run_ask_event_reconciliation_once(request.id)
+        elif request.stage == "finalizing":
+            await run_ask_finalization_once(request.id)
+        else:
+            logger.error(
+                "Ask has unsupported stage request_id=%s stage=%s", request.id, request.stage
+            )
+            return False
+    except Exception:
+        logger.exception("Ask queue stage failed request_id=%s stage=%s", request.id, request.stage)
+    return True
+
+
 async def run(
     *,
     once: bool = False,
@@ -456,6 +509,8 @@ async def run(
     retry_ask_comparison: UUID | None = None,
     ask_research_bridge: UUID | None = None,
     ask_event_reconciliation: UUID | None = None,
+    ask_finalization: UUID | None = None,
+    process_ask_queue: bool = False,
 ) -> None:
     settings = get_settings()
     stop = asyncio.Event()
@@ -466,6 +521,7 @@ async def run(
 
     try:
         while not stop.is_set():
+            ask_processed = False
             await ping_database()
             if collect_trendradar:
                 await collect_trendradar_once()
@@ -504,6 +560,10 @@ async def run(
                 await run_ask_research_bridge_once(ask_research_bridge)
             if ask_event_reconciliation is not None:
                 await run_ask_event_reconciliation_once(ask_event_reconciliation)
+            if ask_finalization is not None:
+                await run_ask_finalization_once(ask_finalization)
+            if process_ask_queue:
+                ask_processed = await process_ask_queue_once()
             logger.info("worker heartbeat")
             if (
                 once
@@ -526,8 +586,11 @@ async def run(
                 or retry_ask_comparison is not None
                 or ask_research_bridge is not None
                 or ask_event_reconciliation is not None
+                or ask_finalization is not None
             ):
                 return
+            if ask_processed:
+                continue
             try:
                 await asyncio.wait_for(stop.wait(), timeout=settings.worker_poll_seconds)
             except TimeoutError:
@@ -656,6 +719,17 @@ def parse_args() -> argparse.Namespace:
         metavar="ASK_ID",
         help="Run or retry Event Reconciliation for one researched Ask request",
     )
+    parser.add_argument(
+        "--run-ask-finalization",
+        type=UUID,
+        metavar="ASK_ID",
+        help="Run or retry Finalization for one Ask request",
+    )
+    parser.add_argument(
+        "--process-ask-queue",
+        action="store_true",
+        help="Continuously process persisted pending Ask requests",
+    )
     return parser.parse_args()
 
 
@@ -687,6 +761,8 @@ def main() -> int:
                 retry_ask_comparison=args.retry_ask_comparison,
                 ask_research_bridge=args.run_ask_research_bridge,
                 ask_event_reconciliation=args.run_ask_event_reconciliation,
+                ask_finalization=args.run_ask_finalization,
+                process_ask_queue=args.process_ask_queue,
             )
         )
     return 0

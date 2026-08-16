@@ -171,7 +171,7 @@ class _Repository:
             self.request.status = "pending"
             self.request.stage = "awaiting_research"
         else:
-            self.request.status = "completed"
+            self.request.status = "pending"
             self.request.stage = "finalizing"
         return self.request
 

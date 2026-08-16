@@ -210,9 +210,9 @@ class AskComparisonRepository:
             request.stage = "awaiting_research"
             request.finished_at = None
         else:
-            request.status = "completed"
+            request.status = "pending"
             request.stage = "finalizing"
-            request.finished_at = finished
+            request.finished_at = None
         await self.database.commit()
         return request
 

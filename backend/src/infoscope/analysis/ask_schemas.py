@@ -43,9 +43,7 @@ class AskEventInput(ResearchEvent):
 
 
 class AskComparisonInput(StrictModel):
-    schema_version: Literal["ask_database_comparison_input.v1"] = (
-        "ask_database_comparison_input.v1"
-    )
+    schema_version: Literal["ask_database_comparison_input.v1"] = "ask_database_comparison_input.v1"
     ask_id: UUID
     question: str = Field(min_length=1, max_length=2000)
     selected_event_ids: list[UUID] = Field(min_length=1, max_length=8)
@@ -436,6 +434,121 @@ class AskEventReconciliationArtifactPayload(StrictModel):
 
 
 def ask_reconciliation_input_hash(value: AskEventReconciliationInput) -> str:
+    encoded = json.dumps(
+        value.model_dump(mode="json"),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return sha256(encoded).hexdigest()
+
+
+class AskFinalizationInput(StrictModel):
+    schema_version: Literal["ask_finalization_input.v1"] = "ask_finalization_input.v1"
+    ask_id: UUID
+    source_comparison_artifact_id: UUID
+    source_reconciliation_artifact_id: UUID
+    source_comparison_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_reconciliation_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    question: str = Field(min_length=1, max_length=2000)
+    selected_event_ids: list[UUID] = Field(min_length=1, max_length=8)
+    updated_event_ids: list[UUID] = Field(min_length=1, max_length=8)
+    events: list[AskEventInput] = Field(min_length=1, max_length=8)
+
+    @field_validator("question")
+    @classmethod
+    def finalization_question_is_trimmed(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("finalization question must not be blank")
+        return normalized
+
+    @field_validator("selected_event_ids", "updated_event_ids")
+    @classmethod
+    def finalization_ids_are_unique(cls, values: list[UUID]) -> list[UUID]:
+        if len(values) != len(set(values)):
+            raise ValueError("finalization Event IDs must be unique")
+        return values
+
+    @model_validator(mode="after")
+    def finalization_relations_are_valid(self) -> AskFinalizationInput:
+        if [item.event_id for item in self.events] != self.selected_event_ids:
+            raise ValueError("events must exactly match selected_event_ids order")
+        if not set(self.updated_event_ids) <= set(self.selected_event_ids):
+            raise ValueError("updated_event_ids must stay within selected Events")
+        return self
+
+
+class AskFinalAnswerPayload(StrictModel):
+    schema_version: Literal["ask_final_answer.v1"] = "ask_final_answer.v1"
+    ask_id: UUID
+    answer: str = Field(min_length=1, max_length=20_000)
+    event_ids: list[UUID] = Field(min_length=1, max_length=8)
+    claim_ids: list[UUID]
+    timeline_entry_ids: list[UUID]
+    conflict_ids: list[UUID]
+    evidence_signal_ids: list[UUID]
+    updated_event_ids: list[UUID]
+
+    @field_validator("answer")
+    @classmethod
+    def final_answer_is_trimmed(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("final answer must not be blank")
+        return normalized
+
+    @field_validator(
+        "event_ids",
+        "claim_ids",
+        "timeline_entry_ids",
+        "conflict_ids",
+        "evidence_signal_ids",
+        "updated_event_ids",
+    )
+    @classmethod
+    def final_answer_ids_are_unique(cls, values: list[UUID]) -> list[UUID]:
+        if len(values) != len(set(values)):
+            raise ValueError("final answer ID arrays must be unique")
+        return values
+
+
+class AskFinalizationModelPayload(StrictModel):
+    schema_version: Literal["ask_finalization.v1"] = "ask_finalization.v1"
+    ask_id: UUID
+    answer: str = Field(min_length=1, max_length=20_000)
+    event_ids: list[UUID] = Field(min_length=1, max_length=8)
+    claim_ids: list[UUID]
+    timeline_entry_ids: list[UUID]
+    conflict_ids: list[UUID]
+    evidence_signal_ids: list[UUID]
+
+    @field_validator("answer")
+    @classmethod
+    def model_answer_is_trimmed(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("model answer must not be blank")
+        return normalized
+
+    @field_validator(
+        "event_ids", "claim_ids", "timeline_entry_ids", "conflict_ids", "evidence_signal_ids"
+    )
+    @classmethod
+    def model_answer_ids_are_unique(cls, values: list[UUID]) -> list[UUID]:
+        if len(values) != len(set(values)):
+            raise ValueError("model answer ID arrays must be unique")
+        return values
+
+
+class AskFinalizationResponse(StrictModel):
+    payload: AskFinalizationModelPayload
+    provider: str
+    model: str
+    token_usage: TokenUsage
+
+
+def ask_finalization_input_hash(value: AskFinalizationInput) -> str:
     encoded = json.dumps(
         value.model_dump(mode="json"),
         ensure_ascii=False,

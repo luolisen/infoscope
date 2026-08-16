@@ -1,7 +1,10 @@
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
-from infoscope.worker.main import run
+import pytest
+
+from infoscope.worker.main import process_ask_queue_once, run
 
 
 async def test_worker_once_checks_database_and_exits() -> None:
@@ -225,3 +228,67 @@ async def test_worker_runs_one_ask_event_reconciliation_and_exits() -> None:
 
     reconcile.assert_awaited_once_with(ask_id)
     database_close.assert_awaited_once()
+
+
+async def test_worker_runs_one_ask_finalization_and_exits() -> None:
+    database_ping = AsyncMock()
+    database_close = AsyncMock()
+    finalize = AsyncMock()
+    ask_id = uuid4()
+
+    with (
+        patch("infoscope.worker.main.ping_database", database_ping),
+        patch("infoscope.worker.main.close_database", database_close),
+        patch("infoscope.worker.main.run_ask_finalization_once", finalize),
+    ):
+        await run(ask_finalization=ask_id)
+
+    finalize.assert_awaited_once_with(ask_id)
+    database_close.assert_awaited_once()
+
+
+class _ScalarResult:
+    def __init__(self, request) -> None:
+        self.request = request
+
+    def scalar_one_or_none(self):
+        return self.request
+
+
+class _QueueSession:
+    def __init__(self, request) -> None:
+        self.request = request
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return None
+
+    async def execute(self, statement):
+        return _ScalarResult(self.request)
+
+
+@pytest.mark.parametrize(
+    ("stage", "target"),
+    [
+        ("comparing", "compare_ask_once"),
+        ("awaiting_research", "run_ask_research_bridge_once"),
+        ("awaiting_reconciliation", "run_ask_event_reconciliation_once"),
+        ("finalizing", "run_ask_finalization_once"),
+    ],
+)
+async def test_persisted_ask_stage_routes_to_exactly_one_worker(stage: str, target: str) -> None:
+    ask_id = uuid4()
+    request = SimpleNamespace(id=ask_id, stage=stage)
+    dispatch = AsyncMock()
+    with (
+        patch("infoscope.worker.main.session_factory", lambda: _QueueSession(request)),
+        patch(f"infoscope.worker.main.{target}", dispatch),
+    ):
+        assert await process_ask_queue_once() is True
+
+    if stage == "comparing":
+        dispatch.assert_awaited_once_with(retry_request_id=ask_id)
+    else:
+        dispatch.assert_awaited_once_with(ask_id)
