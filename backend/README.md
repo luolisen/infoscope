@@ -363,6 +363,22 @@ and `completed / updated` item state are written only after all four strict mode
 Any downstream failure rolls the transaction back, leaving the previously committed Event fact
 layer intact and the item retryable or failed.
 
+Phase 4 Maintenance persists one global run at a time and exposes owner-safe polling through
+`GET /api/v1/maintenance/status`, `POST /api/v1/maintenance/runs`, and
+`GET /api/v1/maintenance/runs/{run_id}`. The Worker processes the frozen phase order
+`window_analysis -> reconciliation -> event_backwrite`; each successful Window artifact is carried
+through Event Reconstruction, Claims, Timeline, Conflicts, and Base Analysis before Backwrite.
+Terminal completion or failure releases the database active slot. The next automatic run is due
+exactly one hour after `finished_at`, never at a wall-clock boundary:
+
+```bash
+uv run --project backend infoscope-worker --process-maintenance-queue
+```
+
+Backwrite iterates onboarded users in Backend UUID order and still requires the fail-closed
+`UserVisibleEventSnapshotProvider`. Until Phase 5 installs the Personalization-backed Provider, the
+run fails with a stable internal error rather than treating all Events as visible.
+
 Checks:
 
 ```bash
