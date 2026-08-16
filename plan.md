@@ -959,6 +959,24 @@ Backend 在模型调用前对 source artifact 加锁并在锁内复查；数据�
 重放 run 不复制第二份 reconstruction artifact。
 本切片不实现 Claim、Timeline、Conflict、Base Analysis、Personalization、Public API 或前端。
 
+### Claim Extraction + Timeline Reconstruction v1（已冻结）
+
+Claim Extraction 消费 canonical `event_reconstruction.v1` artifact、对应 Event、Event 已关联
+Signal 与 Existing Claim candidates。`claims` 保存 `id / event_id / text / state` 与审计时间；
+state 固定为 `confirmed / unresolved / conflicting / contradicted`。模型不输出 state，New Claim
+固定为 `unresolved`，Existing Claim 保持当前合法状态。`claim_signals` 是 Claim–Signal 多对多
+Evidence 关系，一个 Signal 可以支撑多个 Claim，但只能引用同 Event 已关联的真实 Signal。
+
+Timeline Reconstruction 消费 canonical `claim_extraction.v1` artifact、Claims 与 Existing
+Timeline candidates。`timeline_entries` 保存 `id / event_id / occurred_at / summary` 与审计时间，
+`timeline_claims` 保存 Timeline–Claim 多对多关系。`occurred_at` 必须为 Backend 校验的带时区
+时间，Timeline 表示关键演化节点，不是逐条 Signal 发布时间列表。
+
+两个严格模型输出都只允许 Backend candidates，New ID 均由 Backend 分配，并通过 used/unused
+完整覆盖校验。模型 rationale 不是 Evidence。两条 pipeline 均在模型调用前锁定 source
+artifact 并复查，以 `(artifact_type, source_artifact_id)` 唯一约束兜底；实体、关系与 artifact
+原子持久化后才完成 run。本切片不实现 Conflict、Base Analysis、Public API 或前端。
+
 ---
 
 ## 7.3 Hermes / OpenClaw / Agent-Reach

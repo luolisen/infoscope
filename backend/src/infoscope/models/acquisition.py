@@ -220,8 +220,9 @@ class PipelineArtifact(Base):
             name="ck_pipeline_artifacts_input_hash",
         ),
         CheckConstraint(
-            "artifact_type != 'event_reconstruction' OR source_artifact_id IS NOT NULL",
-            name="ck_pipeline_artifacts_reconstruction_source",
+            "artifact_type NOT IN ('event_reconstruction', 'claim_extraction', "
+            "'timeline_reconstruction') OR source_artifact_id IS NOT NULL",
+            name="ck_pipeline_artifacts_derived_source",
         ),
     )
 

@@ -755,6 +755,24 @@ TG News 不直接生成 NOW、Event 或 Brief。
 - 本切片不生成 Claim、Timeline、Conflict、Base Analysis、Personalization、Public API 或
   Frontend Contract。
 
+## Claim Extraction + Timeline Reconstruction v1（已冻结）
+
+- Claim Extraction 消费 canonical `event_reconstruction.v1` artifact、对应 Event、已关联
+  Signal 与 Backend 提供的 Existing Claim candidates。
+- `claims` 保存 `id / event_id / text / state / created_at / updated_at`；state 固定为
+  `confirmed / unresolved / conflicting / contradicted`。模型不输出 state，New Claim 固定为
+  `unresolved`，Existing Claim 保持当前合法状态。
+- `claim_signals` 保存 Claim–Signal 多对多 Evidence 关系；Signal 可支撑多个 Claim，模型
+  只能引用同 Event 已关联的真实 Signal。
+- Timeline Reconstruction 消费 canonical `claim_extraction.v1` artifact、Claims 与 Existing
+  Timeline candidates。`timeline_entries` 保存 Event、UTC `occurred_at` 与 summary，
+  `timeline_claims` 保存 Timeline–Claim 多对多关系。
+- 两个模型 Contract 都使用 Backend candidates、Backend 分配 ID、完整 used/unused 覆盖；
+  rationale 仅供内部审计，不是 Evidence。
+- 两条 pipeline 都在模型调用前锁定 source artifact 并复查，使用
+  `(artifact_type, source_artifact_id)` 唯一约束兜底；数据、关系与 artifact 原子持久化。
+- 本切片不实现 Conflict、Base Analysis、Public API、Event Detail 或 Frontend Contract。
+
 ---
 
 # 十、完整数据 Pipeline
