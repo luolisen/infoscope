@@ -43,6 +43,7 @@ from infoscope.models.intelligence import (
     TimelineClaim,
     TimelineEntry,
 )
+from infoscope.models.maintenance import MaintenanceRun
 from infoscope.models.research import (
     ResearchDiscoveryArtifact,
     ResearchRequest,
@@ -83,6 +84,7 @@ __all__ = [
     "EvidenceVisibility",
     "Event",
     "EventSignal",
+    "MaintenanceRun",
     "NormalizationStatus",
     "PipelineArtifact",
     "PipelineCheckpoint",

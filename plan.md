@@ -2932,6 +2932,22 @@ Frontend 使用 Polling。
 
 第一版不使用 WebSocket。
 
+### Maintenance v1 冻结补充
+
+- `maintenance_runs` 是全局完整维护流程的审计实体；数据库 `active_slot` 保证任意时刻至多
+  一个 `pending/running` Run，不能依赖进程内锁防重入。
+- 固定执行顺序为 `window_analysis → reconciliation → event_backwrite`。Reconciliation 必须将
+  尚未完成的 Window artifact 依次推进到 Event Reconstruction、Claims、Timeline、Conflicts、
+  Base Analysis；任一层缺少 canonical artifact 时本轮失败。
+- Event Backwrite 对全部已完成 Onboarding 的用户按 Backend UUID 顺序逐个创建冻结 Snapshot，
+  但每个 Snapshot 的 Event 顺序仍只能来自 `UserVisibleEventSnapshotProvider`。Phase 5 Provider
+  未接入时稳定失败，不得回退到全库 Event。
+- Backwrite Cycle 为 `partial/failed` 时 Maintenance 不能标记 completed。
+- terminal Run 释放数据库 active slot；Scheduler 只允许在 terminal `finished_at + 1 hour`
+  到期后创建下一轮。失败同样延迟一小时，避免紧密失败循环。
+- `GET /maintenance/status` 是全局健康视图；具体 Run 轮询只允许创建该 Run 的用户访问。
+- Public DTO 不返回内部 `error_code`；失败细节只保存在数据库和受控 Worker 日志。
+
 ---
 
 ## 16.12 Health

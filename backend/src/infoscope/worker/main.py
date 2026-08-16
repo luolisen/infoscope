@@ -6,7 +6,8 @@ import logging
 import signal
 from datetime import UTC, datetime
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid5
+from uuid import UUID as UUIDType
 
 import httpx
 from sqlalchemy import select
@@ -32,7 +33,7 @@ from infoscope.integrations.telegram import (
 )
 from infoscope.integrations.trendradar import TrendRadarCollector, load_trendradar_config
 from infoscope.integrations.trendradar.client import NewsNowClient, RSSClient
-from infoscope.models import AskRequest
+from infoscope.models import AskRequest, MaintenanceRun, PipelineArtifact, User
 from infoscope.services.acquisition import AcquisitionRepository
 from infoscope.services.ask_comparison import AskComparisonRepository, AskComparisonRunner
 from infoscope.services.ask_event_reconciliation import (
@@ -48,6 +49,7 @@ from infoscope.services.backwrite import (
     BackwriteRepository,
     BackwriteRunner,
     UnavailableUserVisibleEventSnapshotProvider,
+    UserVisibleEventSnapshotProvider,
 )
 from infoscope.services.base_analysis import BaseAnalysisRepository, BaseAnalysisRunner
 from infoscope.services.claims_timeline import (
@@ -63,12 +65,19 @@ from infoscope.services.event_reconstruction import (
     EventReconstructionRunner,
     EventRepository,
 )
+from infoscope.services.maintenance import (
+    MAINTENANCE_PHASES,
+    MaintenanceError,
+    MaintenanceRepository,
+    MaintenanceRunner,
+)
 from infoscope.services.normalization import NormalizationResult, NormalizationRunner
 from infoscope.services.pipeline import PipelineRepository
 from infoscope.services.research import ResearchRepository, ResearchRunner
 from infoscope.services.window_analysis import WindowAnalysisRunner, WindowRunResult
 
 logger = logging.getLogger("infoscope.worker")
+MAINTENANCE_BACKWRITE_NAMESPACE = UUIDType("44a8817e-991a-4c8c-883a-520677418a2d")
 
 
 async def collect_trendradar_once() -> None:
@@ -462,14 +471,16 @@ async def run_ask_finalization_once(ask_id: UUID) -> None:
     )
 
 
-async def run_backwrite_snapshot_once(snapshot_file: Path) -> None:
+async def run_backwrite_spec_once(
+    spec: BackwriteSnapshotSpec,
+    *,
+    provider: UserVisibleEventSnapshotProvider,
+) -> None:
     settings = get_settings()
-    document = await asyncio.to_thread(snapshot_file.read_text, "utf-8")
-    spec = BackwriteSnapshotSpec.model_validate_json(document)
     async with session_factory() as database:
         cycle, _inserted = await BackwriteRepository(database).create_or_reuse_cycle(
             spec,
-            provider=UnavailableUserVisibleEventSnapshotProvider(),
+            provider=provider,
             max_attempts=settings.backwrite_max_attempts,
         )
     if cycle.item_count == 0:
@@ -521,6 +532,8 @@ async def run_backwrite_snapshot_once(snapshot_file: Path) -> None:
                     ),
                     max_attempts=settings.backwrite_max_attempts,
                 ).run_cycle(cycle.id)
+    if cycle.status != "completed":
+        raise MaintenanceError(cycle.error_code or "MAINTENANCE_BACKWRITE_FAILED")
     logger.info(
         "Backwrite cycle complete cycle_id=%s status=%s item_count=%d error_code=%s",
         cycle.id,
@@ -528,6 +541,130 @@ async def run_backwrite_snapshot_once(snapshot_file: Path) -> None:
         cycle.item_count,
         cycle.error_code,
     )
+
+
+async def run_backwrite_snapshot_once(snapshot_file: Path) -> None:
+    document = await asyncio.to_thread(snapshot_file.read_text, "utf-8")
+    spec = BackwriteSnapshotSpec.model_validate_json(document)
+    await run_backwrite_spec_once(
+        spec,
+        provider=UnavailableUserVisibleEventSnapshotProvider(),
+    )
+
+
+async def _derived_artifact(source_artifact_id: UUID, artifact_type: str) -> PipelineArtifact:
+    async with session_factory() as database:
+        artifact = (
+            await database.execute(
+                select(PipelineArtifact).where(
+                    PipelineArtifact.source_artifact_id == source_artifact_id,
+                    PipelineArtifact.artifact_type == artifact_type,
+                )
+            )
+        ).scalar_one_or_none()
+    if artifact is None:
+        raise MaintenanceError("MAINTENANCE_FACT_PIPELINE_INCOMPLETE")
+    return artifact
+
+
+async def reconcile_window_artifacts_once() -> None:
+    async with session_factory() as database:
+        windows = list(
+            (
+                await database.execute(
+                    select(PipelineArtifact)
+                    .where(PipelineArtifact.artifact_type == "window_analysis")
+                    .order_by(PipelineArtifact.created_at, PipelineArtifact.id)
+                )
+            ).scalars()
+        )
+    for window in windows:
+        try:
+            reconstruction = await _derived_artifact(window.id, "event_reconstruction")
+        except MaintenanceError:
+            await reconstruct_event_once(window.id)
+            reconstruction = await _derived_artifact(window.id, "event_reconstruction")
+        try:
+            claims = await _derived_artifact(reconstruction.id, "claim_extraction")
+        except MaintenanceError:
+            await extract_claims_once(reconstruction.id)
+            claims = await _derived_artifact(reconstruction.id, "claim_extraction")
+        try:
+            timeline = await _derived_artifact(claims.id, "timeline_reconstruction")
+        except MaintenanceError:
+            await reconstruct_timeline_once(claims.id)
+            timeline = await _derived_artifact(claims.id, "timeline_reconstruction")
+        try:
+            conflicts = await _derived_artifact(timeline.id, "conflict_analysis")
+        except MaintenanceError:
+            await analyze_conflicts_once(timeline.id)
+            conflicts = await _derived_artifact(timeline.id, "conflict_analysis")
+        try:
+            await _derived_artifact(conflicts.id, "base_analysis")
+        except MaintenanceError:
+            await analyze_base_once(conflicts.id)
+            await _derived_artifact(conflicts.id, "base_analysis")
+
+
+async def process_maintenance_queue_once(
+    *,
+    snapshot_provider: UserVisibleEventSnapshotProvider | None = None,
+) -> bool:
+    provider = snapshot_provider or UnavailableUserVisibleEventSnapshotProvider()
+    async with session_factory() as database:
+        repository = MaintenanceRepository(database)
+        await repository.enqueue_due()
+
+        async def window_analysis(_run: MaintenanceRun) -> None:
+            result = await analyze_windows_once()
+            if result.windows_failed:
+                raise MaintenanceError("MAINTENANCE_WINDOW_ANALYSIS_FAILED")
+
+        async def reconciliation(_run: MaintenanceRun) -> None:
+            await reconcile_window_artifacts_once()
+
+        async def event_backwrite(run: MaintenanceRun) -> None:
+            async with session_factory() as user_database:
+                user_ids = list(
+                    (
+                        await user_database.execute(
+                            select(User.id)
+                            .where(User.onboarding_completed.is_(True))
+                            .order_by(User.id)
+                        )
+                    ).scalars()
+                )
+            for user_id in user_ids:
+                await run_backwrite_spec_once(
+                    BackwriteSnapshotSpec(
+                        user_id=user_id,
+                        idempotency_key=uuid5(
+                            MAINTENANCE_BACKWRITE_NAMESPACE,
+                            f"{run.id}:{user_id}:event_backwrite.v1",
+                        ),
+                    ),
+                    provider=provider,
+                )
+
+        result = await MaintenanceRunner(
+            repository,
+            dict(
+                zip(
+                    MAINTENANCE_PHASES,
+                    (window_analysis, reconciliation, event_backwrite),
+                    strict=True,
+                )
+            ),
+        ).run_next()
+    if result is None:
+        return False
+    logger.info(
+        "maintenance run complete run_id=%s status=%s error_code=%s",
+        result.id,
+        result.status,
+        result.error_code,
+    )
+    return True
 
 
 async def process_ask_queue_once() -> bool:
@@ -585,6 +722,7 @@ async def run(
     ask_event_reconciliation: UUID | None = None,
     ask_finalization: UUID | None = None,
     process_ask_queue: bool = False,
+    process_maintenance_queue: bool = False,
     backwrite_snapshot_file: Path | None = None,
 ) -> None:
     settings = get_settings()
@@ -639,6 +777,8 @@ async def run(
                 await run_ask_finalization_once(ask_finalization)
             if process_ask_queue:
                 ask_processed = await process_ask_queue_once()
+            if process_maintenance_queue:
+                await process_maintenance_queue_once()
             if backwrite_snapshot_file is not None:
                 await run_backwrite_snapshot_once(backwrite_snapshot_file)
             logger.info("worker heartbeat")
@@ -809,6 +949,11 @@ def parse_args() -> argparse.Namespace:
         help="Continuously process persisted pending Ask requests",
     )
     parser.add_argument(
+        "--process-maintenance-queue",
+        action="store_true",
+        help="Continuously schedule and process persisted Maintenance runs",
+    )
+    parser.add_argument(
         "--backwrite-snapshot-file",
         type=Path,
         metavar="JSON_FILE",
@@ -847,6 +992,7 @@ def main() -> int:
                 ask_event_reconciliation=args.run_ask_event_reconciliation,
                 ask_finalization=args.run_ask_finalization,
                 process_ask_queue=args.process_ask_queue,
+                process_maintenance_queue=args.process_maintenance_queue,
                 backwrite_snapshot_file=args.backwrite_snapshot_file,
             )
         )

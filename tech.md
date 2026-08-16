@@ -1125,6 +1125,13 @@ maintenance
 health
 ```
 
+Maintenance v1 使用 `maintenance_runs.active_slot` 的数据库唯一约束实现全局防重入，Worker
+按 `window_analysis → reconciliation → event_backwrite` 推进状态。Scheduler 从 terminal
+`finished_at` 计算唯一的 `next_cycle_at = finished_at + 1 hour`；Frontend 不参与推算。每个
+Window artifact 必须形成完整的 Event Reconstruction → Claims → Timeline → Conflicts → Base
+Analysis 派生链，Backwrite 对所有已 Onboarding 用户调用可见性 Provider，任何缺失 artifact、
+Provider unavailable 或非 completed Backwrite Cycle 都使 Maintenance fail-closed。
+
 Onboarding 的 SCOPE、投资市场、FOCUS ID 与条件关系同样已经冻结，前后端不得自行创建另一套字段。
 
 Public API 只返回经过 Privacy Policy 处理的 DTO；数据库中的完整 provenance 不直接序列化给 Frontend。
