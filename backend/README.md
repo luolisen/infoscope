@@ -406,6 +406,15 @@ rebuilds the complete input and rejects changed or superseded sources. Empty sel
 deterministic artifact without a model call. `GET /api/v1/brief/latest` never falls back to an older
 Personalization source, and public titles come from immutable Brief Item snapshots.
 
+Save, Archive, and Search use the same historical Event access boundary as Event Detail. Save is an
+idempotent `(user_id, event_id)` relation and is reflected in NOW and Event Detail. Archive returns
+saved Events plus historically relevant Events that are absent from the page chain's anchored
+Personalization artifact. Search matches only current Event title/overview, Base Analysis summary,
+and Claim text within that anchored historical-access set. Archive and Search cursors bind the
+source Personalization artifact as `source_personalization_artifact_id`; Search additionally binds
+the normalized query hash. Neither path
+reads Raw, Evidence text, provenance, collector metadata, or model rationale.
+
 Checks:
 
 ```bash

@@ -2731,6 +2731,26 @@ Response：
 
 Search 只负责找到 Event，不替代 Ask Infoscope。
 
+### Save / Archive / Search v1 冻结补充
+
+- `event_saves` 使用 Backend UUID 主键、`user_id/event_id` 外键、`saved_at` 与
+  `UNIQUE(user_id,event_id)`；关系存在即 saved。PUT true 使用数据库冲突忽略，false 删除，重复请求
+  幂等。Save 只允许用户任一 completed Personalization artifact 中曾 relevant 的 Event。
+- Historical Event Summary 完全取用户在固定历史视图内对该 Event 最新一次 relevant
+  `PersonalizedEvent` 快照；`saved` 取当前 `event_saves`。不得混合当前 Event 与历史快照字段。
+- Archive 是 Historical accessible Event 中“当前已保存，或已不在锚点 Personalization artifact 的
+  relevant 集合”的并集；当前 NOW 且未保存的 Event 不进入 Archive。
+- Archive/Search 首页固定当前 latest completed Personalization artifact 为 source。历史视图只包含该
+  用户 source artifact 排序位置及以前的 completed artifacts；后续新 artifact 不进入同一分页链。
+- Cursor 内部绑定 `v/kind/source_personalization_artifact_id/display_time/event_id`；Search 额外绑定
+  规范化 q 的 SHA-256。跨接口、跨查询、无效 source 或结构错误分别稳定失败为
+  `ARCHIVE_CURSOR_INVALID` / `SEARCH_CURSOR_INVALID`。
+- Archive/Search 固定按 `snapshot_display_time DESC,event_id ASC` 使用 keyset pagination，limit
+  1–100；Frontend 不解析 Cursor、不二次排序。
+- Search 仅在 Historical accessible Events 的当前 Event title/overview、当前 Base Analysis summary
+  与当前 Claim text 中执行转义后的 case-insensitive literal substring matching；禁止 Raw、Signal、
+  provenance、内部 rationale、模型或 Research。
+
 ---
 
 ## 16.9 BRIEF Contract

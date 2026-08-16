@@ -7,6 +7,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from infoscope.api.routes.archive_search import router as archive_search_router
 from infoscope.api.routes.ask import router as ask_router
 from infoscope.api.routes.auth import router as auth_router
 from infoscope.api.routes.brief import router as brief_router
@@ -32,6 +33,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(auth_router, prefix="/api/v1")
+app.include_router(archive_search_router, prefix="/api/v1")
 app.include_router(brief_router, prefix="/api/v1")
 app.include_router(ask_router, prefix="/api/v1")
 app.include_router(events_router, prefix="/api/v1")

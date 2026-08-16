@@ -1051,6 +1051,14 @@ Brief 使用 `brief_runs`、`brief_artifacts`、`brief_items`。每个 Personali
 Personalized Event 和 Event，并持久化公开标题快照。`GET /api/v1/brief/latest` 只在当前最新
 Personalization artifact 已有 canonical Brief 时返回内容，否则返回合法空结果，绝不回退旧快照。
 
+Save/Archive/Search 使用 `event_saves` 的 `(user_id,event_id)` 数据库唯一关系。Archive/Search 首页
+捕获 latest completed Personalization artifact，Cursor 持续携带
+`source_personalization_artifact_id`；历史 Summary 从 source
+及更早 completed artifacts 中按 Event 取最新 relevant PersonalizedEvent。Archive 叠加当前 Save 关系
+与 source artifact 的当前 relevant 集合，Search 仅匹配 Historical accessible Event 的当前公开事实层
+文本。两者都按 snapshot display time 与 Event UUID 做 Backend keyset pagination，不访问 Evidence、
+Raw 或 provenance，也不调用模型。
+
 逻辑状态：
 
 ```text

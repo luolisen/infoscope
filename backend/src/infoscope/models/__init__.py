@@ -61,6 +61,7 @@ from infoscope.models.research import (
     ResearchStatus,
     ResearchTrigger,
 )
+from infoscope.models.saved import EventSave
 
 __all__ = [
     "Base",
@@ -93,6 +94,7 @@ __all__ = [
     "EvidenceVisibility",
     "Event",
     "EventSignal",
+    "EventSave",
     "MaintenanceRun",
     "PersonalizationArtifact",
     "PersonalizationRun",
