@@ -300,6 +300,18 @@ The Bridge reuses exactly one idempotent Research request, normalizes only that 
 successful Raw records into Signals, and stops at `pending / awaiting_reconciliation`. It does not
 run Event Reconciliation, generate the final answer, or expose a Public API.
 
+After the Bridge succeeds, reconcile only its researched Signals into the selected Events:
+
+```bash
+uv run --project backend python -m infoscope.worker \
+  --run-ask-event-reconciliation ASK_ID
+```
+
+This performs targeted exact deduplication, sends a strict current Event snapshot plus canonical
+Signals to the Analysis adapter, then locks and rebuilds the full input before commit. It only
+appends EventSignal relations, preserves Event state, and stops at `pending / finalizing`; it does
+not generate the final Ask answer or expose a Public API.
+
 Checks:
 
 ```bash

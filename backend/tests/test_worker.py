@@ -208,3 +208,20 @@ async def test_worker_runs_one_ask_research_bridge_and_exits() -> None:
 
     bridge.assert_awaited_once_with(ask_id)
     database_close.assert_awaited_once()
+
+
+async def test_worker_runs_one_ask_event_reconciliation_and_exits() -> None:
+    database_ping = AsyncMock()
+    database_close = AsyncMock()
+    reconcile = AsyncMock()
+    ask_id = uuid4()
+
+    with (
+        patch("infoscope.worker.main.ping_database", database_ping),
+        patch("infoscope.worker.main.close_database", database_close),
+        patch("infoscope.worker.main.run_ask_event_reconciliation_once", reconcile),
+    ):
+        await run(ask_event_reconciliation=ask_id)
+
+    reconcile.assert_awaited_once_with(ask_id)
+    database_close.assert_awaited_once()

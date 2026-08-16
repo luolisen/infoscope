@@ -11,6 +11,9 @@ from infoscope.models.acquisition import (
 )
 from infoscope.models.ask import (
     AskComparisonArtifact,
+    AskEventReconciliation,
+    AskEventReconciliationArtifact,
+    AskEventReconciliationRun,
     AskRequest,
     AskRequestEvent,
     AskResearchArtifact,
@@ -45,6 +48,9 @@ from infoscope.models.research import (
 __all__ = [
     "Base",
     "AskComparisonArtifact",
+    "AskEventReconciliation",
+    "AskEventReconciliationArtifact",
+    "AskEventReconciliationRun",
     "AskRequest",
     "AskRequestEvent",
     "AskResearchArtifact",

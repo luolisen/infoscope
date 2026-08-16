@@ -32,6 +32,10 @@ from infoscope.integrations.trendradar import TrendRadarCollector, load_trendrad
 from infoscope.integrations.trendradar.client import NewsNowClient, RSSClient
 from infoscope.services.acquisition import AcquisitionRepository
 from infoscope.services.ask_comparison import AskComparisonRepository, AskComparisonRunner
+from infoscope.services.ask_event_reconciliation import (
+    AskEventReconciliationRepository,
+    AskEventReconciliationRunner,
+)
 from infoscope.services.ask_research_bridge import (
     AskResearchBridgeRepository,
     AskResearchBridgeRunner,
@@ -411,6 +415,25 @@ async def run_ask_research_bridge_once(ask_id: UUID) -> None:
     )
 
 
+async def run_ask_event_reconciliation_once(ask_id: UUID) -> None:
+    settings = get_settings()
+    config = load_analysis_config(settings)
+    async with httpx.AsyncClient() as client:
+        async with session_factory() as database:
+            request = await AskEventReconciliationRunner(
+                repository=AskEventReconciliationRepository(database),
+                client=DeepSeekIntelligenceClient(client=client, config=config),
+                max_attempts=settings.ask_event_reconciliation_max_attempts,
+            ).run(ask_id)
+    logger.info(
+        "Ask Event Reconciliation complete request_id=%s status=%s stage=%s error_code=%s",
+        request.id,
+        request.status,
+        request.stage,
+        request.error_code,
+    )
+
+
 async def run(
     *,
     once: bool = False,
@@ -432,6 +455,7 @@ async def run(
     ask_comparison_request_file: Path | None = None,
     retry_ask_comparison: UUID | None = None,
     ask_research_bridge: UUID | None = None,
+    ask_event_reconciliation: UUID | None = None,
 ) -> None:
     settings = get_settings()
     stop = asyncio.Event()
@@ -478,6 +502,8 @@ async def run(
                 )
             if ask_research_bridge is not None:
                 await run_ask_research_bridge_once(ask_research_bridge)
+            if ask_event_reconciliation is not None:
+                await run_ask_event_reconciliation_once(ask_event_reconciliation)
             logger.info("worker heartbeat")
             if (
                 once
@@ -499,6 +525,7 @@ async def run(
                 or ask_comparison_request_file is not None
                 or retry_ask_comparison is not None
                 or ask_research_bridge is not None
+                or ask_event_reconciliation is not None
             ):
                 return
             try:
@@ -623,6 +650,12 @@ def parse_args() -> argparse.Namespace:
         metavar="ASK_ID",
         help="Run or retry the frozen Research Bridge for one Ask request",
     )
+    parser.add_argument(
+        "--run-ask-event-reconciliation",
+        type=UUID,
+        metavar="ASK_ID",
+        help="Run or retry Event Reconciliation for one researched Ask request",
+    )
     return parser.parse_args()
 
 
@@ -653,6 +686,7 @@ def main() -> int:
                 ask_comparison_request_file=args.ask_comparison_request_file,
                 retry_ask_comparison=args.retry_ask_comparison,
                 ask_research_bridge=args.run_ask_research_bridge,
+                ask_event_reconciliation=args.run_ask_event_reconciliation,
             )
         )
     return 0

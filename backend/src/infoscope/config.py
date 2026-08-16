@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     research_max_attempts: int = Field(default=3, gt=0, le=10)
     ask_comparison_max_attempts: int = Field(default=3, gt=0, le=10)
     ask_research_bridge_max_attempts: int = Field(default=3, gt=0, le=10)
+    ask_event_reconciliation_max_attempts: int = Field(default=3, gt=0, le=10)
 
     @property
     def resolved_trendradar_config_path(self) -> Path:
