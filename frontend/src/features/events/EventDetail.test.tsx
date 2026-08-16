@@ -17,7 +17,7 @@ afterEach(() => {
 
 function renderDetail() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(<QueryClientProvider client={queryClient}><EventDetail eventId="event-1" onBack={() => undefined} onToggleEventSelection={() => undefined} selectedEventIds={[]} /></QueryClientProvider>);
+  return render(<QueryClientProvider client={queryClient}><EventDetail eventId="event-1" onBack={() => undefined} onToggleEventSelection={() => undefined} selectedEvents={[]} /></QueryClientProvider>);
 }
 
 describe("EventDetail", () => {

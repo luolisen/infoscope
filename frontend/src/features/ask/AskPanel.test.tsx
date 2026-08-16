@@ -19,6 +19,22 @@ afterEach(() => {
 });
 
 describe("AskPanel", () => {
+  it("does not show progress before submission and locks the submitted Ask while polling", async () => {
+    vi.mocked(createAsk).mockResolvedValue({ ask_id: "ask-1", status: "pending" });
+    vi.mocked(fetchAsk).mockImplementation(() => new Promise(() => undefined));
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    render(<QueryClientProvider client={queryClient}><AskPanel onClearSelection={() => undefined} selectedEvents={[{ id: "event-1", title: "Frozen event title" }]} /></QueryClientProvider>);
+
+    expect(screen.queryByText(/researching the current event record/i)).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Question"), { target: { value: "What changed?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Ask Infoscope" }));
+
+    expect(await screen.findByText(/researching the current event record/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ask in progress" })).toBeDisabled();
+    expect(screen.getByText(/Frozen event title/)).toBeInTheDocument();
+  });
+
   it("polls the accepted Ask and refreshes NOW and updated event details on completion", async () => {
     vi.mocked(createAsk).mockResolvedValue({ ask_id: "ask-1", status: "pending" });
     vi.mocked(fetchAsk).mockResolvedValue({
@@ -30,11 +46,12 @@ describe("AskPanel", () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const invalidate = vi.spyOn(queryClient, "invalidateQueries");
 
-    render(<QueryClientProvider client={queryClient}><AskPanel onClearSelection={() => undefined} selectedEventIds={["event-1"]} /></QueryClientProvider>);
+    render(<QueryClientProvider client={queryClient}><AskPanel onClearSelection={() => undefined} selectedEvents={[{ id: "event-1", title: "Selected event" }]} /></QueryClientProvider>);
     fireEvent.change(screen.getByLabelText("Question"), { target: { value: "What changed?" } });
     fireEvent.click(screen.getByRole("button", { name: "Ask Infoscope" }));
 
     expect(await screen.findByText("Current answer")).toBeInTheDocument();
+    expect(screen.getByText(/Selected event/)).toBeInTheDocument();
     expect(screen.getByText(/事件信息已补充/)).toBeInTheDocument();
     await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ["now"] }));
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["events", "event-1"] });

@@ -12,6 +12,8 @@ import { NowShell } from "./features/now/NowShell";
 const primaryNavigation = ["NOW", "BRIEF", "ARCHIVE"];
 const settingsNavigation = ["SCOPE", "SETTINGS"];
 
+type SelectedEvent = { id: string; title: string };
+
 export function App() {
   const sessionQuery = useQuery({ queryKey: sessionQueryKey, queryFn: fetchSession });
 
@@ -37,13 +39,13 @@ export function App() {
 function ReadyApp() {
   const healthQuery = useQuery({ queryKey: ["health"], queryFn: fetchHealth });
   const [locationHash, setLocationHash] = useState(() => window.location.hash);
-  const [selectedEventIds, setSelectedEventIds] = useState<string[]>([]);
+  const [selectedEvents, setSelectedEvents] = useState<SelectedEvent[]>([]);
   const eventId = locationHash.match(/^#event\/([^/]+)$/)?.[1];
 
-  const toggleEventSelection = (eventIdToToggle: string) => {
-    setSelectedEventIds((ids) => {
-      if (ids.includes(eventIdToToggle)) return ids.filter((selectedId) => selectedId !== eventIdToToggle);
-      return ids.length === 8 ? ids : [...ids, eventIdToToggle];
+  const toggleEventSelection = (eventToToggle: SelectedEvent) => {
+    setSelectedEvents((events) => {
+      if (events.some((event) => event.id === eventToToggle.id)) return events.filter((event) => event.id !== eventToToggle.id);
+      return events.length === 8 ? events : [...events, eventToToggle];
     });
   };
 
@@ -84,8 +86,8 @@ function ReadyApp() {
       </aside>
 
       <div className="content-column">
-        {eventId === undefined ? <NowShell onToggleEventSelection={toggleEventSelection} selectedEventIds={selectedEventIds} /> : <EventDetail eventId={eventId} onBack={() => { window.location.hash = ""; }} onToggleEventSelection={toggleEventSelection} selectedEventIds={selectedEventIds} />}
-        <AskPanel onClearSelection={() => setSelectedEventIds([])} selectedEventIds={selectedEventIds} />
+        {eventId === undefined ? <NowShell onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} /> : <EventDetail eventId={eventId} onBack={() => { window.location.hash = ""; }} onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} />}
+        <AskPanel onClearSelection={() => setSelectedEvents([])} selectedEvents={selectedEvents} />
       </div>
     </div>
   );
