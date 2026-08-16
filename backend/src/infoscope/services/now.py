@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from infoscope.db import get_session
 from infoscope.errors import ApiError
-from infoscope.models import PersonalizationArtifact, PersonalizedEvent, User
+from infoscope.models import EventSave, PersonalizationArtifact, PersonalizedEvent, User
 from infoscope.schemas.now import EventSummary, NowResponse, WindowStats
 from infoscope.services.personalization import PersonalizationRepository
 
@@ -70,6 +70,21 @@ class NowService:
             ).scalars()
         )
         page, has_more = rows[:limit], len(rows) > limit
+        event_ids = [item.event_id for item in page]
+        saved_ids = (
+            set(
+                (
+                    await self.database.execute(
+                        select(EventSave.event_id).where(
+                            EventSave.user_id == user.id,
+                            EventSave.event_id.in_(event_ids),
+                        )
+                    )
+                ).scalars()
+            )
+            if event_ids
+            else set()
+        )
         items = [
             EventSummary(
                 id=item.event_id,
@@ -82,7 +97,7 @@ class NowService:
                 new_claim_count=item.snapshot_new_claim_count,
                 conflict_count=item.snapshot_conflict_count,
                 topics=item.snapshot_topics,
-                saved=False,
+                saved=item.event_id in saved_ids,
             )
             for item in page
         ]

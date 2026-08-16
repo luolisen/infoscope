@@ -19,6 +19,7 @@ from infoscope.models import (
     ConflictClaim,
     ConflictSignal,
     Event,
+    EventSave,
     EventSignal,
     PersonalizationArtifact,
     PersonalizationRun,
@@ -90,6 +91,14 @@ class EventDetailService:
         ).scalar_one_or_none()
         if personalized is None or personalized.why_it_matters is None:
             raise self._not_found()
+        saved = bool(
+            await self.database.scalar(
+                select(EventSave.id).where(
+                    EventSave.user_id == user.id,
+                    EventSave.event_id == event_id,
+                )
+            )
+        )
 
         claims = list(
             (
@@ -164,6 +173,7 @@ class EventDetailService:
             event=event,
             analysis=analysis,
             why_it_matters=personalized.why_it_matters,
+            saved=saved,
             claims=claims,
             timeline=timeline,
             conflicts=conflicts,
@@ -185,6 +195,7 @@ class EventDetailService:
         event: Event,
         analysis: BaseAnalysis,
         why_it_matters: str | None = None,
+        saved: bool = False,
         claims: list[Claim],
         timeline: list[TimelineEntry],
         conflicts: list[Conflict],
@@ -232,7 +243,7 @@ class EventDetailService:
                 base_analysis=base_analysis,
                 why_it_matters=why_it_matters or analysis.summary,
                 topics=list(analysis.topics),
-                saved=False,
+                saved=saved,
                 claims=[
                     EventDetailClaim(
                         id=item.id,
