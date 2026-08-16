@@ -18,6 +18,18 @@ alive() {
   [ -f "$1" ] && kill -0 "$(sed -n '1p' "$1")" 2>/dev/null
 }
 
+process_matches() {
+  pidfile="$1"
+  expected="$2"
+  alive "$pidfile" || return 1
+  pid=$(sed -n '1p' "$pidfile")
+  command=$(ps -p "$pid" -o command= 2>/dev/null || true)
+  case "$command" in
+    *"$expected"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 preflight() {
   require docker
   require uv
@@ -72,13 +84,20 @@ start() {
     fi
     sleep 1
   done
+  if ! process_matches "$STATE/worker.pid" "python -m infoscope.worker"; then
+    printf 'Worker failed to stay running. See %s/worker.log\n' "$STATE" >&2
+    stop
+    exit 1
+  fi
   printf 'Infoscope is ready at http://127.0.0.1:%s\n' "$API_PORT"
 }
 
 stop() {
   for name in worker api; do
     pidfile="$STATE/$name.pid"
-    if alive "$pidfile"; then
+    expected="uvicorn infoscope.api.app:app"
+    [ "$name" = worker ] && expected="python -m infoscope.worker"
+    if process_matches "$pidfile" "$expected"; then
       kill "$(sed -n '1p' "$pidfile")"
     fi
     rm -f "$pidfile"
