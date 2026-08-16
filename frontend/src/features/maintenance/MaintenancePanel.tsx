@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
   createMaintenanceRun,
@@ -10,7 +10,9 @@ import {
 } from "../../api/maintenance";
 
 export function MaintenancePanel() {
+  const queryClient = useQueryClient();
   const [runId, setRunId] = useState<string | null>(null);
+  const refreshedTerminalRunId = useRef<string | null>(null);
   const status = useQuery({
     queryKey: maintenanceStatusQueryKey,
     queryFn: fetchMaintenanceStatus,
@@ -27,9 +29,17 @@ export function MaintenancePanel() {
     refetchInterval: (query) => query.state.data?.status === "pending" || query.state.data?.status === "running" ? 1_500 : false,
   });
 
-  const runIsTerminal = run.data?.status === "completed" || run.data?.status === "failed";
+  const terminalRun = run.data?.status === "completed" || run.data?.status === "failed" ? run.data : undefined;
+  const runIsTerminal = terminalRun !== undefined;
   const runIsActive = runId !== null && !runIsTerminal;
   const canStart = status.data !== undefined && !create.isPending && !runIsActive && status.data.status !== "running";
+
+  useEffect(() => {
+    if (terminalRun === undefined || terminalRun.run_id === refreshedTerminalRunId.current) return;
+
+    void queryClient.invalidateQueries({ queryKey: maintenanceStatusQueryKey });
+    refreshedTerminalRunId.current = terminalRun.run_id;
+  }, [queryClient, terminalRun]);
 
   return (
     <main className="main-content maintenance-panel" aria-labelledby="maintenance-heading">

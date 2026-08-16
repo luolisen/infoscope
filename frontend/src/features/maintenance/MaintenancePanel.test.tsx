@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../api/maintenance", () => ({
@@ -11,16 +11,17 @@ vi.mock("../../api/maintenance", () => ({
 }));
 
 import { createMaintenanceRun, fetchMaintenanceRun, fetchMaintenanceStatus } from "../../api/maintenance";
+import type { components } from "../../api/schema";
 import { MaintenancePanel } from "./MaintenancePanel";
 
 afterEach(() => {
   cleanup();
-  vi.clearAllMocks();
+  vi.resetAllMocks();
 });
 
 function renderPanel() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(<QueryClientProvider client={queryClient}><MaintenancePanel /></QueryClientProvider>);
+  return { queryClient, view: render(<QueryClientProvider client={queryClient}><MaintenancePanel /></QueryClientProvider>) };
 }
 
 describe("MaintenancePanel", () => {
@@ -37,7 +38,7 @@ describe("MaintenancePanel", () => {
 
   it("shows loading and error states for the maintenance status", async () => {
     vi.mocked(fetchMaintenanceStatus).mockImplementation(() => new Promise(() => undefined));
-    const view = renderPanel();
+    const { view } = renderPanel();
     expect(screen.getByText("Loading maintenance status…")).toBeInTheDocument();
 
     view.unmount();
@@ -47,7 +48,9 @@ describe("MaintenancePanel", () => {
   });
 
   it("starts a run and polls its generated run identifier", async () => {
-    vi.mocked(fetchMaintenanceStatus).mockResolvedValue({ status: "idle", phase: null, cycle_started_at: null, cycle_finished_at: null, next_cycle_at: null });
+    vi.mocked(fetchMaintenanceStatus)
+      .mockResolvedValueOnce({ status: "idle", phase: null, cycle_started_at: null, cycle_finished_at: null, next_cycle_at: null })
+      .mockResolvedValueOnce({ status: "failed", phase: null, cycle_started_at: "2026-08-16T08:00:00Z", cycle_finished_at: "2026-08-16T08:10:00Z", next_cycle_at: "2026-08-16T09:10:00Z" });
     vi.mocked(createMaintenanceRun).mockResolvedValue({ run_id: "run-1", status: "pending" });
     vi.mocked(fetchMaintenanceRun).mockResolvedValue({ run_id: "run-1", status: "running", phase: "event_backwrite", started_at: "2026-08-16T08:00:00Z", finished_at: null });
 
@@ -58,5 +61,20 @@ describe("MaintenancePanel", () => {
     expect(await screen.findByText("Run running / event_backwrite.")).toBeInTheDocument();
     expect(fetchMaintenanceRun).toHaveBeenCalledWith("run-1");
     expect(screen.getByRole("button", { name: "Maintenance in progress" })).toBeDisabled();
+  });
+
+  it("refreshes the backend status after a terminal run", async () => {
+    const currentStatus: components["schemas"]["MaintenanceStatusResponse"] = { status: "idle", phase: null, cycle_started_at: null, cycle_finished_at: null, next_cycle_at: null };
+    vi.mocked(fetchMaintenanceStatus).mockResolvedValue(currentStatus);
+    vi.mocked(createMaintenanceRun).mockResolvedValue({ run_id: "run-1", status: "pending" });
+    vi.mocked(fetchMaintenanceRun).mockResolvedValue({ run_id: "run-1", status: "completed", phase: null, started_at: "2026-08-16T08:00:00Z", finished_at: "2026-08-16T08:10:00Z" });
+    const { queryClient } = renderPanel();
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+
+    await screen.findByText("No maintenance cycle is active.");
+    fireEvent.click(screen.getByRole("button", { name: "Start maintenance" }));
+
+    await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ["maintenance", "status"] }));
+    expect(fetchMaintenanceStatus).toHaveBeenCalledTimes(2);
   });
 });

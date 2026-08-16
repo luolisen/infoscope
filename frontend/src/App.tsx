@@ -73,7 +73,7 @@ function ReadyApp() {
           <ul className="navigation-list">
             {primaryNavigation.map((item) => (
               <li key={item}>
-                <a aria-current={item === "NOW" ? "page" : undefined} href={`#${item.toLowerCase()}`}>
+                <a aria-current={item === "NOW" && !isSettings ? "page" : undefined} href={`#${item.toLowerCase()}`}>
                   {item}
                 </a>
               </li>

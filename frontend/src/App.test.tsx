@@ -8,15 +8,24 @@ vi.mock("./api/session", () => ({
   sessionQueryKey: ["session"],
 }));
 vi.mock("./api/now", () => ({ fetchNow: vi.fn(), nowQueryKey: ["now"] }));
+vi.mock("./api/maintenance", () => ({
+  createMaintenanceRun: vi.fn(),
+  fetchMaintenanceRun: vi.fn(),
+  fetchMaintenanceStatus: vi.fn(),
+  maintenanceRunQueryKey: (runId: string) => ["maintenance", "runs", runId],
+  maintenanceStatusQueryKey: ["maintenance", "status"],
+}));
 
 import { App } from "./App";
 import { fetchHealth } from "./api/health";
 import { fetchSession } from "./api/session";
 import { fetchNow } from "./api/now";
+import { fetchMaintenanceStatus } from "./api/maintenance";
 
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  window.location.hash = "";
 });
 
 function renderApp() {
@@ -50,5 +59,18 @@ describe("App", () => {
     expect(await screen.findByRole("heading", { name: /what matters now/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "NOW" })).toHaveAttribute("aria-current", "page");
     expect(await screen.findByText(/nothing requires your attention/i)).toBeInTheDocument();
+  });
+
+  it("marks only Settings as the current navigation page on the maintenance route", async () => {
+    window.location.hash = "#settings";
+    vi.mocked(fetchSession).mockResolvedValue({ state: "ready", user: { username: "lingjiu" } });
+    vi.mocked(fetchHealth).mockResolvedValue({ status: "ok", api: "ok", database: "ok", worker: "ok" });
+    vi.mocked(fetchMaintenanceStatus).mockResolvedValue({ status: "idle", phase: null, cycle_started_at: null, cycle_finished_at: null, next_cycle_at: null });
+
+    renderApp();
+
+    expect(await screen.findByRole("heading", { name: /keep the record current/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "SETTINGS" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "NOW" })).not.toHaveAttribute("aria-current");
   });
 });
