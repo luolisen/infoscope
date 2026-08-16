@@ -14,6 +14,7 @@ from infoscope.analysis.ask_schemas import (
 )
 from infoscope.analysis.backwrite_schemas import (
     BackwriteEventUpdate,
+    BackwriteReconciliationArtifactPayload,
     BackwriteReconciliationInput,
     BackwriteReconciliationPayload,
     BackwriteSnapshotPayload,
@@ -25,12 +26,19 @@ from infoscope.models import (
     BackwriteCycle,
     BackwriteItem,
     BackwriteReconciliationRun,
+    BaseAnalysis,
+    ClaimSignal,
+    ConflictClaim,
+    ConflictSignal,
     EventSignal,
+    TimelineClaim,
 )
 from infoscope.services.backwrite import (
+    BackwriteError,
     BackwriteRepository,
     BackwriteRunner,
     PreparedBackwriteItem,
+    UnavailableUserVisibleEventSnapshotProvider,
     frozen_queue_indices,
 )
 
@@ -83,11 +91,22 @@ def test_snapshot_hash_preserves_backend_order_and_rejects_duplicates() -> None:
     reverse = BackwriteSnapshotPayload(user_id=user_id, ordered_event_ids=list(reversed(event_ids)))
     assert backwrite_snapshot_hash(forward) != backwrite_snapshot_hash(reverse)
     with pytest.raises(ValidationError):
+        BackwriteSnapshotPayload(user_id=user_id, ordered_event_ids=[event_ids[0], event_ids[0]])
+    with pytest.raises(ValidationError):
         BackwriteSnapshotSpec(
             user_id=user_id,
             idempotency_key=uuid4(),
-            ordered_event_ids=[event_ids[0], event_ids[0]],
+            ordered_event_ids=event_ids,
         )
+
+
+@pytest.mark.asyncio
+async def test_phase_four_visibility_provider_fails_closed() -> None:
+    provider = UnavailableUserVisibleEventSnapshotProvider()
+    with pytest.raises(BackwriteError, match="BACKWRITE_VISIBILITY_PROVIDER_UNAVAILABLE"):
+        await provider.ordered_event_ids(uuid4())
+    with pytest.raises(BackwriteError, match="BACKWRITE_VISIBILITY_PROVIDER_UNAVAILABLE"):
+        await provider.is_visible(uuid4(), uuid4())
 
 
 def test_reconciliation_input_hash_covers_event_facts_and_signal_order() -> None:
@@ -176,6 +195,15 @@ def test_output_requires_complete_signal_coverage() -> None:
         }
     )
     BackwriteRepository.validate_output(update, value)
+    with pytest.raises(ValidationError, match="complete downstream refresh"):
+        BackwriteReconciliationArtifactPayload(
+            item_id=value.item_id,
+            event_id=value.event_id,
+            research_request_id=uuid4(),
+            output=update,
+            newly_attached_signal_ids=[signal.canonical_signal_id],
+            downstream_refresh=None,
+        )
 
 
 class _NoModelClient:
@@ -330,3 +358,32 @@ def test_event_signal_requires_exactly_one_auditable_source() -> None:
     assert "attached_by_ask_reconciliation_run_id" in expression
     assert "attached_by_backwrite_reconciliation_run_id" in expression
     assert expression.endswith("= 1")
+
+
+@pytest.mark.parametrize(
+    ("model", "constraint_name"),
+    [
+        (ClaimSignal, "ck_claim_signals_exactly_one_source"),
+        (TimelineClaim, "ck_timeline_claims_exactly_one_source"),
+        (ConflictClaim, "ck_conflict_claims_exactly_one_source"),
+        (ConflictSignal, "ck_conflict_signals_exactly_one_source"),
+    ],
+)
+def test_intelligence_relations_accept_exactly_one_auditable_source(
+    model, constraint_name
+) -> None:
+    check = next(item for item in model.__table__.constraints if item.name == constraint_name)
+    expression = str(check.sqltext)
+    assert "attached_by_pipeline_run_id" in expression
+    assert "attached_by_backwrite_reconciliation_run_id" in expression
+
+
+def test_base_analysis_accepts_exactly_one_source() -> None:
+    check = next(
+        item
+        for item in BaseAnalysis.__table__.constraints
+        if item.name == "ck_base_analyses_exactly_one_source"
+    )
+    expression = str(check.sqltext)
+    assert "source_artifact_id" in expression
+    assert "source_backwrite_reconciliation_run_id" in expression

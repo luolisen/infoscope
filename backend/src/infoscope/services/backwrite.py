@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Protocol
-from uuid import UUID, uuid5
+from uuid import UUID, uuid4, uuid5
 
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
@@ -16,6 +16,7 @@ from infoscope.analysis.ask_schemas import (
     AskReconciliationSignal,
 )
 from infoscope.analysis.backwrite_schemas import (
+    BackwriteDownstreamRefresh,
     BackwriteReconciliationArtifactPayload,
     BackwriteReconciliationInput,
     BackwriteReconciliationPayload,
@@ -28,6 +29,20 @@ from infoscope.analysis.backwrite_schemas import (
     backwrite_snapshot_hash,
 )
 from infoscope.analysis.client import AnalysisError
+from infoscope.analysis.intelligence_schemas import (
+    BaseAnalysisResponse,
+    ClaimExtractionResponse,
+    ConflictAnalysisResponse,
+    EventBaseAnalysisInput,
+    EventClaimInput,
+    EventConflictInput,
+    EventTimelineInput,
+    ExistingBaseAnalysisCandidate,
+    ExistingClaimCandidate,
+    ExistingConflictCandidate,
+    ExistingTimelineCandidate,
+    TimelineReconstructionResponse,
+)
 from infoscope.integrations.research.schemas import ResearchRequestSpec
 from infoscope.models import (
     BackwriteCycle,
@@ -57,6 +72,14 @@ from infoscope.models import (
     User,
 )
 from infoscope.services.acquisition import AcquisitionRepository
+from infoscope.services.base_analysis import BaseAnalysisRepository, BaseAnalysisRunner
+from infoscope.services.claims_timeline import (
+    ClaimExtractionRunner,
+    ConflictAnalysisRunner,
+    IntelligenceError,
+    IntelligenceRepository,
+    TimelineReconstructionRunner,
+)
 from infoscope.services.normalization import DeterministicNormalizer, NormalizationError
 from infoscope.services.research import ResearchError, ResearchRepository, ResearchRunner
 
@@ -78,6 +101,41 @@ class BackwriteClient(Protocol):
     async def reconcile_backwrite_event(
         self, value: BackwriteReconciliationInput
     ) -> BackwriteReconciliationResponse: ...
+
+    async def extract_claims(
+        self, *, events: list[EventClaimInput], candidates: list[ExistingClaimCandidate]
+    ) -> ClaimExtractionResponse: ...
+
+    async def reconstruct_timeline(
+        self, *, events: list[EventTimelineInput], candidates: list[ExistingTimelineCandidate]
+    ) -> TimelineReconstructionResponse: ...
+
+    async def analyze_conflicts(
+        self, *, events: list[EventConflictInput], candidates: list[ExistingConflictCandidate]
+    ) -> ConflictAnalysisResponse: ...
+
+    async def analyze_base(
+        self,
+        *,
+        events: list[EventBaseAnalysisInput],
+        candidates: list[ExistingBaseAnalysisCandidate],
+    ) -> BaseAnalysisResponse: ...
+
+
+class UserVisibleEventSnapshotProvider(Protocol):
+    async def ordered_event_ids(self, user_id: UUID) -> list[UUID]: ...
+
+    async def is_visible(self, user_id: UUID, event_id: UUID) -> bool: ...
+
+
+class UnavailableUserVisibleEventSnapshotProvider:
+    async def ordered_event_ids(self, user_id: UUID) -> list[UUID]:
+        _ = user_id
+        raise BackwriteError("BACKWRITE_VISIBILITY_PROVIDER_UNAVAILABLE")
+
+    async def is_visible(self, user_id: UUID, event_id: UUID) -> bool:
+        _ = (user_id, event_id)
+        raise BackwriteError("BACKWRITE_VISIBILITY_PROVIDER_UNAVAILABLE")
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,27 +168,34 @@ class BackwriteRepository:
         self,
         spec: BackwriteSnapshotSpec,
         *,
+        provider: UserVisibleEventSnapshotProvider,
         max_attempts: int,
     ) -> tuple[BackwriteCycle, bool]:
         if max_attempts <= 0:
             raise ValueError("max_attempts must be positive")
-        snapshot = BackwriteSnapshotPayload(
-            user_id=spec.user_id,
-            ordered_event_ids=spec.ordered_event_ids,
-        )
-        input_hash = backwrite_snapshot_hash(snapshot)
         user = await self.database.get(User, spec.user_id)
         if user is None:
             raise BackwriteError("BACKWRITE_USER_NOT_FOUND")
-        if spec.ordered_event_ids:
+        ordered_event_ids = await provider.ordered_event_ids(spec.user_id)
+        if len(ordered_event_ids) != len(set(ordered_event_ids)):
+            raise BackwriteError("BACKWRITE_VISIBILITY_SNAPSHOT_INVALID")
+        for event_id in ordered_event_ids:
+            if not await provider.is_visible(spec.user_id, event_id):
+                raise BackwriteError("BACKWRITE_EVENT_NOT_VISIBLE")
+        snapshot = BackwriteSnapshotPayload(
+            user_id=spec.user_id,
+            ordered_event_ids=ordered_event_ids,
+        )
+        input_hash = backwrite_snapshot_hash(snapshot)
+        if ordered_event_ids:
             event_ids = set(
                 (
                     await self.database.execute(
-                        select(Event.id).where(Event.id.in_(spec.ordered_event_ids))
+                        select(Event.id).where(Event.id.in_(ordered_event_ids))
                     )
                 ).scalars()
             )
-            if event_ids != set(spec.ordered_event_ids):
+            if event_ids != set(ordered_event_ids):
                 raise BackwriteError("BACKWRITE_EVENT_NOT_FOUND")
         cycle_id = UUID(int=0)
         result = await self.database.execute(
@@ -140,10 +205,10 @@ class BackwriteRepository:
                 idempotency_key=spec.idempotency_key,
                 input_hash=input_hash,
                 schema_version=snapshot.schema_version,
-                status="completed" if not spec.ordered_event_ids else "pending",
+                status="completed" if not ordered_event_ids else "pending",
                 snapshot_payload=snapshot.model_dump(mode="json"),
-                item_count=len(spec.ordered_event_ids),
-                finished_at=datetime.now(UTC) if not spec.ordered_event_ids else None,
+                item_count=len(ordered_event_ids),
+                finished_at=datetime.now(UTC) if not ordered_event_ids else None,
             )
             .on_conflict_do_nothing(index_elements=[BackwriteCycle.idempotency_key])
             .returning(BackwriteCycle.id)
@@ -152,7 +217,7 @@ class BackwriteRepository:
         inserted = inserted_id is not None
         if inserted:
             cycle_id = inserted_id
-            queue = frozen_queue_indices(len(spec.ordered_event_ids))
+            queue = frozen_queue_indices(len(ordered_event_ids))
             queue_position = {
                 snapshot_position: index for index, snapshot_position in enumerate(queue)
             }
@@ -165,7 +230,7 @@ class BackwriteRepository:
                         queue_position=queue_position[snapshot_position],
                         max_attempts=max_attempts,
                     )
-                    for snapshot_position, event_id in enumerate(spec.ordered_event_ids)
+                    for snapshot_position, event_id in enumerate(ordered_event_ids)
                 ]
             )
         cycle = (
@@ -368,6 +433,7 @@ class BackwriteRepository:
         *,
         original_input: BackwriteReconciliationInput,
         response: BackwriteReconciliationResponse,
+        client: BackwriteClient,
     ) -> BackwriteItem:
         return await self._persist(
             prepared,
@@ -375,6 +441,7 @@ class BackwriteRepository:
             output=response.payload,
             response=response,
             artifact_kind="model",
+            client=client,
         )
 
     async def _persist(
@@ -385,6 +452,7 @@ class BackwriteRepository:
         output: BackwriteReconciliationPayload,
         response: BackwriteReconciliationResponse | None,
         artifact_kind: str,
+        client: BackwriteClient | None = None,
     ) -> BackwriteItem:
         await self.database.rollback()
         item = (
@@ -410,6 +478,7 @@ class BackwriteRepository:
             raise BackwriteError("BACKWRITE_INPUT_CHANGED")
         self.validate_output(output, current)
         newly_attached: list[UUID] = []
+        downstream_refresh: BackwriteDownstreamRefresh | None = None
         if output.event_update is not None:
             event = await self.database.get(Event, item.event_id)
             if event is None:
@@ -448,6 +517,14 @@ class BackwriteRepository:
                         index_elements=[EventSignal.event_id, EventSignal.signal_id]
                     )
                 )
+            if client is None:
+                raise BackwriteError("BACKWRITE_DOWNSTREAM_CLIENT_MISSING")
+            await self.database.flush()
+            downstream_refresh = await self._refresh_downstream(
+                client=client,
+                event_id=event.id,
+                run_id=run.id,
+            )
         if item.research_request_id is None or item.source_artifact_id is None:
             raise BackwriteError("BACKWRITE_RESEARCH_ARTIFACT_MISSING")
         payload = BackwriteReconciliationArtifactPayload(
@@ -456,6 +533,7 @@ class BackwriteRepository:
             research_request_id=item.research_request_id,
             output=output,
             newly_attached_signal_ids=newly_attached,
+            downstream_refresh=downstream_refresh,
         )
         self.database.add(
             BackwriteReconciliationArtifact(
@@ -527,6 +605,306 @@ class BackwriteRepository:
         await self.database.flush()
         await self._finalize_cycle(cycle)
         await self.database.commit()
+
+    async def _refresh_downstream(
+        self,
+        *,
+        client: BackwriteClient,
+        event_id: UUID,
+        run_id: UUID,
+    ) -> BackwriteDownstreamRefresh:
+        intelligence = IntelligenceRepository(self.database)
+
+        claim_events, claim_candidates = await intelligence.claim_inputs({event_id})
+        claim_response = await client.extract_claims(
+            events=claim_events,
+            candidates=claim_candidates,
+        )
+        ClaimExtractionRunner._validate(
+            claim_response.payload,
+            claim_events,
+            claim_candidates,
+        )
+        await self._persist_backwrite_claims(
+            response=claim_response,
+            candidate_ids={item.claim_id for item in claim_candidates},
+            run_id=run_id,
+        )
+        await self.database.flush()
+
+        timeline_events, timeline_candidates = await intelligence.timeline_inputs({event_id})
+        timeline_response = await client.reconstruct_timeline(
+            events=timeline_events,
+            candidates=timeline_candidates,
+        )
+        TimelineReconstructionRunner._validate(
+            timeline_response.payload,
+            timeline_events,
+            timeline_candidates,
+        )
+        await self._persist_backwrite_timeline(
+            response=timeline_response,
+            candidate_ids={item.timeline_entry_id for item in timeline_candidates},
+            run_id=run_id,
+        )
+        await self.database.flush()
+
+        conflict_events, conflict_candidates = await intelligence.conflict_inputs({event_id})
+        conflict_response = await client.analyze_conflicts(
+            events=conflict_events,
+            candidates=conflict_candidates,
+        )
+        ConflictAnalysisRunner._validate(
+            conflict_response.payload,
+            conflict_events,
+            conflict_candidates,
+        )
+        await self._persist_backwrite_conflicts(
+            response=conflict_response,
+            candidates={item.conflict_id: item for item in conflict_candidates},
+            run_id=run_id,
+        )
+        await self.database.flush()
+
+        base_repository = BaseAnalysisRepository(self.database)
+        base_events, base_candidates = await base_repository.inputs({event_id})
+        base_response = await client.analyze_base(
+            events=base_events,
+            candidates=base_candidates,
+        )
+        BaseAnalysisRunner._validate(
+            base_response.payload,
+            base_events,
+            base_candidates,
+        )
+        await self._persist_backwrite_base_analysis(
+            response=base_response,
+            candidates={item.base_analysis_id: item for item in base_candidates},
+            run_id=run_id,
+        )
+        await self.database.flush()
+        return BackwriteDownstreamRefresh(
+            claims=claim_response,
+            timeline=timeline_response,
+            conflicts=conflict_response,
+            base_analysis=base_response,
+        )
+
+    async def _persist_backwrite_claims(
+        self,
+        *,
+        response: ClaimExtractionResponse,
+        candidate_ids: set[UUID],
+        run_id: UUID,
+    ) -> None:
+        for decision in response.payload.new_claims:
+            claim = Claim(
+                id=uuid4(),
+                event_id=decision.event_id,
+                text=decision.text,
+                state="unresolved",
+            )
+            self.database.add(claim)
+            await self.database.flush()
+            await self._attach_backwrite_relations(
+                ClaimSignal,
+                "claim_id",
+                claim.id,
+                "signal_id",
+                decision.evidence_signal_ids,
+                run_id,
+                [ClaimSignal.claim_id, ClaimSignal.signal_id],
+            )
+        for decision in response.payload.existing_claim_updates:
+            if decision.existing_claim_id not in candidate_ids:
+                raise IntelligenceError("CLAIM_OUTSIDE_CANDIDATES")
+            claim = await self.database.get(Claim, decision.existing_claim_id)
+            if claim is None or claim.event_id != decision.event_id:
+                raise IntelligenceError("CLAIM_EVENT_MISMATCH")
+            claim.text = decision.text
+            await self._attach_backwrite_relations(
+                ClaimSignal,
+                "claim_id",
+                claim.id,
+                "signal_id",
+                decision.evidence_signal_ids,
+                run_id,
+                [ClaimSignal.claim_id, ClaimSignal.signal_id],
+            )
+
+    async def _persist_backwrite_timeline(
+        self,
+        *,
+        response: TimelineReconstructionResponse,
+        candidate_ids: set[UUID],
+        run_id: UUID,
+    ) -> None:
+        for decision in response.payload.new_entries:
+            entry = TimelineEntry(
+                id=uuid4(),
+                event_id=decision.event_id,
+                occurred_at=decision.occurred_at,
+                summary=decision.summary,
+            )
+            self.database.add(entry)
+            await self.database.flush()
+            await self._attach_backwrite_relations(
+                TimelineClaim,
+                "timeline_entry_id",
+                entry.id,
+                "claim_id",
+                decision.claim_ids,
+                run_id,
+                [TimelineClaim.timeline_entry_id, TimelineClaim.claim_id],
+            )
+        for decision in response.payload.existing_entry_updates:
+            if decision.existing_timeline_entry_id not in candidate_ids:
+                raise IntelligenceError("TIMELINE_OUTSIDE_CANDIDATES")
+            entry = await self.database.get(TimelineEntry, decision.existing_timeline_entry_id)
+            if entry is None or entry.event_id != decision.event_id:
+                raise IntelligenceError("TIMELINE_EVENT_MISMATCH")
+            entry.occurred_at = decision.occurred_at
+            entry.summary = decision.summary
+            await self._attach_backwrite_relations(
+                TimelineClaim,
+                "timeline_entry_id",
+                entry.id,
+                "claim_id",
+                decision.claim_ids,
+                run_id,
+                [TimelineClaim.timeline_entry_id, TimelineClaim.claim_id],
+            )
+
+    async def _persist_backwrite_conflicts(
+        self,
+        *,
+        response: ConflictAnalysisResponse,
+        candidates: dict[UUID, ExistingConflictCandidate],
+        run_id: UUID,
+    ) -> None:
+        affected_claims: dict[UUID, set[UUID]] = {}
+        for decision in response.payload.new_conflicts:
+            conflict = Conflict(
+                id=uuid4(),
+                event_id=decision.event_id,
+                summary=decision.summary,
+            )
+            self.database.add(conflict)
+            await self.database.flush()
+            await self._attach_backwrite_relations(
+                ConflictClaim,
+                "conflict_id",
+                conflict.id,
+                "claim_id",
+                decision.claim_ids,
+                run_id,
+                [ConflictClaim.conflict_id, ConflictClaim.claim_id],
+            )
+            await self._attach_backwrite_relations(
+                ConflictSignal,
+                "conflict_id",
+                conflict.id,
+                "signal_id",
+                decision.evidence_signal_ids,
+                run_id,
+                [ConflictSignal.conflict_id, ConflictSignal.signal_id],
+            )
+            affected_claims.setdefault(decision.event_id, set()).update(decision.claim_ids)
+        for decision in response.payload.existing_conflict_updates:
+            candidate = candidates.get(decision.existing_conflict_id)
+            if candidate is None:
+                raise IntelligenceError("CONFLICT_OUTSIDE_CANDIDATES")
+            conflict = await self.database.get(Conflict, decision.existing_conflict_id)
+            if conflict is None or conflict.event_id != decision.event_id:
+                raise IntelligenceError("CONFLICT_EVENT_MISMATCH")
+            conflict.summary = decision.summary
+            await self._attach_backwrite_relations(
+                ConflictClaim,
+                "conflict_id",
+                conflict.id,
+                "claim_id",
+                decision.claim_ids,
+                run_id,
+                [ConflictClaim.conflict_id, ConflictClaim.claim_id],
+            )
+            await self._attach_backwrite_relations(
+                ConflictSignal,
+                "conflict_id",
+                conflict.id,
+                "signal_id",
+                decision.evidence_signal_ids,
+                run_id,
+                [ConflictSignal.conflict_id, ConflictSignal.signal_id],
+            )
+            affected_claims.setdefault(decision.event_id, set()).update(
+                [*candidate.claim_ids, *decision.claim_ids]
+            )
+        await IntelligenceRepository(self.database)._apply_conflict_states(affected_claims)
+
+    async def _persist_backwrite_base_analysis(
+        self,
+        *,
+        response: BaseAnalysisResponse,
+        candidates: dict[UUID, ExistingBaseAnalysisCandidate],
+        run_id: UUID,
+    ) -> None:
+        for decision in response.payload.new_analyses:
+            self.database.add(
+                BaseAnalysis(
+                    id=uuid4(),
+                    event_id=decision.event_id,
+                    source_artifact_id=None,
+                    source_backwrite_reconciliation_run_id=run_id,
+                    summary=decision.summary,
+                    event_type=decision.event_type,
+                    importance=decision.importance,
+                    topics=decision.topics,
+                    entities=[item.model_dump(mode="json") for item in decision.entities],
+                )
+            )
+        for decision in response.payload.existing_analysis_updates:
+            candidate = candidates.get(decision.existing_base_analysis_id)
+            if candidate is None:
+                raise IntelligenceError("BASE_ANALYSIS_OUTSIDE_CANDIDATES")
+            analysis = await self.database.get(BaseAnalysis, decision.existing_base_analysis_id)
+            if analysis is None or analysis.event_id != decision.event_id:
+                raise IntelligenceError("BASE_ANALYSIS_EVENT_MISMATCH")
+            analysis.source_artifact_id = None
+            analysis.source_backwrite_reconciliation_run_id = run_id
+            analysis.summary = decision.summary
+            analysis.event_type = decision.event_type
+            analysis.importance = decision.importance
+            analysis.topics = decision.topics
+            analysis.entities = [item.model_dump(mode="json") for item in decision.entities]
+
+    async def _attach_backwrite_relations(
+        self,
+        model,
+        owner_column: str,
+        owner_id: UUID,
+        target_column: str,
+        target_ids: list[UUID],
+        run_id: UUID,
+        conflict_columns: list,
+    ) -> None:
+        if not target_ids:
+            return
+        await self.database.execute(
+            insert(model)
+            .values(
+                [
+                    {
+                        "id": uuid4(),
+                        owner_column: owner_id,
+                        target_column: target_id,
+                        "attached_by_pipeline_run_id": None,
+                        "attached_by_backwrite_reconciliation_run_id": run_id,
+                    }
+                    for target_id in target_ids
+                ]
+            )
+            .on_conflict_do_nothing(index_elements=conflict_columns)
+        )
 
     @staticmethod
     def validate_output(
@@ -632,9 +1010,7 @@ class BackwriteRepository:
             )
         return values
 
-    async def deduplicate_research_results(
-        self, results: list[BackwriteResearchResult]
-    ) -> None:
+    async def deduplicate_research_results(self, results: list[BackwriteResearchResult]) -> None:
         observation_ids = [
             signal_id for result in results for signal_id in result.observation_signal_ids
         ]
@@ -834,8 +1210,15 @@ class BackwriteRunner:
                 prepared,
                 original_input=value,
                 response=response,
+                client=self.client,
             )
-        except (AnalysisError, BackwriteError, ResearchError, SQLAlchemyError) as error:
+        except (
+            AnalysisError,
+            BackwriteError,
+            IntelligenceError,
+            ResearchError,
+            SQLAlchemyError,
+        ) as error:
             await self.repository.persist_failure(
                 prepared,
                 error_code=getattr(error, "error_code", "BACKWRITE_FAILED"),

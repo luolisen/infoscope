@@ -328,16 +328,18 @@ returns completed until the immutable final artifact has committed.
 Phase 4 Event Backwrite consumes a Backend-produced, already ordered user-visible Event snapshot.
 It never queries Event timestamps to invent newest/oldest order. The worker freezes that order and
 processes newest, oldest, second-newest, second-oldest, and so on without reordering the active
-cycle. Phase 5 Personalization will provide the production visibility snapshot; an internal JSON
-snapshot can exercise the Phase 4 runner now:
+cycle. Phase 5 Personalization will provide the production visibility snapshot. The internal CLI
+accepts only cycle identity; it cannot inject Event IDs or bypass the visibility Provider:
 
 ```json
 {
   "user_id": "00000000-0000-4000-8000-000000000001",
-  "idempotency_key": "00000000-0000-4000-8000-000000000002",
-  "ordered_event_ids": ["00000000-0000-4000-8000-000000000003"]
+  "idempotency_key": "00000000-0000-4000-8000-000000000002"
 }
 ```
+
+Until Phase 5 installs the production Provider, this command fails closed with
+`BACKWRITE_VISIBILITY_PROVIDER_UNAVAILABLE`.
 
 ```bash
 uv run --project backend python -m infoscope.worker \
@@ -354,6 +356,12 @@ candidates, fetch failures, and all-normalization-failed remain retryable or ter
 New Event–Signal relationships are attributed only to a dedicated
 `backwrite_reconciliation_runs.id`; they never impersonate an hourly Pipeline run. This slice has no
 Public API and does not change NOW, Event Detail, Ask, or Frontend contracts.
+
+For an `update` decision, Event/EventSignal changes and the complete Claims -> Timeline -> Conflicts
+-> Base Analysis refresh run inside one locked database transaction. The final Backwrite artifact
+and `completed / updated` item state are written only after all four strict model outputs validate.
+Any downstream failure rolls the transaction back, leaving the previously committed Event fact
+layer intact and the item retryable or failed.
 
 Checks:
 

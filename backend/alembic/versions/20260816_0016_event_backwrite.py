@@ -140,6 +140,50 @@ def upgrade() -> None:
         ["item_id"],
     )
 
+    for table in ("claim_signals", "timeline_claims", "conflict_claims", "conflict_signals"):
+        op.alter_column(table, "attached_by_pipeline_run_id", nullable=True)
+        column = "attached_by_backwrite_reconciliation_run_id"
+        op.add_column(table, sa.Column(column, sa.Uuid(), nullable=True))
+        op.create_foreign_key(
+            f"fk_{table}_{column}",
+            table,
+            "backwrite_reconciliation_runs",
+            [column],
+            ["id"],
+            ondelete="RESTRICT",
+        )
+        op.create_index(op.f(f"ix_{table}_{column}"), table, [column])
+        op.create_check_constraint(
+            f"ck_{table}_exactly_one_source",
+            table,
+            "(attached_by_pipeline_run_id IS NOT NULL) <> "
+            "(attached_by_backwrite_reconciliation_run_id IS NOT NULL)",
+        )
+
+    op.alter_column("base_analyses", "source_artifact_id", nullable=True)
+    op.add_column(
+        "base_analyses",
+        sa.Column("source_backwrite_reconciliation_run_id", sa.Uuid(), nullable=True),
+    )
+    op.create_foreign_key(
+        "fk_base_analyses_source_backwrite_reconciliation_run_id",
+        "base_analyses",
+        "backwrite_reconciliation_runs",
+        ["source_backwrite_reconciliation_run_id"],
+        ["id"],
+        ondelete="RESTRICT",
+    )
+    op.create_index(
+        op.f("ix_base_analyses_source_backwrite_reconciliation_run_id"),
+        "base_analyses",
+        ["source_backwrite_reconciliation_run_id"],
+    )
+    op.create_check_constraint(
+        "ck_base_analyses_exactly_one_source",
+        "base_analyses",
+        "(source_artifact_id IS NOT NULL) <> (source_backwrite_reconciliation_run_id IS NOT NULL)",
+    )
+
     op.create_table(
         "backwrite_research_artifacts",
         sa.Column("id", sa.Uuid(), nullable=False),
@@ -282,6 +326,25 @@ def downgrade() -> None:
         "(attached_by_pipeline_run_id IS NOT NULL) <> "
         "(attached_by_ask_reconciliation_run_id IS NOT NULL)",
     )
+    op.drop_constraint("ck_base_analyses_exactly_one_source", "base_analyses", type_="check")
+    op.drop_index(
+        op.f("ix_base_analyses_source_backwrite_reconciliation_run_id"),
+        table_name="base_analyses",
+    )
+    op.drop_constraint(
+        "fk_base_analyses_source_backwrite_reconciliation_run_id",
+        "base_analyses",
+        type_="foreignkey",
+    )
+    op.drop_column("base_analyses", "source_backwrite_reconciliation_run_id")
+    op.alter_column("base_analyses", "source_artifact_id", nullable=False)
+    for table in ("conflict_signals", "conflict_claims", "timeline_claims", "claim_signals"):
+        column = "attached_by_backwrite_reconciliation_run_id"
+        op.drop_constraint(f"ck_{table}_exactly_one_source", table, type_="check")
+        op.drop_index(op.f(f"ix_{table}_{column}"), table_name=table)
+        op.drop_constraint(f"fk_{table}_{column}", table, type_="foreignkey")
+        op.drop_column(table, column)
+        op.alter_column(table, "attached_by_pipeline_run_id", nullable=False)
     op.drop_constraint(
         "fk_backwrite_items_source_artifact_id", "backwrite_items", type_="foreignkey"
     )

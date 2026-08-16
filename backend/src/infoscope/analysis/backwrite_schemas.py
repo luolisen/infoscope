@@ -9,20 +9,18 @@ from uuid import UUID
 from pydantic import Field, field_validator, model_validator
 
 from infoscope.analysis.ask_schemas import AskEventInput, AskReconciliationSignal
+from infoscope.analysis.intelligence_schemas import (
+    BaseAnalysisResponse,
+    ClaimExtractionResponse,
+    ConflictAnalysisResponse,
+    TimelineReconstructionResponse,
+)
 from infoscope.analysis.schemas import StrictModel, TokenUsage
 
 
 class BackwriteSnapshotSpec(StrictModel):
     user_id: UUID
     idempotency_key: UUID
-    ordered_event_ids: list[UUID]
-
-    @field_validator("ordered_event_ids")
-    @classmethod
-    def event_ids_are_unique(cls, values: list[UUID]) -> list[UUID]:
-        if len(values) != len(set(values)):
-            raise ValueError("ordered_event_ids must be unique")
-        return values
 
 
 class BackwriteSnapshotPayload(StrictModel):
@@ -177,6 +175,13 @@ class BackwriteReconciliationResponse(StrictModel):
     token_usage: TokenUsage
 
 
+class BackwriteDownstreamRefresh(StrictModel):
+    claims: ClaimExtractionResponse
+    timeline: TimelineReconstructionResponse
+    conflicts: ConflictAnalysisResponse
+    base_analysis: BaseAnalysisResponse
+
+
 class BackwriteReconciliationArtifactPayload(StrictModel):
     schema_version: Literal["backwrite_reconciliation.v1"] = "backwrite_reconciliation.v1"
     item_id: UUID
@@ -184,6 +189,7 @@ class BackwriteReconciliationArtifactPayload(StrictModel):
     research_request_id: UUID
     output: BackwriteReconciliationPayload
     newly_attached_signal_ids: list[UUID]
+    downstream_refresh: BackwriteDownstreamRefresh | None
 
     @model_validator(mode="after")
     def output_matches_item(self) -> BackwriteReconciliationArtifactPayload:
@@ -198,6 +204,10 @@ class BackwriteReconciliationArtifactPayload(StrictModel):
         )
         if not set(self.newly_attached_signal_ids) <= assigned:
             raise ValueError("new attachments must belong to the output assignment")
+        if self.output.decision == "update" and self.downstream_refresh is None:
+            raise ValueError("updated Event artifact requires complete downstream refresh")
+        if self.output.decision == "no_change" and self.downstream_refresh is not None:
+            raise ValueError("no-change artifact cannot contain downstream refresh")
         return self
 
 

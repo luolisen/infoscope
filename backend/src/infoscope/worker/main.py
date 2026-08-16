@@ -44,7 +44,11 @@ from infoscope.services.ask_research_bridge import (
     AskResearchBridgeRepository,
     AskResearchBridgeRunner,
 )
-from infoscope.services.backwrite import BackwriteRepository, BackwriteRunner
+from infoscope.services.backwrite import (
+    BackwriteRepository,
+    BackwriteRunner,
+    UnavailableUserVisibleEventSnapshotProvider,
+)
 from infoscope.services.base_analysis import BaseAnalysisRepository, BaseAnalysisRunner
 from infoscope.services.claims_timeline import (
     ClaimExtractionRunner,
@@ -465,6 +469,7 @@ async def run_backwrite_snapshot_once(snapshot_file: Path) -> None:
     async with session_factory() as database:
         cycle, _inserted = await BackwriteRepository(database).create_or_reuse_cycle(
             spec,
+            provider=UnavailableUserVisibleEventSnapshotProvider(),
             max_attempts=settings.backwrite_max_attempts,
         )
     if cycle.item_count == 0:
