@@ -1,0 +1,127 @@
+from __future__ import annotations
+
+from datetime import datetime
+from uuid import UUID, uuid4
+
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import Mapped, mapped_column
+
+from infoscope.models.base import Base
+
+
+class AskRequest(Base):
+    __tablename__ = "ask_requests"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'running', 'completed', 'failed')",
+            name="ck_ask_requests_status",
+        ),
+        CheckConstraint(
+            "stage IN ('comparing', 'awaiting_research', 'finalizing')",
+            name="ck_ask_requests_stage",
+        ),
+        CheckConstraint("attempt_count >= 0", name="ck_ask_requests_attempt_count"),
+        CheckConstraint("max_attempts > 0", name="ck_ask_requests_max_attempts"),
+        CheckConstraint("input_hash ~ '^[0-9a-f]{64}$'", name="ck_ask_requests_input_hash"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
+    stage: Mapped[str] = mapped_column(String(32), nullable=False, default="comparing")
+    input_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    attempt_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    max_attempts: Mapped[int] = mapped_column(Integer, nullable=False)
+    error_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class AskRequestEvent(Base):
+    __tablename__ = "ask_request_events"
+    __table_args__ = (
+        UniqueConstraint("ask_request_id", "event_id", name="uq_ask_request_events_event"),
+        UniqueConstraint("ask_request_id", "position", name="uq_ask_request_events_position"),
+        CheckConstraint("position >= 0 AND position < 8", name="ck_ask_request_events_position"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    ask_request_id: Mapped[UUID] = mapped_column(
+        ForeignKey("ask_requests.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    event_id: Mapped[UUID] = mapped_column(
+        ForeignKey("events.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class AskRun(Base):
+    __tablename__ = "ask_runs"
+    __table_args__ = (
+        UniqueConstraint("ask_request_id", "attempt", name="uq_ask_runs_request_attempt"),
+        CheckConstraint(
+            "status IN ('running', 'completed', 'failed')",
+            name="ck_ask_runs_status",
+        ),
+        CheckConstraint("attempt > 0", name="ck_ask_runs_attempt"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    ask_request_id: Mapped[UUID] = mapped_column(
+        ForeignKey("ask_requests.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    attempt: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    error_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AskComparisonArtifact(Base):
+    __tablename__ = "ask_comparison_artifacts"
+    __table_args__ = (
+        UniqueConstraint("ask_request_id", name="uq_ask_comparison_artifacts_request"),
+        UniqueConstraint("created_by_run_id", name="uq_ask_comparison_artifacts_run"),
+        CheckConstraint(
+            "input_hash ~ '^[0-9a-f]{64}$'", name="ck_ask_comparison_artifacts_input_hash"
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    ask_request_id: Mapped[UUID] = mapped_column(
+        ForeignKey("ask_requests.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    created_by_run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("ask_runs.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    schema_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    input_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    input_snapshot: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    output: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    provider: Mapped[str] = mapped_column(String(64), nullable=False)
+    model: Mapped[str] = mapped_column(String(128), nullable=False)
+    token_usage: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )

@@ -852,6 +852,28 @@ TG News 不直接生成 NOW、Event 或 Brief。
   组成稳定 Raw key。模型内容不得直接成为 Signal；Research 结果必须重新经过 Raw→Signal 链路。
 - 本切片不新增 Public API、Ask、Event Detail、NOW 或 Frontend Contract，不修改事实层。
 
+## Ask Database Comparison v1（已冻结）
+
+- `ask_requests` 保存 user、trimmed question、`pending/running/completed/failed` status、
+  `comparing/awaiting_research/finalizing` stage、input hash、attempt 与稳定错误码；
+  `ask_request_events.position` 保存用户选择顺序。`ask_runs` 对 `(ask_request_id, attempt)` 唯一。
+- `ask_comparison_artifacts` 包含独立 ID，并分别对 request 与 `created_by_run_id` 唯一；保存严格
+  `ask_database_comparison.v1` 输出和对应 canonical input snapshot。Artifact 只在 Schema、候选
+  范围和事务全部成功后创建，之后 immutable；敏感 snapshot/output 不进入普通日志或 Public DTO。
+- canonical 输入由 trim question、有序 selected Event IDs、Event + current Base Analysis + Claims +
+  Timeline + Conflicts + 脱敏 Evidence 构成。Event 不存在或缺 Base Analysis 在模型前失败。私密
+  Evidence 必须是 `sanitized_text + null public_safe_provenance`。
+- `input_hash = SHA-256(canonical JSON(question, ordered selected_event_ids, validated snapshot))`；
+  不包含 request ID、时间或 attempt。仅 failed 可 retry；retry 时当前 snapshot hash 必须相同，
+  否则 `ASK_INPUT_CHANGED`。completed 和 awaiting_research 直接复用，不能再次调用模型。
+- 输出仅允许 answerable 或 research_required，ordered event IDs 必须逐项等于输入；所有 ID 数组
+  唯一且只能引用所选 Event 的真实 Claim/Timeline/Conflict/Evidence。answer 最长 20,000，
+  rationale 最长 4,000；missing facts 最多 8 项，question 最长 500、reason 最长 2,000，并按
+  `(event_ids, question)` 去重。
+- research_required 固定为 `pending/awaiting_research`；Ask Research Bridge 合并前不自动重跑、不
+  调用 Research。answerable 为 `completed/finalizing`。单 request 行锁与状态/Artifact 原子提交
+  防止并发重复；失败不产生伪 Artifact。本切片不新增 Public API、不修改事实层。
+
 ---
 
 # 十、完整数据 Pipeline

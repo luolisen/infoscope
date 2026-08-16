@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     research_openclaw_model: str = Field(default="deepseek/deepseek-v4-pro", min_length=1)
     research_timeout_seconds: int = Field(default=300, gt=0, le=1800)
     research_max_attempts: int = Field(default=3, gt=0, le=10)
+    ask_comparison_max_attempts: int = Field(default=3, gt=0, le=10)
 
     @property
     def resolved_trendradar_config_path(self) -> Path:

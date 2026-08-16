@@ -1,6 +1,7 @@
 """Application services."""
 
 from infoscope.services.acquisition import AcquisitionRepository
+from infoscope.services.ask_comparison import AskComparisonRepository, AskComparisonRunner
 from infoscope.services.base_analysis import BaseAnalysisRunner
 from infoscope.services.claims_timeline import (
     ClaimExtractionRunner,
@@ -16,6 +17,8 @@ from infoscope.services.window_analysis import WindowAnalysisRunner
 
 __all__ = [
     "AcquisitionRepository",
+    "AskComparisonRepository",
+    "AskComparisonRunner",
     "BaseAnalysisRunner",
     "ClaimExtractionRunner",
     "ConflictAnalysisRunner",

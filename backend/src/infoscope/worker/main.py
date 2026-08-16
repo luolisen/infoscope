@@ -16,6 +16,7 @@ from infoscope.analysis import (
     DeepSeekIntelligenceClient,
     load_analysis_config,
 )
+from infoscope.analysis.ask_schemas import AskRequestSpec
 from infoscope.config import get_settings
 from infoscope.db import close_database, ping_database, session_factory
 from infoscope.integrations.research.client import OpenClawConfig, OpenClawResearchClient
@@ -30,6 +31,7 @@ from infoscope.integrations.telegram import (
 from infoscope.integrations.trendradar import TrendRadarCollector, load_trendradar_config
 from infoscope.integrations.trendradar.client import NewsNowClient, RSSClient
 from infoscope.services.acquisition import AcquisitionRepository
+from infoscope.services.ask_comparison import AskComparisonRepository, AskComparisonRunner
 from infoscope.services.base_analysis import BaseAnalysisRepository, BaseAnalysisRunner
 from infoscope.services.claims_timeline import (
     ClaimExtractionRunner,
@@ -327,6 +329,38 @@ async def research_once(
     )
 
 
+async def compare_ask_once(
+    *,
+    request_file: Path | None = None,
+    retry_request_id: UUID | None = None,
+) -> None:
+    if (request_file is None) == (retry_request_id is None):
+        raise ValueError("exactly one Ask comparison request input is required")
+    settings = get_settings()
+    config = load_analysis_config(settings)
+    async with httpx.AsyncClient() as client:
+        async with session_factory() as database:
+            runner = AskComparisonRunner(
+                repository=AskComparisonRepository(database),
+                client=DeepSeekIntelligenceClient(client=client, config=config),
+                max_attempts=settings.ask_comparison_max_attempts,
+            )
+            if request_file is not None:
+                request_document = await asyncio.to_thread(request_file.read_text, "utf-8")
+                spec = AskRequestSpec.model_validate_json(request_document)
+                request = await runner.create_and_run(spec)
+            else:
+                request = await runner.run(retry_request_id)  # type: ignore[arg-type]
+    logger.info(
+        "Ask comparison complete request_id=%s status=%s stage=%s attempts=%d error_code=%s",
+        request.id,
+        request.status,
+        request.stage,
+        request.attempt_count,
+        request.error_code,
+    )
+
+
 async def run(
     *,
     once: bool = False,
@@ -345,6 +379,8 @@ async def run(
     analyze_base_artifact: UUID | None = None,
     research_request_file: Path | None = None,
     retry_research_request: UUID | None = None,
+    ask_comparison_request_file: Path | None = None,
+    retry_ask_comparison: UUID | None = None,
 ) -> None:
     settings = get_settings()
     stop = asyncio.Event()
@@ -384,6 +420,11 @@ async def run(
                     request_file=research_request_file,
                     retry_request_id=retry_research_request,
                 )
+            if ask_comparison_request_file is not None or retry_ask_comparison is not None:
+                await compare_ask_once(
+                    request_file=ask_comparison_request_file,
+                    retry_request_id=retry_ask_comparison,
+                )
             logger.info("worker heartbeat")
             if (
                 once
@@ -402,6 +443,8 @@ async def run(
                 or analyze_base_artifact is not None
                 or research_request_file is not None
                 or retry_research_request is not None
+                or ask_comparison_request_file is not None
+                or retry_ask_comparison is not None
             ):
                 return
             try:
@@ -507,6 +550,19 @@ def parse_args() -> argparse.Namespace:
         metavar="REQUEST_ID",
         help="Retry failed sources for one Research request",
     )
+    ask_group = parser.add_mutually_exclusive_group()
+    ask_group.add_argument(
+        "--ask-comparison-request-file",
+        type=Path,
+        metavar="JSON_FILE",
+        help="Run one frozen internal Ask comparison request from JSON",
+    )
+    ask_group.add_argument(
+        "--retry-ask-comparison",
+        type=UUID,
+        metavar="REQUEST_ID",
+        help="Retry one failed Ask Database Comparison request",
+    )
     return parser.parse_args()
 
 
@@ -534,6 +590,8 @@ def main() -> int:
                 analyze_base_artifact=args.analyze_base_artifact,
                 research_request_file=args.research_request_file,
                 retry_research_request=args.retry_research_request,
+                ask_comparison_request_file=args.ask_comparison_request_file,
+                retry_ask_comparison=args.retry_ask_comparison,
             )
         )
     return 0

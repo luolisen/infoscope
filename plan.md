@@ -1346,6 +1346,33 @@ Evidence
 
 Ask 同样服从来源隐私边界。私密 Telegram 可以使用脱敏后的正文，但不得输出群名、群 username、invite link、internal ID 或其他禁止暴露的 provenance。
 
+### Ask Database Comparison v1（已冻结）
+
+- 内部输入 `ask_database_comparison_input.v1` 固定为：trim 后的 question、用户选择顺序不变的
+  `selected_event_ids`，以及每个 Event 当前完整的 Event、Base Analysis、Claims、Timeline、
+  Conflicts 和脱敏 Evidence。每个 Event 必须存在并具备当前 Base Analysis；否则在调用模型前以
+  `ASK_EVENT_NOT_FOUND / ASK_EVENT_BASE_ANALYSIS_MISSING` 失败。未来 Public API 必须另外校验
+  `user_id` 对全部所选 Event 的访问权限。
+- `input_hash` 是 question、按选择顺序的 Event IDs、验证后的 canonical snapshot 的 SHA-256；
+  不包含 Ask ID、时间或 attempt，顺序变化必须改变 hash。failed retry 重新构造当前 snapshot，
+  hash 不一致以 `ASK_INPUT_CHANGED` 失败，并要求创建新 Ask。
+- 模型只允许返回 `answerable / research_required`。两种 decision 的 `event_ids` 都必须与输入完全
+  一致且顺序一致；所有 ID 数组去重，Claim、Timeline、Conflict、Evidence 引用必须属于关联的
+  selected Event。模型不能生成 ID、事实、状态变化、Event merge 或事实层写入。
+- `answer` 上限 20,000 字符，`rationale` 上限 4,000；`missing_facts` 最多 8 项，每项 question
+  1–500、reason 1–2,000 字符，并按 `(event_ids, question)` 去重。missing Event IDs 必须是输入
+  的有序子集。`rationale` 仅供内部审计，不是 Evidence。
+- `ask_requests / ask_request_events / ask_runs / ask_comparison_artifacts` 独立持久化。Artifact 有
+  Backend ID，`created_by_run_id` 唯一且 immutable；只有模型输出通过严格 Schema、范围校验和
+  事务提交时才创建。运行时、JSON、Schema、持久化失败只记录稳定错误状态，不伪造 Artifact。
+- 初次 comparison 从 `pending/comparing` 进入 `running/comparing`；仅 `failed/comparing` 可重试。
+  `completed` 与 `pending/awaiting_research` 都复用既有结果，不再次调用模型或生成 comparison。
+  `research_required` 固定回到 `pending/awaiting_research`，Ask Research Bridge 合并前不得自动重跑
+  或调用 Research；`answerable` 进入 `completed/finalizing`。
+- 单请求行锁防止并发重复模型调用；Artifact 与 run/request 状态原子提交。canonical input snapshot
+  与模型输出属于内部敏感数据，不进入普通日志或 Public DTO。私密 Signal 仅传
+  `sanitized_text + null provenance`。本切片不新增 Public API，不触发 Research，不修改事实层。
+
 ---
 
 ## 8.6 Event Backwrite / Event 回写
