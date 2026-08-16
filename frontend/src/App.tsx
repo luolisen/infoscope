@@ -1,8 +1,10 @@
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { fetchHealth } from "./api/health";
 import { fetchSession, sessionQueryKey } from "./api/session";
 import { AuthScreen } from "./features/auth/AuthScreen";
+import { EventDetail } from "./features/events/EventDetail";
 import { OnboardingPending } from "./features/auth/OnboardingPending";
 import { NowShell } from "./features/now/NowShell";
 
@@ -33,6 +35,14 @@ export function App() {
 
 function ReadyApp() {
   const healthQuery = useQuery({ queryKey: ["health"], queryFn: fetchHealth });
+  const [locationHash, setLocationHash] = useState(() => window.location.hash);
+  const eventId = locationHash.match(/^#event\/([^/]+)$/)?.[1];
+
+  useEffect(() => {
+    const updateLocation = () => setLocationHash(window.location.hash);
+    window.addEventListener("hashchange", updateLocation);
+    return () => window.removeEventListener("hashchange", updateLocation);
+  }, []);
 
   return (
     <div className="app-shell">
@@ -64,7 +74,7 @@ function ReadyApp() {
         </nav>
       </aside>
 
-      <NowShell />
+      {eventId === undefined ? <NowShell /> : <EventDetail eventId={eventId} onBack={() => { window.location.hash = ""; }} />}
     </div>
   );
 }
