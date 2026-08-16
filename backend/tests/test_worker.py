@@ -137,3 +137,37 @@ async def test_worker_reconstructs_one_window_artifact_and_exits() -> None:
     database_ping.assert_awaited_once()
     reconstruct.assert_awaited_once_with(artifact_id)
     database_close.assert_awaited_once()
+
+
+async def test_worker_extracts_claims_from_one_artifact_and_exits() -> None:
+    database_ping = AsyncMock()
+    database_close = AsyncMock()
+    extract = AsyncMock()
+    artifact_id = uuid4()
+
+    with (
+        patch("infoscope.worker.main.ping_database", database_ping),
+        patch("infoscope.worker.main.close_database", database_close),
+        patch("infoscope.worker.main.extract_claims_once", extract),
+    ):
+        await run(extract_claims_artifact=artifact_id)
+
+    extract.assert_awaited_once_with(artifact_id)
+    database_close.assert_awaited_once()
+
+
+async def test_worker_reconstructs_timeline_from_one_artifact_and_exits() -> None:
+    database_ping = AsyncMock()
+    database_close = AsyncMock()
+    reconstruct = AsyncMock()
+    artifact_id = uuid4()
+
+    with (
+        patch("infoscope.worker.main.ping_database", database_ping),
+        patch("infoscope.worker.main.close_database", database_close),
+        patch("infoscope.worker.main.reconstruct_timeline_once", reconstruct),
+    ):
+        await run(reconstruct_timeline_artifact=artifact_id)
+
+    reconstruct.assert_awaited_once_with(artifact_id)
+    database_close.assert_awaited_once()

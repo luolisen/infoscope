@@ -193,6 +193,21 @@ Model state values are non-authoritative suggestions: new Events start as
 Claim / Conflict rules are available. This slice does not create Claims,
 Timeline, Conflicts, personalization, Public API fields, or frontend behavior.
 
+Claim Extraction and Timeline Reconstruction consume canonical upstream
+artifacts by UUID:
+
+```bash
+uv run --project backend python -m infoscope.worker --extract-claims-artifact ARTIFACT_ID
+uv run --project backend python -m infoscope.worker --reconstruct-timeline-artifact ARTIFACT_ID
+```
+
+Claims start deterministically as `unresolved`; the model cannot write Claim
+state. Claim–Signal and Timeline–Claim links are many-to-many and may reference
+only entities supplied by the Backend for the same Event. Both pipelines lock
+their source artifact before the model call, reuse canonical outputs, validate
+complete used/unused coverage, and atomically persist entities, links, and the
+internal artifact. No Public API or frontend contract is added in this slice.
+
 Checks:
 
 ```bash

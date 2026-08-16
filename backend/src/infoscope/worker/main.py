@@ -12,6 +12,7 @@ import httpx
 from infoscope.analysis import (
     DeepSeekAnalysisClient,
     DeepSeekEventReconstructionClient,
+    DeepSeekIntelligenceClient,
     load_analysis_config,
 )
 from infoscope.config import get_settings
@@ -24,6 +25,12 @@ from infoscope.integrations.telegram import (
 from infoscope.integrations.trendradar import TrendRadarCollector, load_trendradar_config
 from infoscope.integrations.trendradar.client import NewsNowClient, RSSClient
 from infoscope.services.acquisition import AcquisitionRepository
+from infoscope.services.claims_timeline import (
+    ClaimExtractionRunner,
+    IntelligenceRepository,
+    IntelligenceResult,
+    TimelineReconstructionRunner,
+)
 from infoscope.services.deduplication import DeduplicationResult, ExactDeduplicationRunner
 from infoscope.services.event_reconstruction import (
     EventReconstructionResult,
@@ -185,6 +192,46 @@ async def reconstruct_event_once(source_artifact_id: UUID) -> EventReconstructio
     return result
 
 
+async def extract_claims_once(source_artifact_id: UUID) -> IntelligenceResult:
+    config = load_analysis_config(get_settings())
+    async with httpx.AsyncClient() as client:
+        async with session_factory() as database:
+            result = await ClaimExtractionRunner(
+                repository=IntelligenceRepository(database),
+                pipeline=PipelineRepository(database),
+                client=DeepSeekIntelligenceClient(client=client, config=config),
+            ).run(source_artifact_id)
+    logger.info(
+        "claim extraction complete run_id=%s created=%d updated=%d attached=%d reused=%s",
+        result.run_id,
+        result.created,
+        result.updated,
+        result.attached,
+        result.reused_artifact,
+    )
+    return result
+
+
+async def reconstruct_timeline_once(source_artifact_id: UUID) -> IntelligenceResult:
+    config = load_analysis_config(get_settings())
+    async with httpx.AsyncClient() as client:
+        async with session_factory() as database:
+            result = await TimelineReconstructionRunner(
+                repository=IntelligenceRepository(database),
+                pipeline=PipelineRepository(database),
+                client=DeepSeekIntelligenceClient(client=client, config=config),
+            ).run(source_artifact_id)
+    logger.info(
+        "timeline reconstruction complete run_id=%s created=%d updated=%d attached=%d reused=%s",
+        result.run_id,
+        result.created,
+        result.updated,
+        result.attached,
+        result.reused_artifact,
+    )
+    return result
+
+
 async def run(
     *,
     once: bool = False,
@@ -197,6 +244,8 @@ async def run(
     retry_window_run: UUID | None = None,
     replay_window_run: UUID | None = None,
     reconstruct_window_artifact: UUID | None = None,
+    extract_claims_artifact: UUID | None = None,
+    reconstruct_timeline_artifact: UUID | None = None,
 ) -> None:
     settings = get_settings()
     stop = asyncio.Event()
@@ -223,6 +272,10 @@ async def run(
                 )
             if reconstruct_window_artifact is not None:
                 await reconstruct_event_once(reconstruct_window_artifact)
+            if extract_claims_artifact is not None:
+                await extract_claims_once(extract_claims_artifact)
+            if reconstruct_timeline_artifact is not None:
+                await reconstruct_timeline_once(reconstruct_timeline_artifact)
             logger.info("worker heartbeat")
             if (
                 once
@@ -235,6 +288,8 @@ async def run(
                 or retry_window_run is not None
                 or replay_window_run is not None
                 or reconstruct_window_artifact is not None
+                or extract_claims_artifact is not None
+                or reconstruct_timeline_artifact is not None
             ):
                 return
             try:
@@ -303,6 +358,18 @@ def parse_args() -> argparse.Namespace:
         metavar="ARTIFACT_ID",
         help="Reconstruct Events from one successful Window Analysis artifact",
     )
+    parser.add_argument(
+        "--extract-claims-artifact",
+        type=UUID,
+        metavar="ARTIFACT_ID",
+        help="Extract Claims from one canonical Event Reconstruction artifact",
+    )
+    parser.add_argument(
+        "--reconstruct-timeline-artifact",
+        type=UUID,
+        metavar="ARTIFACT_ID",
+        help="Reconstruct Timeline from one canonical Claim Extraction artifact",
+    )
     return parser.parse_args()
 
 
@@ -324,6 +391,8 @@ def main() -> int:
                 retry_window_run=args.retry_window_run,
                 replay_window_run=args.replay_window_run,
                 reconstruct_window_artifact=args.reconstruct_window_artifact,
+                extract_claims_artifact=args.extract_claims_artifact,
+                reconstruct_timeline_artifact=args.reconstruct_timeline_artifact,
             )
         )
     return 0
