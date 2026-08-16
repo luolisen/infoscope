@@ -11,16 +11,22 @@ from infoscope.analysis.client import AnalysisError
 from infoscope.analysis.config import AnalysisConfig
 from infoscope.analysis.intelligence_prompt import (
     CLAIM_SYSTEM_PROMPT,
+    CONFLICT_SYSTEM_PROMPT,
     TIMELINE_SYSTEM_PROMPT,
     build_claim_prompt,
+    build_conflict_prompt,
     build_timeline_prompt,
 )
 from infoscope.analysis.intelligence_schemas import (
     ClaimExtractionPayload,
     ClaimExtractionResponse,
+    ConflictAnalysisPayload,
+    ConflictAnalysisResponse,
     EventClaimInput,
+    EventConflictInput,
     EventTimelineInput,
     ExistingClaimCandidate,
+    ExistingConflictCandidate,
     ExistingTimelineCandidate,
     TimelineReconstructionPayload,
     TimelineReconstructionResponse,
@@ -58,6 +64,18 @@ class DeepSeekIntelligenceClient:
             payload_type=TimelineReconstructionPayload,
         )
         return TimelineReconstructionResponse(
+            payload=payload, provider="deepseek", model=model, token_usage=usage
+        )
+
+    async def analyze_conflicts(
+        self, *, events: list[EventConflictInput], candidates: list[ExistingConflictCandidate]
+    ) -> ConflictAnalysisResponse:
+        payload, model, usage = await self._request(
+            system=CONFLICT_SYSTEM_PROMPT,
+            user=build_conflict_prompt(events, candidates),
+            payload_type=ConflictAnalysisPayload,
+        )
+        return ConflictAnalysisResponse(
             payload=payload, provider="deepseek", model=model, token_usage=usage
         )
 

@@ -4,8 +4,10 @@ import json
 
 from infoscope.analysis.intelligence_schemas import (
     EventClaimInput,
+    EventConflictInput,
     EventTimelineInput,
     ExistingClaimCandidate,
+    ExistingConflictCandidate,
     ExistingTimelineCandidate,
 )
 
@@ -29,6 +31,20 @@ unused_claim_ids. Each decision has decision_key, event_id, occurred_at as an of
 union of used and unused Claim IDs must cover every input Claim. Rationale is internal analysis
 and is never Evidence. Never infer or expose private source identities or hidden provenance."""
 
+CONFLICT_SYSTEM_PROMPT = """You identify semantic conflicts from supplied Events, Claims, and
+their restricted Evidence Signals. A conflict is either two or more mutually inconsistent Claims,
+or one Claim contradicted by at least one of that Claim's supplied Evidence Signals. You decide
+semantic contradiction from supplied sanitized text; do not add external facts. Evidence IDs must
+be attached to at least one selected Claim. Existing updates may reference only supplied Conflict
+IDs. Never create Conflict IDs and never decide Claim or Event state. Existing updates are
+append-only assertions: omitted historical relations are not removed. Return JSON only with
+schema_version conflict_analysis.v1, new_conflicts, existing_conflict_updates, and
+unconflicted_claim_ids. Each decision has decision_key, event_id, summary, claim_ids,
+evidence_signal_ids, and rationale; updates also have existing_conflict_id. Every input Claim must
+appear in at least one decision or unconflicted_claim_ids. unconflicted means no new or updated
+conflict in this run and never resolves a historical Conflict. Rationale is internal audit context,
+not Evidence. Never infer timestamps, source identities, or hidden provenance."""
+
 
 def build_claim_prompt(
     events: list[EventClaimInput], candidates: list[ExistingClaimCandidate]
@@ -51,6 +67,20 @@ def build_timeline_prompt(
         {
             "events": [item.model_dump(mode="json") for item in events],
             "existing_timeline": [item.model_dump(mode="json") for item in candidates],
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def build_conflict_prompt(
+    events: list[EventConflictInput], candidates: list[ExistingConflictCandidate]
+) -> str:
+    return "Analyze Conflicts from this input and return JSON only:\n" + json.dumps(
+        {
+            "events": [item.model_dump(mode="json") for item in events],
+            "existing_conflicts": [item.model_dump(mode="json") for item in candidates],
         },
         ensure_ascii=False,
         sort_keys=True,
