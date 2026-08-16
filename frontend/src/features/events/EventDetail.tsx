@@ -33,6 +33,7 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
 
   const event = detail.data;
   const claimsById = new Map(event.claims.map((claim) => [claim.id, claim]));
+  const evidenceById = new Map(event.evidence.map((evidence) => [evidence.id, evidence]));
 
   return (
     <main className="main-content detail-page">
@@ -64,13 +65,13 @@ export function EventDetail({ eventId, onBack }: EventDetailProps) {
       <section className="detail-section" aria-labelledby="claims-heading">
         <p className="editorial-label">CLAIMS</p>
         <h2 id="claims-heading">Current factual record</h2>
-        {event.claims.length === 0 ? <p className="detail-empty">No claims are available yet.</p> : <ul className="detail-list">{event.claims.map((claim) => <li key={claim.id}><p className="editorial-label">{claim.state}</p><p>{claim.text}</p><p className="detail-links">{claim.evidence_ids.length} linked evidence item{claim.evidence_ids.length === 1 ? "" : "s"}</p></li>)}</ul>}
+        {event.claims.length === 0 ? <p className="detail-empty">No claims are available yet.</p> : <ul className="detail-list">{event.claims.map((claim) => <li key={claim.id}><p className="editorial-label">{claim.state}</p><p>{claim.text}</p>{claim.evidence_ids.length > 0 && <div className="detail-relations"><p>Supporting evidence</p><ul>{claim.evidence_ids.map((id) => <li key={id}>{evidenceById.get(id)?.excerpt}</li>)}</ul></div>}</li>)}</ul>}
       </section>
 
       <section className="detail-section" aria-labelledby="conflicts-heading">
         <p className="editorial-label">CONFLICTS</p>
         <h2 id="conflicts-heading">What remains contested</h2>
-        {event.conflicts.length === 0 ? <p className="detail-empty">No unresolved conflicts are recorded.</p> : <ul className="detail-list">{event.conflicts.map((conflict) => <li key={conflict.id}><p>{conflict.summary}</p><p className="detail-links">{conflict.claim_ids.length} linked claim{conflict.claim_ids.length === 1 ? "" : "s"} · {conflict.evidence_ids.length} evidence item{conflict.evidence_ids.length === 1 ? "" : "s"}</p></li>)}</ul>}
+        {event.conflicts.length === 0 ? <p className="detail-empty">No unresolved conflicts are recorded.</p> : <ul className="detail-list">{event.conflicts.map((conflict) => <li key={conflict.id}><p>{conflict.summary}</p><div className="detail-relations"><p>Conflicting claims</p><ul>{conflict.claim_ids.map((id) => <li key={id}>{claimsById.get(id)?.text}</li>)}</ul>{conflict.evidence_ids.length > 0 && <><p>Related evidence</p><ul>{conflict.evidence_ids.map((id) => <li key={id}>{evidenceById.get(id)?.excerpt}</li>)}</ul></>}</div></li>)}</ul>}
       </section>
 
       <section className="detail-section" aria-labelledby="evidence-heading">
