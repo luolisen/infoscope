@@ -871,7 +871,8 @@ TG News 不直接生成 NOW、Event 或 Brief。
   rationale 最长 4,000；missing facts 最多 8 项，question 最长 500、reason 最长 2,000，并按
   `(event_ids, question)` 去重。
 - research_required 固定为 `pending/awaiting_research`；Ask Research Bridge 合并前不自动重跑、不
-  调用 Research。answerable 为 `completed/finalizing`。单 request 行锁与状态/Artifact 原子提交
+  调用 Research。answerable 为 `pending/finalizing`，Final Answer artifact 成功后才 completed。单
+  request 行锁与状态/Artifact 原子提交
   防止并发重复；失败不产生伪 Artifact。本切片不新增 Public API、不修改事实层。
 
 ## Ask Research Bridge v1（已冻结）
@@ -915,6 +916,20 @@ TG News 不直接生成 NOW、Event 或 Brief。
   `pending/finalizing` 原子提交。
 - 配置 `ASK_EVENT_RECONCILIATION_MAX_ATTEMPTS` 默认 3。通过 worker 参数
   `--run-ask-event-reconciliation ASK_ID` 显式运行；不自动触发 Final Answer，不新增 Public API/前端。
+
+## Ask Finalization & Public API v1（已冻结）
+
+- `direct_reuse` 从 canonical answerable Comparison 生成 final artifact，绝不再次调用模型；
+  `researched_model` 从 completed Reconciliation 与更新后的当前完整事实层生成最终回答。
+- `ask_finalizations / ask_finalization_runs / ask_final_artifacts` 保存独立状态、attempt、source、input
+  hash 与 immutable `ask_final_answer.v1`。direct 模型元数据必须全为 null，researched 必须全非空。
+- researched 模型返回后重新锁定 source 与全部参与 hash 的 Event 事实/关系并复核输入；引用只能来自
+  当前 selected Events。`updated_event_ids` 由 Backend 从 Reconciliation artifact 注入，模型不可决定。
+- 只有 final artifact 与 completed 状态原子提交后，Public Polling 才能返回 completed。POST 只创建
+  pending Ask；独立 Worker 依次驱动 comparing、awaiting_research、awaiting_reconciliation、finalizing。
+- GET 使用 pending/running/completed/failed 严格联合 DTO，owner-only；failed 只返回通用
+  `ASK_FAILED`。ready user 在当前 shared local-demo Event catalog 中可访问全部现存 Event，缺失/不可
+  访问统一 404，缺少 Base Analysis 为 409。FastAPI 不运行模型任务，不使用 WebSocket。
 
 ---
 

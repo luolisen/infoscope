@@ -1368,7 +1368,8 @@ Ask 同样服从来源隐私边界。私密 Telegram 可以使用脱敏后的正
 - 初次 comparison 从 `pending/comparing` 进入 `running/comparing`；仅 `failed/comparing` 可重试。
   `completed` 与 `pending/awaiting_research` 都复用既有结果，不再次调用模型或生成 comparison。
   `research_required` 固定回到 `pending/awaiting_research`，Ask Research Bridge 合并前不得自动重跑
-  或调用 Research；`answerable` 进入 `completed/finalizing`。
+  或调用 Research；`answerable` 进入 `pending/finalizing`，只有 canonical Final Answer artifact 成功
+  提交后才进入 completed。
 - 单请求行锁防止并发重复模型调用；Artifact 与 run/request 状态原子提交。canonical input snapshot
   与模型输出属于内部敏感数据，不进入普通日志或 Public DTO。私密 Signal 仅传
   `sanitized_text + null provenance`。本切片不新增 Public API，不触发 Research，不修改事实层。
@@ -1430,6 +1431,26 @@ Ask 同样服从来源隐私边界。私密 Telegram 可以使用脱敏后的正
   `ASK_RECONCILIATION_INPUT_CHANGED`，丢弃模型输出且不创建 artifact。
 - 成功时 Event 更新、EventSignal 追加、artifact、run/reconciliation completed 与 Ask
   `pending/finalizing` 原子提交。本切片不新增 Public API、Frontend Contract、NOW 或 Event Detail。
+
+### Ask Finalization & Public API v1（已冻结）
+
+- Finalization 仅消费 `pending/finalizing` Ask。`direct_reuse` 严格复核并复用 answerable Comparison，
+  不调用模型且 `updated_event_ids=[]`；`researched_model` 消费唯一 Reconciliation artifact，并从更新后
+  的当前完整 Event 事实快照生成最终回答。
+- `ask_finalizations`、独立 attempt runs 与 immutable `ask_final_answer.v1` artifacts 分别对 Ask、source
+  与 run 唯一。direct artifact 的 provider/model/token usage 必须全为 null；researched artifact 必须
+  全部非空，禁止伪造模型元数据。
+- researched input hash 覆盖 question、原选择顺序、source artifacts、Backend 生成的 updated Event IDs
+  以及当前 Event/Base Analysis/Claim/Timeline/Conflict/脱敏 Evidence。模型返回后锁定并重建输入；变化
+  以 `ASK_FINALIZATION_INPUT_CHANGED` 终态失败。
+- 模型只能返回 answer 与当前候选范围内的引用 ID；Backend 校验 Event 顺序、ID 唯一性和引用归属。
+  Final Answer 不修改事实层，也不是 Evidence。私密 Evidence 仍只能是脱敏正文与 null provenance。
+- direct 或 researched 成功都必须先原子创建 final artifact，再将 Ask 置为 completed。Public GET 只从
+  final artifact 构造结果；内部 stage、source、prompt、模型元数据及内部错误码不进入 DTO。
+- `POST /api/v1/ask` 要求 ready user、1–8 个唯一 Event 与 1–2,000 字符 trimmed question，只持久化
+  `pending/comparing` 并返回 202。`GET /api/v1/ask/{ask_id}` owner-only，使用严格 status 联合 DTO；
+  failed 只暴露 `ASK_FAILED` 通用错误。Ask 全流程由独立 Worker 根据数据库 stage 驱动，FastAPI 不执行
+  模型任务，Frontend 使用 Polling，不使用 WebSocket。
 
 ---
 

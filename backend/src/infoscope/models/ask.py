@@ -181,9 +181,7 @@ class AskResearchArtifact(Base):
         UniqueConstraint(
             "comparison_artifact_id", name="uq_ask_research_artifacts_comparison_artifact"
         ),
-        UniqueConstraint(
-            "research_request_id", name="uq_ask_research_artifacts_research_request"
-        ),
+        UniqueConstraint("research_request_id", name="uq_ask_research_artifacts_research_request"),
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
@@ -317,6 +315,134 @@ class AskEventReconciliationArtifact(Base):
     provider: Mapped[str] = mapped_column(String(64), nullable=False)
     model: Mapped[str] = mapped_column(String(128), nullable=False)
     token_usage: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class AskFinalization(Base):
+    __tablename__ = "ask_finalizations"
+    __table_args__ = (
+        UniqueConstraint("ask_request_id", name="uq_ask_finalizations_request"),
+        UniqueConstraint(
+            "source_comparison_artifact_id", name="uq_ask_finalizations_comparison_source"
+        ),
+        UniqueConstraint(
+            "source_reconciliation_artifact_id", name="uq_ask_finalizations_reconciliation_source"
+        ),
+        CheckConstraint(
+            "finalization_kind IN ('direct_reuse', 'researched_model')",
+            name="ck_ask_finalizations_kind",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'running', 'completed', 'failed')",
+            name="ck_ask_finalizations_status",
+        ),
+        CheckConstraint("attempt_count >= 0", name="ck_ask_finalizations_attempt_count"),
+        CheckConstraint("max_attempts > 0", name="ck_ask_finalizations_max_attempts"),
+        CheckConstraint(
+            "input_hash IS NULL OR input_hash ~ '^[0-9a-f]{64}$'",
+            name="ck_ask_finalizations_input_hash",
+        ),
+        CheckConstraint(
+            "(finalization_kind = 'direct_reuse' AND source_reconciliation_artifact_id IS NULL) "
+            "OR (finalization_kind = 'researched_model' AND "
+            "source_reconciliation_artifact_id IS NOT NULL)",
+            name="ck_ask_finalizations_source_kind",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    ask_request_id: Mapped[UUID] = mapped_column(
+        ForeignKey("ask_requests.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    source_comparison_artifact_id: Mapped[UUID] = mapped_column(
+        ForeignKey("ask_comparison_artifacts.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    source_reconciliation_artifact_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("ask_event_reconciliation_artifacts.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    finalization_kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
+    input_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    max_attempts: Mapped[int] = mapped_column(Integer, nullable=False)
+    error_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class AskFinalizationRun(Base):
+    __tablename__ = "ask_finalization_runs"
+    __table_args__ = (
+        UniqueConstraint("finalization_id", "attempt", name="uq_ask_finalization_runs_attempt"),
+        CheckConstraint(
+            "status IN ('running', 'completed', 'failed')",
+            name="ck_ask_finalization_runs_status",
+        ),
+        CheckConstraint("attempt > 0", name="ck_ask_finalization_runs_attempt"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    finalization_id: Mapped[UUID] = mapped_column(
+        ForeignKey("ask_finalizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    attempt: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    error_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AskFinalArtifact(Base):
+    __tablename__ = "ask_final_artifacts"
+    __table_args__ = (
+        UniqueConstraint("finalization_id", name="uq_ask_final_artifacts_finalization"),
+        UniqueConstraint("created_by_run_id", name="uq_ask_final_artifacts_run"),
+        UniqueConstraint("ask_request_id", name="uq_ask_final_artifacts_request"),
+        CheckConstraint(
+            "finalization_kind IN ('direct_reuse', 'researched_model')",
+            name="ck_ask_final_artifacts_kind",
+        ),
+        CheckConstraint(
+            "input_hash IS NULL OR input_hash ~ '^[0-9a-f]{64}$'",
+            name="ck_ask_final_artifacts_input_hash",
+        ),
+        CheckConstraint(
+            "(finalization_kind = 'direct_reuse' AND provider IS NULL AND model IS NULL "
+            "AND token_usage IS NULL) OR (finalization_kind = 'researched_model' "
+            "AND provider IS NOT NULL AND model IS NOT NULL AND token_usage IS NOT NULL)",
+            name="ck_ask_final_artifacts_model_metadata",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    finalization_id: Mapped[UUID] = mapped_column(
+        ForeignKey("ask_finalizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    created_by_run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("ask_finalization_runs.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    ask_request_id: Mapped[UUID] = mapped_column(
+        ForeignKey("ask_requests.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    finalization_kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    schema_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    input_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    payload: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    provider: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    model: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    token_usage: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

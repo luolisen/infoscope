@@ -7,6 +7,10 @@ from typing import Any, TypeVar
 import httpx
 from pydantic import BaseModel, ValidationError
 
+from infoscope.analysis.ask_finalization_prompt import (
+    ASK_FINALIZATION_SYSTEM_PROMPT,
+    build_ask_finalization_prompt,
+)
 from infoscope.analysis.ask_prompt import ASK_COMPARISON_SYSTEM_PROMPT, build_ask_comparison_prompt
 from infoscope.analysis.ask_reconciliation_prompt import (
     ASK_EVENT_RECONCILIATION_SYSTEM_PROMPT,
@@ -19,6 +23,9 @@ from infoscope.analysis.ask_schemas import (
     AskEventReconciliationInput,
     AskEventReconciliationPayload,
     AskEventReconciliationResponse,
+    AskFinalizationInput,
+    AskFinalizationModelPayload,
+    AskFinalizationResponse,
 )
 from infoscope.analysis.client import AnalysisError
 from infoscope.analysis.config import AnalysisConfig
@@ -135,6 +142,19 @@ class DeepSeekIntelligenceClient:
             payload_type=AskEventReconciliationPayload,
         )
         return AskEventReconciliationResponse(
+            payload=payload,
+            provider="deepseek",
+            model=model,
+            token_usage=usage,
+        )
+
+    async def finalize_ask(self, value: AskFinalizationInput) -> AskFinalizationResponse:
+        payload, model, usage = await self._request(
+            system=ASK_FINALIZATION_SYSTEM_PROMPT,
+            user=build_ask_finalization_prompt(value),
+            payload_type=AskFinalizationModelPayload,
+        )
+        return AskFinalizationResponse(
             payload=payload,
             provider="deepseek",
             model=model,
