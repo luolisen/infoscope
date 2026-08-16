@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 from uuid import uuid4
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from infoscope.api.routes.archive_search import router as archive_search_router
 from infoscope.api.routes.ask import router as ask_router
@@ -19,6 +21,8 @@ from infoscope.api.routes.onboarding import router as onboarding_router
 from infoscope.db import close_database
 from infoscope.errors import ApiError
 from infoscope.schemas.common import ErrorDetail, ErrorResponse
+
+FRONTEND_DIST = Path(__file__).resolve().parents[4] / "frontend" / "dist"
 
 
 @asynccontextmanager
@@ -116,3 +120,28 @@ async def unhandled_error_handler(request: Request, _: Exception) -> JSONRespons
         content=payload.model_dump(),
         headers={"x-request-id": current_request_id},
     )
+
+
+def mount_frontend(application: FastAPI, dist: Path = FRONTEND_DIST) -> bool:
+    """Serve the built SPA without changing or shadowing the API contract."""
+    index = dist / "index.html"
+    assets = dist / "assets"
+    if not index.is_file() or not assets.is_dir():
+        return False
+
+    application.mount("/assets", StaticFiles(directory=assets), name="frontend-assets")
+
+    @application.get("/", include_in_schema=False)
+    async def frontend_index() -> FileResponse:
+        return FileResponse(index)
+
+    @application.get("/{path:path}", include_in_schema=False)
+    async def frontend_route(path: str) -> FileResponse:
+        if path == "api" or path.startswith("api/") or "." in Path(path).name:
+            raise HTTPException(status_code=404)
+        return FileResponse(index)
+
+    return True
+
+
+mount_frontend(app)

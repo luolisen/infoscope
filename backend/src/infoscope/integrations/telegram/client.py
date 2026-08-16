@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from telethon import TelegramClient, functions, types, utils
@@ -73,6 +74,8 @@ class TelegramNewsClient:
     def __init__(self, config: TelegramConfig) -> None:
         self.config = config
         config.session_path.parent.mkdir(parents=True, exist_ok=True)
+        config.session_path.parent.chmod(0o700)
+        _protect_session_files(config.session_path)
         self.client = TelegramClient(str(config.session_path), config.api_id, config.api_hash)
 
     async def login(self) -> None:
@@ -81,6 +84,7 @@ class TelegramNewsClient:
         else:
             await self.client.start(phone=self.config.phone)
         await self.client.disconnect()
+        _protect_session_files(self.config.session_path)
 
     async def connect(self) -> None:
         try:
@@ -93,6 +97,7 @@ class TelegramNewsClient:
         except (OSError, RPCError) as error:
             await self.client.disconnect()
             raise TelegramSourceError("TGNEWS_CONNECT_FAILED") from error
+        _protect_session_files(self.config.session_path)
 
     async def disconnect(self) -> None:
         await self.client.disconnect()
@@ -182,3 +187,10 @@ def _message_value(message: Any) -> TelegramMessage | None:
         views=message.views,
         forwards=message.forwards,
     )
+
+
+def _protect_session_files(session_path: Path) -> None:
+    """Telethon appends .session; both forms are local credentials."""
+    for candidate in (session_path, Path(f"{session_path}.session")):
+        if candidate.is_file() and not candidate.is_symlink():
+            candidate.chmod(0o600)

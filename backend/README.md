@@ -418,7 +418,20 @@ reads Raw, Evidence text, provenance, collector metadata, or model rationale.
 Checks:
 
 ```bash
-uv run --project backend ruff check backend/src backend/tests scripts
-uv run --project backend pytest backend
-uv run --project backend python scripts/generate_openapi.py --check
+./scripts/check.sh
 ```
+
+Phase 6 provides one production-style localhost entry point for macOS and Ubuntu. It starts
+PostgreSQL, applies migrations, builds the frontend, serves that build from FastAPI, and runs the
+Ask, Maintenance, Personalization, and Brief queues in one native worker process:
+
+```bash
+./scripts/demo.sh start
+./scripts/demo.sh status
+./scripts/demo.sh stop
+```
+
+Runtime logs and PID files stay under ignored `.state/demo/`. The API binds to `127.0.0.1:8000`
+by default; set `INFOSCOPE_API_PORT` to change it. The script intentionally leaves PostgreSQL
+running on stop. Research still requires the pinned OpenClaw config and the fixed
+`DEEPSEEK_API_KEY` subprocess credential allowlist.

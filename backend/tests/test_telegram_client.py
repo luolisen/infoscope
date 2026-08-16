@@ -75,6 +75,21 @@ def test_explicit_folder_peer_is_included_and_exclusion_wins() -> None:
     assert not _dialog_matches(dialog, excluded_folder)
 
 
+def test_existing_session_and_parent_are_private(tmp_path) -> None:
+    session = tmp_path / "telegram" / "infoscope.session"
+    session.parent.mkdir()
+    session.write_text("not-a-real-session", encoding="utf-8")
+    session.parent.chmod(0o755)
+    session.chmod(0o644)
+    config = TelegramConfig(12345, "secret", None, session.with_suffix(""), "News", 100)
+
+    with patch("infoscope.integrations.telegram.client.TelegramClient"):
+        TelegramNewsClient(config)
+
+    assert session.parent.stat().st_mode & 0o777 == 0o700
+    assert session.stat().st_mode & 0o777 == 0o600
+
+
 async def test_login_uses_telethon_interactive_phone_prompt_when_phone_is_unset(tmp_path) -> None:
     transport = SimpleNamespace(start=AsyncMock(), disconnect=AsyncMock())
     config = TelegramConfig(12345, "secret", None, tmp_path / "session", "News", 100)
