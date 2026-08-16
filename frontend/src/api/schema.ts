@@ -515,7 +515,10 @@ export interface components {
              * Format: date-time
              */
             display_time: string;
-            /** Id */
+            /**
+             * Id
+             * Format: uuid
+             */
             id: string;
             /** New Claim Count */
             new_claim_count: number;

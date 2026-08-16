@@ -328,7 +328,7 @@ returns completed until the immutable final artifact has committed.
 Phase 4 Event Backwrite consumes a Backend-produced, already ordered user-visible Event snapshot.
 It never queries Event timestamps to invent newest/oldest order. The worker freezes that order and
 processes newest, oldest, second-newest, second-oldest, and so on without reordering the active
-cycle. Phase 5 Personalization will provide the production visibility snapshot. The internal CLI
+cycle. Phase 5 Personalization provides the production visibility snapshot. The internal CLI
 accepts only cycle identity; it cannot inject Event IDs or bypass the visibility Provider:
 
 ```json
@@ -338,8 +338,9 @@ accepts only cycle identity; it cannot inject Event IDs or bypass the visibility
 }
 ```
 
-Until Phase 5 installs the production Provider, this command fails closed with
-`BACKWRITE_VISIBILITY_PROVIDER_UNAVAILABLE`.
+The production Provider reads only the latest completed immutable Personalization artifact. If a
+user has no completed artifact it fails closed with `PERSONALIZATION_SNAPSHOT_UNAVAILABLE`; it
+never falls back to all Events.
 
 ```bash
 uv run --project backend python -m infoscope.worker \
@@ -366,18 +367,30 @@ layer intact and the item retryable or failed.
 Phase 4 Maintenance persists one global run at a time and exposes owner-safe polling through
 `GET /api/v1/maintenance/status`, `POST /api/v1/maintenance/runs`, and
 `GET /api/v1/maintenance/runs/{run_id}`. The Worker processes the frozen phase order
-`window_analysis -> reconciliation -> event_backwrite`; each successful Window artifact is carried
+`window_analysis -> reconciliation -> event_backwrite -> personalization`; each successful Window artifact is carried
 through Event Reconstruction, Claims, Timeline, Conflicts, and Base Analysis before Backwrite.
 Terminal completion or failure releases the database active slot. The next automatic run is due
 exactly one hour after `finished_at`, never at a wall-clock boundary:
 
 ```bash
-uv run --project backend infoscope-worker --process-maintenance-queue
+uv run --project backend python -m infoscope.worker --process-maintenance-queue
 ```
 
-Backwrite iterates onboarded users in Backend UUID order and still requires the fail-closed
-`UserVisibleEventSnapshotProvider`. Until Phase 5 installs the Personalization-backed Provider, the
-run fails with a stable internal error rather than treating all Events as visible.
+Backwrite iterates onboarded users in Backend UUID order and consumes the snapshot completed before
+the current cycle. Personalization runs last, so its new immutable snapshot is used by the next
+Backwrite cycle. Run the profile-update queue alongside Maintenance to bootstrap newly onboarded
+users before their first Backwrite:
+
+```bash
+uv run --project backend python -m infoscope.worker --process-personalization-queue
+```
+
+Personalization applies the versioned SCOPE/market keyword Prefilter before any model call, caps the
+single strict model input at 100 Events / 4 MiB, and persists an all-or-nothing immutable snapshot.
+NOW pagination is anchored to that artifact and ordered only by captured `display_time DESC,
+event_id ASC`. `raw_information_count` is a database count for the captured one-hour Raw window;
+priority never changes NOW chronology. Event Detail and Ask permit Events that were relevant in any
+completed user snapshot, while Backwrite visibility uses only the latest snapshot.
 
 Checks:
 

@@ -20,7 +20,12 @@ from infoscope.schemas.maintenance import (
 )
 
 MAINTENANCE_DELAY = timedelta(hours=1)
-MAINTENANCE_PHASES = ("window_analysis", "reconciliation", "event_backwrite")
+MAINTENANCE_PHASES = (
+    "window_analysis",
+    "reconciliation",
+    "event_backwrite",
+    "personalization",
+)
 
 
 class MaintenanceError(RuntimeError):

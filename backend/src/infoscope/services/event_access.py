@@ -3,26 +3,26 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import status
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from infoscope.errors import ApiError
-from infoscope.models import Event, User
+from infoscope.models import User
+from infoscope.services.personalization import PersonalizationRepository
 
 
 class EventAccessPolicy:
-    """Shared-catalog v1 policy behind a replaceable authorization boundary."""
+    """Allow Events that were relevant in any completed user snapshot."""
 
     def __init__(self, database: AsyncSession) -> None:
         self.database = database
 
     async def require_all(self, user: User, event_ids: list[UUID]) -> None:
-        _ = user
-        available = set(
-            (
-                await self.database.execute(select(Event.id).where(Event.id.in_(event_ids)))
-            ).scalars()
-        )
+        repository = PersonalizationRepository(self.database)
+        available = {
+            event_id
+            for event_id in event_ids
+            if await repository.was_ever_relevant(user.id, event_id)
+        }
         if available != set(event_ids):
             raise ApiError(
                 status_code=status.HTTP_404_NOT_FOUND,

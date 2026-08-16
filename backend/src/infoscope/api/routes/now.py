@@ -21,9 +21,9 @@ router = APIRouter(tags=["now"])
     },
 )
 async def get_now(
-    _user: Annotated[User, Depends(get_ready_user)],
+    user: Annotated[User, Depends(get_ready_user)],
     service: Annotated[NowService, Depends(get_now_service)],
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     cursor: Annotated[str | None, Query(max_length=2048)] = None,
 ) -> NowResponse:
-    return service.get_now(limit=limit, cursor=cursor)
+    return await service.get_now(user, limit=limit, cursor=cursor)

@@ -120,7 +120,7 @@ async def test_maintenance_runner_executes_frozen_phase_order() -> None:
 
     assert result.status == "completed"
     assert executed == list(MAINTENANCE_PHASES)
-    assert repository.transitions == ["reconciliation", "event_backwrite"]
+    assert repository.transitions == ["reconciliation", "event_backwrite", "personalization"]
 
 
 @pytest.mark.asyncio
@@ -136,12 +136,16 @@ async def test_maintenance_runner_isolates_phase_failure() -> None:
     async def backwrite(_run):
         raise AssertionError("later phases must not run")
 
+    async def personalization(_run):
+        raise AssertionError("later phases must not run")
+
     result = await MaintenanceRunner(
         repository,  # type: ignore[arg-type]
         {
             "window_analysis": window,
             "reconciliation": reconciliation,
             "event_backwrite": backwrite,
+            "personalization": personalization,
         },
     ).run_next()
 

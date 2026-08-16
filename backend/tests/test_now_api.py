@@ -1,5 +1,7 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
+from uuid import uuid4
 
+import pytest
 from httpx import ASGITransport, AsyncClient
 
 from infoscope.api.app import app
@@ -23,7 +25,8 @@ def ready_user() -> User:
 
 
 class FixedNowService:
-    def get_now(self, *, limit: int, cursor: str | None) -> NowResponse:
+    async def get_now(self, user: User, *, limit: int, cursor: str | None) -> NowResponse:
+        assert user.username == "alan"
         assert limit == 20
         assert cursor is None
         return NowResponse(
@@ -115,16 +118,16 @@ async def test_now_requires_authentication() -> None:
     assert response.json()["error"]["code"] == "AUTH_REQUIRED"
 
 
-def test_empty_now_uses_an_exact_one_hour_utc_window() -> None:
-    response = NowService().get_now(limit=20, cursor=None)
+def test_now_cursor_round_trips_an_immutable_artifact_anchor() -> None:
+    artifact_id = uuid4()
+    event_id = uuid4()
+    display_time = datetime(2026, 8, 16, tzinfo=UTC)
 
-    assert response.window_stats.window_started_at.tzinfo is UTC
-    assert response.window_stats.window_started_at.minute == 0
-    assert response.window_stats.window_started_at.second == 0
-    assert response.window_stats.window_started_at.microsecond == 0
-    assert (
-        response.window_stats.window_ended_at - response.window_stats.window_started_at
-        == timedelta(hours=1)
-    )
-    assert response.items == []
-    assert response.next_cursor is None
+    cursor = NowService._encode_cursor(artifact_id, display_time, event_id)
+
+    assert NowService._decode_cursor(cursor) == (artifact_id, display_time, event_id)
+
+
+def test_now_cursor_rejects_malformed_or_unknown_versions() -> None:
+    with pytest.raises(ApiError, match="NOW cursor is invalid"):
+        NowService._decode_cursor("not-a-cursor")

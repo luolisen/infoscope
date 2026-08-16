@@ -1,0 +1,274 @@
+from __future__ import annotations
+
+import json
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+from uuid import uuid4
+
+import httpx
+import pytest
+from pydantic import ValidationError
+
+from infoscope.analysis.config import AnalysisConfig
+from infoscope.analysis.intelligence_client import DeepSeekIntelligenceClient
+from infoscope.analysis.intelligence_schemas import BaseAnalysisEntity
+from infoscope.analysis.personalization_schemas import (
+    PersonalizationBaseAnalysis,
+    PersonalizationDecision,
+    PersonalizationEventInput,
+    PersonalizationInput,
+    PersonalizationPayload,
+    PersonalizationProfile,
+    canonical_hash,
+)
+from infoscope.schemas.onboarding import FocusId, InvestmentMarketId, ScopeId
+from infoscope.services.personalization import (
+    PersonalizationError,
+    PersonalizationRepository,
+    PersonalizationRunner,
+    cheap_prefilter,
+)
+
+
+def _profile(
+    *,
+    scopes: list[ScopeId] | None = None,
+    markets: list[InvestmentMarketId] | None = None,
+) -> PersonalizationProfile:
+    return PersonalizationProfile(
+        scope_ids=scopes or [ScopeId.AI],
+        investment_market_ids=markets or [],
+        focus_ids=[FocusId.DEEP_CONTEXT, FocusId.MAJOR_CHANGES],
+    )
+
+
+def _event(
+    *,
+    title: str = "New AI model released",
+    display_time: datetime | None = None,
+    ai_context: bool = True,
+) -> PersonalizationEventInput:
+    return PersonalizationEventInput(
+        event_id=uuid4(),
+        title=title,
+        overview="A material change occurred.",
+        state="developing",
+        display_time=display_time or datetime(2026, 8, 16, tzinfo=UTC),
+        updated_at=datetime(2026, 8, 16, 1, tzinfo=UTC),
+        base_analysis=PersonalizationBaseAnalysis(
+            base_analysis_id=uuid4(),
+            summary=(
+                "The release changes the model landscape."
+                if ai_context
+                else "The company published a routine update."
+            ),
+            event_type="technology.release",
+            importance="high",
+            topics=["AI" if ai_context else "Business"],
+            entities=[
+                BaseAnalysisEntity(
+                    name="Example AI" if ai_context else "Example Company",
+                    entity_type="company",
+                )
+            ],
+        ),
+    )
+
+
+def test_prefilter_uses_token_boundaries_and_selected_investment_market() -> None:
+    assert cheap_prefilter(_profile(), _event(title="An AI agent ships"))
+    assert not cheap_prefilter(
+        _profile(),
+        _event(title="Said company reports earnings", ai_context=False),
+    )
+
+    china = _profile(
+        scopes=[ScopeId.INVESTMENT],
+        markets=[InvestmentMarketId.CHINA_MARKET],
+    )
+    assert cheap_prefilter(china, _event(title="中国市场股票估值变化"))
+    assert not cheap_prefilter(
+        china,
+        _event(title="US stock market earnings on Nasdaq", ai_context=False),
+    )
+    assert cheap_prefilter(
+        china,
+        _event(title="Company earnings and valuation update", ai_context=False),
+    )
+
+
+def test_input_requires_backend_display_order_and_hash_preserves_profile_order() -> None:
+    newer = _event(display_time=datetime(2026, 8, 16, 2, tzinfo=UTC))
+    older = _event(display_time=newer.display_time - timedelta(hours=1))
+    value = PersonalizationInput(user_id=uuid4(), profile=_profile(), events=[newer, older])
+    reversed_profile = value.model_copy(
+        update={
+            "profile": value.profile.model_copy(
+                update={"focus_ids": list(reversed(value.profile.focus_ids))}
+            )
+        }
+    )
+
+    assert canonical_hash(value) != canonical_hash(reversed_profile)
+    with pytest.raises(ValidationError, match="Backend display order"):
+        PersonalizationInput(user_id=value.user_id, profile=value.profile, events=[older, newer])
+
+
+def test_output_must_cover_input_and_preserve_saved_profile_order() -> None:
+    event = _event()
+    value = PersonalizationInput(user_id=uuid4(), profile=_profile(), events=[event])
+    decision = PersonalizationDecision(
+        event_id=event.event_id,
+        relevant=True,
+        priority="high",
+        why_it_matters="This changes a selected area.",
+        personalized_angle="Track the downstream technical impact.",
+        matched_scope_ids=[ScopeId.AI],
+        matched_focus_ids=[FocusId.DEEP_CONTEXT, FocusId.MAJOR_CHANGES],
+        rationale="Matches the selected scope and focus.",
+    )
+    PersonalizationRepository.validate_output(
+        PersonalizationPayload(decisions=[decision]),
+        value,
+    )
+    wrong_order = decision.model_copy(
+        update={"matched_focus_ids": list(reversed(decision.matched_focus_ids))}
+    )
+    with pytest.raises(PersonalizationError, match="PERSONALIZATION_SCHEMA_INVALID"):
+        PersonalizationRepository.validate_output(
+            PersonalizationPayload(decisions=[wrong_order]),
+            value,
+        )
+    with pytest.raises(PersonalizationError, match="PERSONALIZATION_SCHEMA_INVALID"):
+        PersonalizationRepository.validate_output(PersonalizationPayload(decisions=[]), value)
+
+
+def test_irrelevant_decision_cannot_carry_public_personalization() -> None:
+    with pytest.raises(ValidationError, match="cannot contain public personalization"):
+        PersonalizationDecision(
+            event_id=uuid4(),
+            relevant=False,
+            priority="low",
+            why_it_matters="Must be absent",
+            personalized_angle=None,
+            matched_scope_ids=[],
+            matched_focus_ids=[],
+            rationale="Not relevant.",
+        )
+
+
+def test_strict_input_rejects_oversized_fields() -> None:
+    event = _event()
+    with pytest.raises(ValidationError, match="at most 512 characters"):
+        PersonalizationEventInput.model_validate({**event.model_dump(), "title": "界" * 700})
+
+
+@pytest.mark.asyncio
+async def test_intelligence_adapter_uses_strict_personalization_prompt_and_schema() -> None:
+    event = _event()
+    value = PersonalizationInput(user_id=uuid4(), profile=_profile(), events=[event])
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        document = json.loads(request.content)
+        assert document["response_format"] == {"type": "json_object"}
+        prompt = document["messages"][1]["content"]
+        assert "personalization_input.v1" in prompt
+        assert "evidence" not in prompt.casefold()
+        return httpx.Response(
+            200,
+            json={
+                "model": "deepseek-v4-pro",
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {
+                            "content": json.dumps(
+                                {
+                                    "schema_version": "personalization.v1",
+                                    "decisions": [
+                                        {
+                                            "event_id": str(event.event_id),
+                                            "relevant": True,
+                                            "priority": "high",
+                                            "why_it_matters": "Selected scope changed.",
+                                            "personalized_angle": "Watch technical effects.",
+                                            "matched_scope_ids": ["ai"],
+                                            "matched_focus_ids": [
+                                                "deep_context",
+                                                "major_changes",
+                                            ],
+                                            "rationale": "Matches profile.",
+                                        }
+                                    ],
+                                }
+                            )
+                        },
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": 10,
+                    "completion_tokens": 10,
+                    "total_tokens": 20,
+                },
+            },
+        )
+
+    config = AnalysisConfig("https://api.example.com", "model", ("key",), 10, 0, 1024)
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        response = await DeepSeekIntelligenceClient(client=client, config=config).personalize(value)
+
+    assert response.payload.decisions[0].event_id == event.event_id
+    assert response.token_usage.total_tokens == 20
+
+
+@pytest.mark.asyncio
+async def test_running_user_attempt_cannot_be_claimed_twice() -> None:
+    repository = PersonalizationRepository(None)  # type: ignore[arg-type]
+    repository._locked_run = AsyncMock(  # type: ignore[method-assign]
+        return_value=SimpleNamespace(status="running")
+    )
+
+    with pytest.raises(PersonalizationError, match="PERSONALIZATION_ALREADY_RUNNING"):
+        await repository.start_attempt(uuid4())
+
+
+@pytest.mark.asyncio
+async def test_empty_prefilter_persists_noop_without_model_call() -> None:
+    value = PersonalizationInput(user_id=uuid4(), profile=_profile(), events=[])
+    run = SimpleNamespace(
+        id=uuid4(),
+        status="pending",
+        attempt_count=0,
+        max_attempts=3,
+    )
+
+    class Repository:
+        async def input_snapshot(self, _user_id):
+            return value
+
+        async def create_or_reuse(self, _value, *, max_attempts):
+            assert max_attempts == 3
+            return run
+
+        async def start_attempt(self, _run_id):
+            run.status = "running"
+            return run
+
+        async def persist_success(self, _run_id, original, response):
+            assert original == value
+            assert response is None
+            run.status = "completed"
+            return run
+
+    class NoModel:
+        async def personalize(self, _value):
+            raise AssertionError("empty prefilter must not call the model")
+
+    result = await PersonalizationRunner(  # type: ignore[arg-type]
+        Repository(),
+        NoModel(),
+        max_attempts=3,
+    ).run_user(value.user_id)
+
+    assert result.status == "completed"

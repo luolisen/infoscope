@@ -20,6 +20,9 @@ from infoscope.models import (
     ConflictSignal,
     Event,
     EventSignal,
+    PersonalizationArtifact,
+    PersonalizationRun,
+    PersonalizedEvent,
     Signal,
     TimelineClaim,
     TimelineEntry,
@@ -61,6 +64,32 @@ class EventDetailService:
                 code="EVENT_NOT_READY",
                 message="Event detail is not ready.",
             )
+        personalized = (
+            await self.database.execute(
+                select(PersonalizedEvent)
+                .join(
+                    PersonalizationArtifact,
+                    PersonalizationArtifact.id == PersonalizedEvent.artifact_id,
+                )
+                .join(
+                    PersonalizationRun,
+                    PersonalizationRun.id == PersonalizationArtifact.created_by_run_id,
+                )
+                .where(
+                    PersonalizedEvent.user_id == user.id,
+                    PersonalizedEvent.event_id == event_id,
+                    PersonalizedEvent.relevant.is_(True),
+                    PersonalizationRun.status == "completed",
+                )
+                .order_by(
+                    PersonalizationArtifact.created_at.desc(),
+                    PersonalizationArtifact.id.desc(),
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if personalized is None or personalized.why_it_matters is None:
+            raise self._not_found()
 
         claims = list(
             (
@@ -134,6 +163,7 @@ class EventDetailService:
         return self._response(
             event=event,
             analysis=analysis,
+            why_it_matters=personalized.why_it_matters,
             claims=claims,
             timeline=timeline,
             conflicts=conflicts,
@@ -154,6 +184,7 @@ class EventDetailService:
         *,
         event: Event,
         analysis: BaseAnalysis,
+        why_it_matters: str | None = None,
         claims: list[Claim],
         timeline: list[TimelineEntry],
         conflicts: list[Conflict],
@@ -199,7 +230,7 @@ class EventDetailService:
                 display_time=self._utc(event.display_time),
                 updated_at=self._utc(event.updated_at),
                 base_analysis=base_analysis,
-                why_it_matters=analysis.summary,
+                why_it_matters=why_it_matters or analysis.summary,
                 topics=list(analysis.topics),
                 saved=False,
                 claims=[

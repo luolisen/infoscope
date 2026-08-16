@@ -44,6 +44,11 @@ from infoscope.models.intelligence import (
     TimelineEntry,
 )
 from infoscope.models.maintenance import MaintenanceRun
+from infoscope.models.personalization import (
+    PersonalizationArtifact,
+    PersonalizationRun,
+    PersonalizedEvent,
+)
 from infoscope.models.research import (
     ResearchDiscoveryArtifact,
     ResearchRequest,
@@ -85,6 +90,9 @@ __all__ = [
     "Event",
     "EventSignal",
     "MaintenanceRun",
+    "PersonalizationArtifact",
+    "PersonalizationRun",
+    "PersonalizedEvent",
     "NormalizationStatus",
     "PipelineArtifact",
     "PipelineCheckpoint",
