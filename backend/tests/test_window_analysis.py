@@ -155,7 +155,7 @@ class FakeClient:
                 unassigned_signal_ids=[signal_id],
             ),
             provider="deepseek",
-            model="deepseek-v4-pro",
+            model="deepseek-v4-flash",
             token_usage=TokenUsage(total_tokens=10),
         )
 

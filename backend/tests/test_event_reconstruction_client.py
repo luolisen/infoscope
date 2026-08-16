@@ -25,7 +25,7 @@ async def test_reconstruction_client_rotates_key_and_parses_strict_output() -> N
         return httpx.Response(
             200,
             json={
-                "model": "deepseek-v4-pro",
+                "model": "deepseek-v4-flash",
                 "choices": [
                     {
                         "finish_reason": "stop",

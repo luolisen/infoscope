@@ -334,7 +334,7 @@ async def test_openclaw_invocation_is_isolated_and_cleans_prompt(
                 "durationMs": 10,
                 "agentMeta": {
                     "provider": "deepseek",
-                    "model": "deepseek-v4-pro",
+                    "model": "deepseek-v4-flash",
                     "usage": {},
                 },
             },
@@ -377,7 +377,7 @@ async def test_openclaw_invocation_is_isolated_and_cleans_prompt(
             executable="openclaw",
             config_path=config_path,
             state_dir=state_dir,
-            model="deepseek/deepseek-v4-pro",
+            model="deepseek/deepseek-v4-flash",
             timeout_seconds=30,
         )
     )
@@ -725,7 +725,7 @@ async def test_invalid_and_duplicate_candidates_have_privacy_safe_audits() -> No
         response=ResearchDiscoveryResponse(
             payload=discovery,
             provider="deepseek",
-            model="deepseek-v4-pro",
+            model="deepseek-v4-flash",
             usage=RuntimeUsage(),
         ),
         candidates=audits,
