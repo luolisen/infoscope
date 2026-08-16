@@ -8,10 +8,17 @@ import httpx
 from pydantic import BaseModel, ValidationError
 
 from infoscope.analysis.ask_prompt import ASK_COMPARISON_SYSTEM_PROMPT, build_ask_comparison_prompt
+from infoscope.analysis.ask_reconciliation_prompt import (
+    ASK_EVENT_RECONCILIATION_SYSTEM_PROMPT,
+    build_ask_event_reconciliation_prompt,
+)
 from infoscope.analysis.ask_schemas import (
     AskComparisonInput,
     AskComparisonPayload,
     AskComparisonResponse,
+    AskEventReconciliationInput,
+    AskEventReconciliationPayload,
+    AskEventReconciliationResponse,
 )
 from infoscope.analysis.client import AnalysisError
 from infoscope.analysis.config import AnalysisConfig
@@ -113,6 +120,21 @@ class DeepSeekIntelligenceClient:
             payload_type=AskComparisonPayload,
         )
         return AskComparisonResponse(
+            payload=payload,
+            provider="deepseek",
+            model=model,
+            token_usage=usage,
+        )
+
+    async def reconcile_ask_events(
+        self, value: AskEventReconciliationInput
+    ) -> AskEventReconciliationResponse:
+        payload, model, usage = await self._request(
+            system=ASK_EVENT_RECONCILIATION_SYSTEM_PROMPT,
+            user=build_ask_event_reconciliation_prompt(value),
+            payload_type=AskEventReconciliationPayload,
+        )
+        return AskEventReconciliationResponse(
             payload=payload,
             provider="deepseek",
             model=model,

@@ -35,6 +35,11 @@ class EventSignal(Base):
     __tablename__ = "event_signals"
     __table_args__ = (
         UniqueConstraint("event_id", "signal_id", name="uq_event_signals_event_signal"),
+        CheckConstraint(
+            "(attached_by_pipeline_run_id IS NOT NULL) <> "
+            "(attached_by_ask_reconciliation_run_id IS NOT NULL)",
+            name="ck_event_signals_exactly_one_source",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
@@ -44,8 +49,13 @@ class EventSignal(Base):
     signal_id: Mapped[UUID] = mapped_column(
         ForeignKey("signals.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    attached_by_pipeline_run_id: Mapped[UUID] = mapped_column(
-        ForeignKey("pipeline_runs.id", ondelete="RESTRICT"), nullable=False, index=True
+    attached_by_pipeline_run_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("pipeline_runs.id", ondelete="RESTRICT"), nullable=True, index=True
+    )
+    attached_by_ask_reconciliation_run_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("ask_event_reconciliation_runs.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

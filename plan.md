@@ -1402,6 +1402,35 @@ Ask 同样服从来源隐私边界。私密 Telegram 可以使用脱敏后的正
 - 本切片不自动调度、不执行 Event Reconciliation、不生成最终回答、不修改事实层，也不新增
   Public API 或 Frontend Contract。
 
+### Ask Event Reconciliation v1（已冻结）
+
+- 仅消费 `pending/awaiting_reconciliation` Ask 与唯一 `ask_research_bridge.v1` artifact，只更新其
+  有序 `source_event_ids` 中的既有 Event；不新建、合并或拆分 Event，不修改 Claim、Timeline、
+  Conflict、Base Analysis，也不生成最终回答。
+- 只对 Bridge 引用的 observation Signal 执行定向 exact dedupe；canonical 仍由相同 content hash
+  下 `(created_at, id)` 最早记录决定。去重结果先独立提交，canonical Signal 按 Bridge 首次出现顺序
+  输入模型，并保留 observation IDs 映射；禁止扫描全局 Signal。
+- `ask_event_reconciliation_input.v1` 包含 Ask、完整 Bridge payload、trimmed question、去除 reason
+  的 missing facts、有序 source Events、当前 Base Analysis/Claims/Timeline/Conflicts/Evidence，以及
+  canonical Signal 的脱敏正文、可空 published_at、visibility 与 public-safe provenance。私密
+  Evidence 必须为 `private_sanitized + null provenance`。
+- 模型输出固定为 `ask_event_reconciliation.v1`：`event_updates` 与
+  `unassigned_signal_ids`。每个 update 的 `signal_ids` 必须非空、唯一且来自输入；同一 Signal 可支持
+  多个所选 Event。每个 canonical Signal 必须被至少一个 update 使用或明确 unassigned，不能两者
+  同时出现。全 unassigned 时终态 `ASK_RECONCILIATION_NO_RELEVANT_SIGNALS`，不得改写 Event。
+- Backend 只应用模型验证后的 title、overview、display_time，保留 Event state；EventSignal 仅追加、
+  重放幂等。`event_signals` 使用 pipeline run 或 Ask reconciliation run 二选一的真实 attached source，
+  不伪造一小时 PipelineRun。
+- 独立 reconciliation、attempt run、immutable artifact 记录 source Bridge、input hash、模型
+  输出、assignments 与有序 updated Event IDs。running 不重入、completed 复用；失败重试不改变 Ask
+  Comparison 或 Bridge attempts。
+- 模型返回后在同一事务按 Ask、Bridge、Event、Signal、EventSignal、Claim/relations、Timeline/
+  relations、Conflict/relations、Base Analysis 的固定顺序逐表加锁，重建完整 canonical input 并复核
+  SHA-256。任一内容、关系、顺序或 duplicate mapping 变化均终态
+  `ASK_RECONCILIATION_INPUT_CHANGED`，丢弃模型输出且不创建 artifact。
+- 成功时 Event 更新、EventSignal 追加、artifact、run/reconciliation completed 与 Ask
+  `pending/finalizing` 原子提交。本切片不新增 Public API、Frontend Contract、NOW 或 Event Detail。
+
 ---
 
 ## 8.6 Event Backwrite / Event 回写

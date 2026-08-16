@@ -896,6 +896,26 @@ TG News 不直接生成 NOW、Event 或 Brief。
   `pending/awaiting_reconciliation` 原子提交。配置 `ASK_RESEARCH_BRIDGE_MAX_ATTEMPTS` 默认 3。
 - 本切片不执行 Event Reconciliation、最终回答或自动调度，不新增 Public API/Frontend Contract。
 
+## Ask Event Reconciliation v1（已冻结）
+
+- `ask_event_reconciliations`、独立 attempt runs 与 immutable artifacts 只消费唯一
+  `ask_research_bridge.v1`；仅允许更新其有序 source Events，不创建/合并/拆分 Event，也不改事实层的
+  Claim、Timeline、Conflict 或 Base Analysis。
+- Bridge observation Signals 先定向 exact dedupe 并独立提交。模型输入保存 canonical Signal 与
+  observation IDs 映射、完整当前 Event facts、Base Analysis、missing questions 和 public-safe Evidence；
+  私密来源只能传脱敏正文与 null provenance。
+- `ask_event_reconciliation.v1` 的每个 Event update 至少引用一个输入 canonical Signal。全部 Signals
+  必须 assigned 或 unassigned；同一 Signal 可支持多个 Event。全 unassigned 终态失败，禁止无 Evidence
+  改写 title、overview 或 display_time；Event state 永远由 Backend 保留。
+- `event_signals` 的 attached source 改为 pipeline run / Ask reconciliation run 严格二选一；Ask 不伪造
+  一小时窗口。关系只追加且幂等。
+- 模型返回后按固定顺序锁定 Ask、Bridge、Event、Signal 以及当前 EventSignal、Claim、Timeline、
+  Conflict、Base Analysis 全部内容和关系，重建 input 并复核 SHA-256。变化时终态
+  `ASK_RECONCILIATION_INPUT_CHANGED`，不写 Event 或 artifact；成功则 Event、关系、artifact 与 Ask
+  `pending/finalizing` 原子提交。
+- 配置 `ASK_EVENT_RECONCILIATION_MAX_ATTEMPTS` 默认 3。通过 worker 参数
+  `--run-ask-event-reconciliation ASK_ID` 显式运行；不自动触发 Final Answer，不新增 Public API/前端。
+
 ---
 
 # 十、完整数据 Pipeline

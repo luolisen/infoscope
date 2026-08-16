@@ -2,6 +2,10 @@
 
 from infoscope.services.acquisition import AcquisitionRepository
 from infoscope.services.ask_comparison import AskComparisonRepository, AskComparisonRunner
+from infoscope.services.ask_event_reconciliation import (
+    AskEventReconciliationRepository,
+    AskEventReconciliationRunner,
+)
 from infoscope.services.ask_research_bridge import (
     AskResearchBridgeRepository,
     AskResearchBridgeRunner,
@@ -23,6 +27,8 @@ __all__ = [
     "AcquisitionRepository",
     "AskComparisonRepository",
     "AskComparisonRunner",
+    "AskEventReconciliationRepository",
+    "AskEventReconciliationRunner",
     "AskResearchBridgeRepository",
     "AskResearchBridgeRunner",
     "BaseAnalysisRunner",
