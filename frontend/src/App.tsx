@@ -4,12 +4,15 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchHealth } from "./api/health";
 import { fetchSession, sessionQueryKey } from "./api/session";
 import { AuthScreen } from "./features/auth/AuthScreen";
+import { AskPanel } from "./features/ask/AskPanel";
 import { EventDetail } from "./features/events/EventDetail";
 import { OnboardingPending } from "./features/auth/OnboardingPending";
 import { NowShell } from "./features/now/NowShell";
 
 const primaryNavigation = ["NOW", "BRIEF", "ARCHIVE"];
 const settingsNavigation = ["SCOPE", "SETTINGS"];
+
+type SelectedEvent = { id: string; title: string };
 
 export function App() {
   const sessionQuery = useQuery({ queryKey: sessionQueryKey, queryFn: fetchSession });
@@ -36,7 +39,15 @@ export function App() {
 function ReadyApp() {
   const healthQuery = useQuery({ queryKey: ["health"], queryFn: fetchHealth });
   const [locationHash, setLocationHash] = useState(() => window.location.hash);
+  const [selectedEvents, setSelectedEvents] = useState<SelectedEvent[]>([]);
   const eventId = locationHash.match(/^#event\/([^/]+)$/)?.[1];
+
+  const toggleEventSelection = (eventToToggle: SelectedEvent) => {
+    setSelectedEvents((events) => {
+      if (events.some((event) => event.id === eventToToggle.id)) return events.filter((event) => event.id !== eventToToggle.id);
+      return events.length === 8 ? events : [...events, eventToToggle];
+    });
+  };
 
   useEffect(() => {
     const updateLocation = () => setLocationHash(window.location.hash);
@@ -74,7 +85,10 @@ function ReadyApp() {
         </nav>
       </aside>
 
-      {eventId === undefined ? <NowShell /> : <EventDetail eventId={eventId} onBack={() => { window.location.hash = ""; }} />}
+      <div className="content-column">
+        {eventId === undefined ? <NowShell onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} /> : <EventDetail eventId={eventId} onBack={() => { window.location.hash = ""; }} onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} />}
+        <AskPanel onClearSelection={() => setSelectedEvents([])} selectedEvents={selectedEvents} />
+      </div>
     </div>
   );
 }
