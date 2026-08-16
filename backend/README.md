@@ -325,6 +325,36 @@ direct answer reuses the canonical Comparison without another model call; a rese
 generated from the updated current Event facts. `GET /api/v1/ask/{ask_id}` is owner-only and never
 returns completed until the immutable final artifact has committed.
 
+Phase 4 Event Backwrite consumes a Backend-produced, already ordered user-visible Event snapshot.
+It never queries Event timestamps to invent newest/oldest order. The worker freezes that order and
+processes newest, oldest, second-newest, second-oldest, and so on without reordering the active
+cycle. Phase 5 Personalization will provide the production visibility snapshot; an internal JSON
+snapshot can exercise the Phase 4 runner now:
+
+```json
+{
+  "user_id": "00000000-0000-4000-8000-000000000001",
+  "idempotency_key": "00000000-0000-4000-8000-000000000002",
+  "ordered_event_ids": ["00000000-0000-4000-8000-000000000003"]
+}
+```
+
+```bash
+uv run --project backend python -m infoscope.worker \
+  --backwrite-snapshot-file /path/to/backend-produced-snapshot.json
+```
+
+Each item creates or reuses a `backwrite_enrichment` Research request, then sends fetched content
+through `Raw -> Normalize -> Signal -> canonical deduplication`. The reconciliation model sees only
+the strict `backwrite_reconciliation_input.v1` Event fact snapshot and sanitized canonical Signals.
+Private evidence has null provenance. A successful/partial Research result with zero usable
+canonical Signals produces a deterministic no-change artifact without a model call; invalid
+candidates, fetch failures, and all-normalization-failed remain retryable or terminal failures.
+
+New Event–Signal relationships are attributed only to a dedicated
+`backwrite_reconciliation_runs.id`; they never impersonate an hourly Pipeline run. This slice has no
+Public API and does not change NOW, Event Detail, Ask, or Frontend contracts.
+
 Checks:
 
 ```bash

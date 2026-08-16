@@ -27,6 +27,15 @@ from infoscope.analysis.ask_schemas import (
     AskFinalizationModelPayload,
     AskFinalizationResponse,
 )
+from infoscope.analysis.backwrite_prompt import (
+    BACKWRITE_RECONCILIATION_SYSTEM_PROMPT,
+    build_backwrite_reconciliation_prompt,
+)
+from infoscope.analysis.backwrite_schemas import (
+    BackwriteReconciliationInput,
+    BackwriteReconciliationPayload,
+    BackwriteReconciliationResponse,
+)
 from infoscope.analysis.client import AnalysisError
 from infoscope.analysis.config import AnalysisConfig
 from infoscope.analysis.intelligence_prompt import (
@@ -155,6 +164,21 @@ class DeepSeekIntelligenceClient:
             payload_type=AskFinalizationModelPayload,
         )
         return AskFinalizationResponse(
+            payload=payload,
+            provider="deepseek",
+            model=model,
+            token_usage=usage,
+        )
+
+    async def reconcile_backwrite_event(
+        self, value: BackwriteReconciliationInput
+    ) -> BackwriteReconciliationResponse:
+        payload, model, usage = await self._request(
+            system=BACKWRITE_RECONCILIATION_SYSTEM_PROMPT,
+            user=build_backwrite_reconciliation_prompt(value),
+            payload_type=BackwriteReconciliationPayload,
+        )
+        return BackwriteReconciliationResponse(
             payload=payload,
             provider="deepseek",
             model=model,
