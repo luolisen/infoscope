@@ -511,7 +511,7 @@ class AskResearchBridgeRunner:
             request.idempotency_key != prepared.bridge.idempotency_key
             or payload.request_id != request.id
             or payload.trigger != spec.trigger
-            or set(payload.source_event_ids) != set(spec.source_event_ids)
+            or payload.source_event_ids != spec.source_event_ids
             or payload.research_questions != spec.research_questions
             or payload.missing_fact_descriptions
             or set(payload.allowed_source_kinds) != set(spec.allowed_source_kinds)

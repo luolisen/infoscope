@@ -6,8 +6,8 @@ import os
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
-from types import SimpleNamespace
-from uuid import uuid4
+from types import MethodType, SimpleNamespace
+from uuid import UUID, uuid4
 
 import pytest
 from pydantic import ValidationError
@@ -33,8 +33,10 @@ from infoscope.integrations.research.schemas import (
     ResearchEvent,
     ResearchFactSnapshot,
     ResearchRequestPayload,
+    ResearchRequestSpec,
     RuntimeUsage,
     canonical_json_bytes,
+    request_input_hash,
 )
 from infoscope.integrations.research.url_policy import (
     ResearchURLRejected,
@@ -43,10 +45,13 @@ from infoscope.integrations.research.url_policy import (
     validate_public_url,
 )
 from infoscope.models import (
+    ResearchRequest,
+    ResearchRequestEvent,
     ResearchSource,
     ResearchSourceKind,
     ResearchSourceStatus,
     ResearchStatus,
+    ResearchTrigger,
     Signal,
 )
 from infoscope.services.normalization import DeterministicNormalizer
@@ -80,6 +85,144 @@ def _payload() -> ResearchRequestPayload:
             "allowed_source_kinds": ["web_page"],
         }
     )
+
+
+def _fact_snapshot(event_ids: list[UUID]) -> ResearchFactSnapshot:
+    return ResearchFactSnapshot.model_validate(
+        {
+            "events": [
+                {
+                    "event_id": event_id,
+                    "title": "Event",
+                    "overview": "Known facts",
+                    "state": "developing",
+                    "display_time": "2026-08-16T00:00:00Z",
+                    "claims": [],
+                    "timeline": [],
+                    "conflicts": [],
+                    "evidence_signals": [],
+                }
+                for event_id in sorted(event_ids)
+            ]
+        }
+    )
+
+
+class _ScalarResult:
+    def __init__(self, value):
+        self.value = value
+
+    def scalar_one_or_none(self):
+        return self.value
+
+    def scalar_one(self):
+        assert self.value is not None
+        return self.value
+
+
+class _ResearchRequestDatabase:
+    def __init__(self) -> None:
+        self.request = None
+        self.added = []
+        self.rollbacks = 0
+
+    async def execute(self, statement):
+        if getattr(statement, "is_insert", False):
+            values = {
+                column.key: bound.value for column, bound in statement._values.items()
+            }
+            if self.request is not None:
+                return _ScalarResult(None)
+            self.request = ResearchRequest(**values)
+            return _ScalarResult(self.request)
+        return _ScalarResult(self.request)
+
+    def add(self, value):
+        self.added.append(value)
+
+    async def commit(self):
+        return None
+
+    async def rollback(self):
+        self.rollbacks += 1
+
+
+async def test_ask_research_request_persists_and_reuses_selected_event_order() -> None:
+    event_ids = [
+        UUID("00000000-0000-4000-8000-000000000003"),
+        UUID("00000000-0000-4000-8000-000000000001"),
+        UUID("00000000-0000-4000-8000-000000000002"),
+    ]
+    database = _ResearchRequestDatabase()
+    repository = ResearchRepository(database)  # type: ignore[arg-type]
+    snapshot = _fact_snapshot(event_ids)
+
+    async def fact_snapshot(self, requested_ids):
+        assert requested_ids == set(event_ids)
+        return snapshot
+
+    repository.fact_snapshot = MethodType(fact_snapshot, repository)  # type: ignore[method-assign]
+    idempotency_key = uuid4()
+    spec = ResearchRequestSpec(
+        idempotency_key=idempotency_key,
+        trigger=ResearchTrigger.ASK_MISSING_FACT,
+        source_event_ids=event_ids,
+        research_questions=["What changed?"],
+        missing_fact_descriptions=[],
+        allowed_source_kinds=[ResearchSourceKind.WEB_PAGE],
+    )
+
+    request, payload, inserted = await repository.create_or_reuse(spec, max_attempts=3)
+    assert inserted
+    assert payload.source_event_ids == event_ids
+    assert ResearchRequestPayload.model_validate(
+        request.request_payload
+    ).source_event_ids == event_ids
+    assert request.input_hash == request_input_hash(payload)
+    assert [
+        item.event_id
+        for item in database.added
+        if isinstance(item, ResearchRequestEvent)
+    ] == event_ids
+
+    reused, reused_payload, inserted = await repository.create_or_reuse(
+        spec, max_attempts=3
+    )
+    assert not inserted
+    assert reused is request
+    assert reused_payload.source_event_ids == event_ids
+
+    changed_order = spec.model_copy(
+        update={"source_event_ids": list(reversed(event_ids))}
+    )
+    with pytest.raises(ResearchError, match="RESEARCH_IDEMPOTENCY_CONFLICT"):
+        await repository.create_or_reuse(changed_order, max_attempts=3)
+    assert database.rollbacks == 1
+
+
+async def test_non_ask_research_trigger_keeps_deterministic_event_sorting() -> None:
+    event_ids = [
+        UUID("00000000-0000-4000-8000-000000000003"),
+        UUID("00000000-0000-4000-8000-000000000001"),
+    ]
+    database = _ResearchRequestDatabase()
+    repository = ResearchRepository(database)  # type: ignore[arg-type]
+
+    async def fact_snapshot(self, requested_ids):
+        return _fact_snapshot(event_ids)
+
+    repository.fact_snapshot = MethodType(fact_snapshot, repository)  # type: ignore[method-assign]
+    spec = ResearchRequestSpec(
+        idempotency_key=uuid4(),
+        trigger=ResearchTrigger.BACKWRITE_ENRICHMENT,
+        source_event_ids=event_ids,
+        research_questions=["What changed?"],
+        missing_fact_descriptions=[],
+        allowed_source_kinds=[ResearchSourceKind.WEB_PAGE],
+    )
+
+    _, payload, _ = await repository.create_or_reuse(spec, max_attempts=3)
+    assert payload.source_event_ids == sorted(event_ids)
 
 
 def test_openclaw_success_envelope_and_request_id_are_strict() -> None:
