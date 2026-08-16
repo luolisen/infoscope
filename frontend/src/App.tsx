@@ -6,6 +6,7 @@ import { fetchSession, sessionQueryKey } from "./api/session";
 import { AuthScreen } from "./features/auth/AuthScreen";
 import { AskPanel } from "./features/ask/AskPanel";
 import { EventDetail } from "./features/events/EventDetail";
+import { MaintenancePanel } from "./features/maintenance/MaintenancePanel";
 import { OnboardingPending } from "./features/auth/OnboardingPending";
 import { NowShell } from "./features/now/NowShell";
 
@@ -41,6 +42,7 @@ function ReadyApp() {
   const [locationHash, setLocationHash] = useState(() => window.location.hash);
   const [selectedEvents, setSelectedEvents] = useState<SelectedEvent[]>([]);
   const eventId = locationHash.match(/^#event\/([^/]+)$/)?.[1];
+  const isSettings = locationHash === "#settings";
 
   const toggleEventSelection = (eventToToggle: SelectedEvent) => {
     setSelectedEvents((events) => {
@@ -71,7 +73,7 @@ function ReadyApp() {
           <ul className="navigation-list">
             {primaryNavigation.map((item) => (
               <li key={item}>
-                <a aria-current={item === "NOW" ? "page" : undefined} href={`#${item.toLowerCase()}`}>
+                <a aria-current={item === "NOW" && !isSettings ? "page" : undefined} href={`#${item.toLowerCase()}`}>
                   {item}
                 </a>
               </li>
@@ -79,15 +81,15 @@ function ReadyApp() {
           </ul>
           <ul className="navigation-list navigation-list--secondary">
             {settingsNavigation.map((item) => (
-              <li key={item}><a href={`#${item.toLowerCase()}`}>{item}</a></li>
+              <li key={item}><a aria-current={item === "SETTINGS" && isSettings ? "page" : undefined} href={`#${item.toLowerCase()}`}>{item}</a></li>
             ))}
           </ul>
         </nav>
       </aside>
 
       <div className="content-column">
-        {eventId === undefined ? <NowShell onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} /> : <EventDetail eventId={eventId} onBack={() => { window.location.hash = ""; }} onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} />}
-        <AskPanel onClearSelection={() => setSelectedEvents([])} selectedEvents={selectedEvents} />
+        {isSettings ? <MaintenancePanel /> : eventId === undefined ? <NowShell onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} /> : <EventDetail eventId={eventId} onBack={() => { window.location.hash = ""; }} onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} />}
+        {!isSettings && <AskPanel onClearSelection={() => setSelectedEvents([])} selectedEvents={selectedEvents} />}
       </div>
     </div>
   );
