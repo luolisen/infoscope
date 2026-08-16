@@ -5,6 +5,7 @@ import { fetchHealth } from "./api/health";
 import { fetchSession, sessionQueryKey } from "./api/session";
 import { AuthScreen } from "./features/auth/AuthScreen";
 import { AskPanel } from "./features/ask/AskPanel";
+import { BriefPage } from "./features/brief/BriefPage";
 import { EventDetail } from "./features/events/EventDetail";
 import { MaintenancePanel } from "./features/maintenance/MaintenancePanel";
 import { OnboardingPending } from "./features/auth/OnboardingPending";
@@ -43,6 +44,7 @@ function ReadyApp() {
   const [selectedEvents, setSelectedEvents] = useState<SelectedEvent[]>([]);
   const eventId = locationHash.match(/^#event\/([^/]+)$/)?.[1];
   const isSettings = locationHash === "#settings";
+  const isBrief = locationHash === "#brief";
 
   const toggleEventSelection = (eventToToggle: SelectedEvent) => {
     setSelectedEvents((events) => {
@@ -73,7 +75,7 @@ function ReadyApp() {
           <ul className="navigation-list">
             {primaryNavigation.map((item) => (
               <li key={item}>
-                <a aria-current={item === "NOW" && !isSettings ? "page" : undefined} href={`#${item.toLowerCase()}`}>
+                <a aria-current={item === "NOW" && !isSettings && !isBrief || item === "BRIEF" && isBrief ? "page" : undefined} href={`#${item.toLowerCase()}`}>
                   {item}
                 </a>
               </li>
@@ -88,8 +90,8 @@ function ReadyApp() {
       </aside>
 
       <div className="content-column">
-        {isSettings ? <MaintenancePanel /> : eventId === undefined ? <NowShell onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} /> : <EventDetail eventId={eventId} onBack={() => { window.location.hash = ""; }} onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} />}
-        {!isSettings && <AskPanel onClearSelection={() => setSelectedEvents([])} selectedEvents={selectedEvents} />}
+        {isSettings ? <MaintenancePanel /> : isBrief ? <BriefPage /> : eventId === undefined ? <NowShell onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} /> : <EventDetail eventId={eventId} onBack={() => { window.location.hash = ""; }} onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} />}
+        {!isSettings && !isBrief && <AskPanel onClearSelection={() => setSelectedEvents([])} selectedEvents={selectedEvents} />}
       </div>
     </div>
   );

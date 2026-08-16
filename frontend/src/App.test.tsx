@@ -8,6 +8,7 @@ vi.mock("./api/session", () => ({
   sessionQueryKey: ["session"],
 }));
 vi.mock("./api/now", () => ({ fetchNow: vi.fn(), nowQueryKey: ["now"] }));
+vi.mock("./api/brief", () => ({ fetchLatestBrief: vi.fn(), briefLatestQueryKey: ["brief", "latest"] }));
 vi.mock("./api/maintenance", () => ({
   createMaintenanceRun: vi.fn(),
   fetchMaintenanceRun: vi.fn(),
@@ -20,6 +21,7 @@ import { App } from "./App";
 import { fetchHealth } from "./api/health";
 import { fetchSession } from "./api/session";
 import { fetchNow } from "./api/now";
+import { fetchLatestBrief } from "./api/brief";
 import { fetchMaintenanceStatus } from "./api/maintenance";
 
 afterEach(() => {
@@ -71,6 +73,19 @@ describe("App", () => {
 
     expect(await screen.findByRole("heading", { name: /keep the record current/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "SETTINGS" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "NOW" })).not.toHaveAttribute("aria-current");
+  });
+
+  it("marks Brief as the only current primary navigation page on the Brief route", async () => {
+    window.location.hash = "#brief";
+    vi.mocked(fetchSession).mockResolvedValue({ state: "ready", user: { username: "lingjiu" } });
+    vi.mocked(fetchHealth).mockResolvedValue({ status: "ok", api: "ok", database: "ok", worker: "ok" });
+    vi.mocked(fetchLatestBrief).mockResolvedValue({ generated_at: null, items: [] });
+
+    renderApp();
+
+    expect(await screen.findByRole("heading", { name: /your brief is waiting/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "BRIEF" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "NOW" })).not.toHaveAttribute("aria-current");
   });
 });
