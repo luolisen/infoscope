@@ -11,6 +11,14 @@ import { SearchOverlay } from "./SearchOverlay";
 afterEach(() => { cleanup(); vi.resetAllMocks(); });
 
 describe("SearchOverlay", () => {
+  it("does not search or show loading before a query is submitted", () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={queryClient}><SearchOverlay onClose={() => undefined} open /></QueryClientProvider>);
+
+    expect(screen.queryByText("Searching…")).not.toBeInTheDocument();
+    expect(searchEvents).not.toHaveBeenCalled();
+  });
+
   it("submits normalized text to the generated Search endpoint and links results", async () => {
     vi.mocked(searchEvents).mockResolvedValue({ next_cursor: null, items: [{ id: "event-1", title: "Matching event", overview: "Overview", state: "developing", display_time: "2026-08-16T13:00:00Z", updated_at: "2026-08-16T13:00:00Z", why_it_matters: "Why", new_claim_count: 0, conflict_count: 0, topics: [], saved: false }] });
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -21,5 +29,21 @@ describe("SearchOverlay", () => {
 
     expect(await screen.findByRole("link", { name: "Matching event" })).toHaveAttribute("href", "#event/event-1");
     expect(searchEvents).toHaveBeenCalledWith("AI model", null);
+  });
+
+  it("uses the backend opaque cursor when loading the next page", async () => {
+    vi.mocked(searchEvents)
+      .mockResolvedValueOnce({ next_cursor: "opaque-cursor", items: [{ id: "event-1", title: "First", overview: "Overview", state: "developing", display_time: "2026-08-16T13:00:00Z", updated_at: "2026-08-16T13:00:00Z", why_it_matters: "Why", new_claim_count: 0, conflict_count: 0, topics: [], saved: false }] })
+      .mockResolvedValueOnce({ next_cursor: null, items: [{ id: "event-2", title: "Second", overview: "Overview", state: "developing", display_time: "2026-08-16T12:00:00Z", updated_at: "2026-08-16T12:00:00Z", why_it_matters: "Why", new_claim_count: 0, conflict_count: 0, topics: [], saved: false }] });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={queryClient}><SearchOverlay onClose={() => undefined} open /></QueryClientProvider>);
+
+    fireEvent.change(screen.getByPlaceholderText("Search your event history"), { target: { value: "AI" } });
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    await screen.findByRole("link", { name: "First" });
+    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+
+    await screen.findByRole("link", { name: "Second" });
+    expect(searchEvents).toHaveBeenLastCalledWith("AI", "opaque-cursor");
   });
 });
