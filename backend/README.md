@@ -411,7 +411,8 @@ idempotent `(user_id, event_id)` relation and is reflected in NOW and Event Deta
 saved Events plus historically relevant Events that are absent from the page chain's anchored
 Personalization artifact. Search matches only current Event title/overview, Base Analysis summary,
 and Claim text within that anchored historical-access set. Archive and Search cursors bind the
-source Personalization artifact; Search additionally binds the normalized query hash. Neither path
+source Personalization artifact as `source_personalization_artifact_id`; Search additionally binds
+the normalized query hash. Neither path
 reads Raw, Evidence text, provenance, collector metadata, or model rationale.
 
 Checks:
