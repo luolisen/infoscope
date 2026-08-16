@@ -9,6 +9,12 @@ vi.mock("./api/session", () => ({
 }));
 vi.mock("./api/now", () => ({ fetchNow: vi.fn(), nowQueryKey: ["now"] }));
 vi.mock("./api/brief", () => ({ fetchLatestBrief: vi.fn(), briefLatestQueryKey: ["brief", "latest"] }));
+vi.mock("./api/onboarding", () => ({
+  fetchOnboarding: vi.fn(),
+  onboardingQueryKey: ["onboarding"],
+  updateOnboarding: vi.fn(),
+  OnboardingError: class OnboardingError extends Error {},
+}));
 vi.mock("./api/maintenance", () => ({
   createMaintenanceRun: vi.fn(),
   fetchMaintenanceRun: vi.fn(),
@@ -23,6 +29,7 @@ import { fetchSession } from "./api/session";
 import { fetchNow } from "./api/now";
 import { fetchLatestBrief } from "./api/brief";
 import { fetchMaintenanceStatus } from "./api/maintenance";
+import { fetchOnboarding } from "./api/onboarding";
 
 afterEach(() => {
   cleanup();
@@ -87,5 +94,25 @@ describe("App", () => {
     expect(await screen.findByRole("heading", { name: /your brief is waiting/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "BRIEF" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "NOW" })).not.toHaveAttribute("aria-current");
+  });
+
+  it("renders the saved onboarding choices on the Scope route", async () => {
+    window.location.hash = "#scope";
+    vi.mocked(fetchSession).mockResolvedValue({ state: "ready", user: { username: "lingjiu" } });
+    vi.mocked(fetchHealth).mockResolvedValue({ status: "ok", api: "ok", database: "ok", worker: "ok" });
+    vi.mocked(fetchOnboarding).mockResolvedValue({
+      completed: true,
+      scope_options: [{ id: "ai", label: "AI" }, { id: "technology", label: "Technology" }],
+      investment_market_options: [],
+      focus_options: [{ id: "major_changes", label: "Major changes" }],
+      answers: { scope_ids: ["ai"], investment_market_ids: [], focus_ids: ["major_changes"] },
+    });
+
+    renderApp();
+
+    expect(await screen.findByRole("heading", { name: "哪些内容进入你的视野？" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "SCOPE" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "NOW" })).not.toHaveAttribute("aria-current");
+    expect(await screen.findByRole("button", { name: /AI/ })).toHaveAttribute("aria-pressed", "true");
   });
 });

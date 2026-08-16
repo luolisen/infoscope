@@ -11,22 +11,33 @@ const emptyAnswers: Answers = { scope_ids: [], investment_market_ids: [], focus_
 
 function toggle<T>(items: T[], item: T) { return items.includes(item) ? items.filter((value) => value !== item) : [...items, item]; }
 
-export function OnboardingPending() {
+type OnboardingPendingProps = {
+  editExisting?: boolean;
+  onComplete?: () => void;
+};
+
+export function OnboardingPending({ editExisting = false, onComplete }: OnboardingPendingProps = {}) {
   const queryClient = useQueryClient();
   const onboarding = useQuery({ queryKey: onboardingQueryKey, queryFn: fetchOnboarding });
-  const [answers, setAnswers] = useState<Answers>(emptyAnswers);
+  const [answers, setAnswers] = useState<Answers | null>(null);
   const [step, setStep] = useState<Step>("scope");
   const [localError, setLocalError] = useState<string | null>(null);
   const save = useMutation({
     mutationFn: updateOnboarding,
-    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: sessionQueryKey }); },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: sessionQueryKey }),
+        queryClient.invalidateQueries({ queryKey: onboardingQueryKey }),
+      ]);
+      onComplete?.();
+    },
   });
 
   if (onboarding.isPending) return <main className="state-page"><p>Preparing your view…</p></main>;
   if (onboarding.isError || !onboarding.data) return <main className="state-page"><p role="alert">We could not load onboarding.</p></main>;
 
   const data = onboarding.data;
-  const currentAnswers = answers;
+  const currentAnswers = answers ?? (editExisting ? data.answers : emptyAnswers);
   const requiresMarkets = currentAnswers.scope_ids.includes("investment");
   const options = step === "scope" ? data.scope_options : step === "markets" ? data.investment_market_options : data.focus_options;
   const selected = step === "scope" ? currentAnswers.scope_ids : step === "markets" ? currentAnswers.investment_market_ids : currentAnswers.focus_ids;
@@ -36,9 +47,9 @@ export function OnboardingPending() {
 
   function choose(id: typeof options[number]["id"]) {
     setLocalError(null);
-    if (step === "scope") setAnswers((current) => ({ ...current, scope_ids: toggle(current.scope_ids, id as components["schemas"]["ScopeId"]), investment_market_ids: id === "investment" || current.scope_ids.includes("investment") ? current.investment_market_ids : [] }));
-    else if (step === "markets") setAnswers((current) => ({ ...current, investment_market_ids: toggle(current.investment_market_ids, id as components["schemas"]["InvestmentMarketId"]) }));
-    else setAnswers((current) => ({ ...current, focus_ids: toggle(current.focus_ids, id as components["schemas"]["FocusId"]) }));
+    if (step === "scope") setAnswers({ ...currentAnswers, scope_ids: toggle(currentAnswers.scope_ids, id as components["schemas"]["ScopeId"]), investment_market_ids: id === "investment" || currentAnswers.scope_ids.includes("investment") ? currentAnswers.investment_market_ids : [] });
+    else if (step === "markets") setAnswers({ ...currentAnswers, investment_market_ids: toggle(currentAnswers.investment_market_ids, id as components["schemas"]["InvestmentMarketId"]) });
+    else setAnswers({ ...currentAnswers, focus_ids: toggle(currentAnswers.focus_ids, id as components["schemas"]["FocusId"]) });
   }
   function next() {
     if (selected.length === 0) { setLocalError("Select at least one option to continue."); return; }
@@ -51,7 +62,7 @@ export function OnboardingPending() {
     <p className="editorial-label">{label}</p><h1>{title}</h1>
     <div className="choice-list">{options.map((option) => <button aria-pressed={selected.includes(option.id as never)} key={option.id} onClick={() => choose(option.id)} type="button"><span>{option.label}</span><span aria-hidden="true">{selected.includes(option.id as never) ? "×" : "+"}</span></button>)}</div>
     {(localError || apiError) && <p className="auth-error" role="alert">{localError ?? apiError}</p>}
-    <div className="onboarding-actions">{step !== "scope" && <button className="text-button" onClick={() => setStep(step === "focus" ? (requiresMarkets ? "markets" : "scope") : "scope")} type="button">Back</button>}<button className="auth-submit" disabled={save.isPending} onClick={next} type="button">{step === "focus" ? "Establish view" : "Continue"}</button></div>
+    <div className="onboarding-actions">{step !== "scope" && <button className="text-button" onClick={() => setStep(step === "focus" ? (requiresMarkets ? "markets" : "scope") : "scope")} type="button">Back</button>}<button className="auth-submit" disabled={save.isPending} onClick={next} type="button">{step === "focus" ? (editExisting ? "Save view" : "Establish view") : "Continue"}</button></div>
     {hint && <p className="onboarding-hint">{hint}</p>}
   </section></main>;
 }

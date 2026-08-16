@@ -47,6 +47,7 @@ function ReadyApp() {
   const [searchOpen, setSearchOpen] = useState(false);
   const eventId = locationHash.match(/^#event\/([^/]+)$/)?.[1];
   const isSettings = locationHash === "#settings";
+  const isScope = locationHash === "#scope";
   const isBrief = locationHash === "#brief";
   const isArchive = locationHash === "#archive";
 
@@ -90,7 +91,7 @@ function ReadyApp() {
           <ul className="navigation-list">
             {primaryNavigation.map((item) => (
               <li key={item}>
-                <a aria-current={(item === "NOW" && !isSettings && !isBrief && !isArchive) || (item === "BRIEF" && isBrief) || (item === "ARCHIVE" && isArchive) ? "page" : undefined} href={`#${item.toLowerCase()}`}>
+                <a aria-current={(item === "NOW" && !isSettings && !isScope && !isBrief && !isArchive) || (item === "BRIEF" && isBrief) || (item === "ARCHIVE" && isArchive) ? "page" : undefined} href={`#${item.toLowerCase()}`}>
                   {item}
                 </a>
               </li>
@@ -98,15 +99,15 @@ function ReadyApp() {
           </ul>
           <ul className="navigation-list navigation-list--secondary">
             {settingsNavigation.map((item) => (
-              <li key={item}><a aria-current={item === "SETTINGS" && isSettings ? "page" : undefined} href={`#${item.toLowerCase()}`}>{item}</a></li>
+              <li key={item}><a aria-current={(item === "SETTINGS" && isSettings) || (item === "SCOPE" && isScope) ? "page" : undefined} href={`#${item.toLowerCase()}`}>{item}</a></li>
             ))}
           </ul>
         </nav>
       </aside>
 
       <div className="content-column">
-        {isSettings ? <MaintenancePanel /> : isBrief ? <BriefPage /> : isArchive ? <ArchivePage /> : eventId === undefined ? <NowShell onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} /> : <EventDetail eventId={eventId} onBack={() => { window.location.hash = ""; }} onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} />}
-        {!isSettings && !isBrief && !isArchive && <AskPanel onClearSelection={() => setSelectedEvents([])} selectedEvents={selectedEvents} />}
+        {isSettings ? <MaintenancePanel /> : isScope ? <OnboardingPending editExisting onComplete={() => { window.location.hash = "#now"; }} /> : isBrief ? <BriefPage /> : isArchive ? <ArchivePage /> : eventId === undefined ? <NowShell onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} /> : <EventDetail eventId={eventId} onBack={() => { window.location.hash = ""; }} onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} />}
+        {!isSettings && !isScope && !isBrief && !isArchive && <AskPanel onClearSelection={() => setSelectedEvents([])} selectedEvents={selectedEvents} />}
       </div>
       <SearchOverlay onClose={() => setSearchOpen(false)} open={searchOpen} />
     </div>
