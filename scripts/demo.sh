@@ -60,7 +60,8 @@ prepare() {
 
 start() {
   prepare
-  if alive "$STATE/api.pid" || alive "$STATE/worker.pid"; then
+  if process_matches "$STATE/api.pid" "uvicorn infoscope.api.app:app" \
+    || process_matches "$STATE/worker.pid" "python -m infoscope.worker"; then
     printf 'Infoscope is already running; use %s status or stop.\n' "$0" >&2
     exit 1
   fi
@@ -107,7 +108,9 @@ stop() {
 
 status() {
   for name in api worker; do
-    if alive "$STATE/$name.pid"; then
+    expected="uvicorn infoscope.api.app:app"
+    [ "$name" = worker ] && expected="python -m infoscope.worker"
+    if process_matches "$STATE/$name.pid" "$expected"; then
       printf '%s: running\n' "$name"
     else
       printf '%s: stopped\n' "$name"
