@@ -1027,6 +1027,45 @@ Base Analysis 不修改 Event title/overview/state/display_time、Claim state、
 Evidence 关系，也不产生 Personalization。来源锁、唯一幂等键、全批原子提交、rollback 与私密
 provenance 调用前阻断沿用既有规则。本切片不新增 Public API、Event Detail、NOW 或前端 Contract。
 
+### Research Integration v1（已冻结）
+
+Research v1 固定 `openclaw@2026.7.1-2`，使用
+`openclaw agent --local --agent infoscope-research --session-key research-<request_id> --message-file <file> --model <id> --timeout <s> --json`
+作为 headless Runtime；不使用 Gateway、stdin、deliver、channel 或 recipient。Agent-Reach 只负责
+公开搜索能力的安装、选择与 `doctor` 健康检查，不存在也不假设统一 Research API。Backend 创建
+`research_requests.id` 并注入严格 `research_fact_snapshot.v1`，模型只能返回
+`research_discovery.v1` 的公开候选 URL，回显的 `request_id` 必须与 Request 主键一致。
+
+OpenClaw 使用独立 regular config、state 与每次运行的 0700 workdir；Prompt 是 workdir 内的 0600
+UTF-8 临时文件，并在成功或失败后始终清理。子进程不得继承完整环境：基础 allowlist 固定为
+`PATH / HOME / TMPDIR`，Backend 注入 `OPENCLAW_CONFIG_PATH / OPENCLAW_STATE_DIR`，模型凭据 allowlist
+固定且仅含 `DEEPSEEK_API_KEY`，不得配置通配规则。稳定版 JSON 只解析 `payloads + meta`：排除
+reasoning/commentary 后必须恰好一个非空且非错误的 visible text，provider/model/usage 只从
+`meta.agentMeta` 读取。非零退出、外层超时、aborted、meta error/failureSignal、错误 payload 或
+协议偏差使用稳定内部错误码。
+
+事实快照固定包含同一批 Event 的 Event、Claims、Timeline、Conflicts 与已脱敏 Evidence；Backend
+验证全部 Event/Claim/Timeline/Conflict/Signal 归属和关系后才执行 canonical JSON 与 input hash。
+私密 Evidence 仅允许 `private_sanitized` 正文，`public_safe_provenance` 必须为空。Snapshot 不包含
+Raw、collector metadata、内部 provenance 或 Base Analysis。
+
+v1 来源枚举仅为 `web_page / github_document`。OpenClaw 只发现 URL；正文由 Backend 的受控
+HTTPS Fetcher 获取。URL 只允许 HTTPS:443、无凭据、无 IP literal、无 redirect，并在 DNS 与实际
+peer 两处阻断私网、回环、link-local、保留地址和 DNS rebinding。GitHub Document 只允许
+`raw.githubusercontent.com`。网页使用锁定的 `beautifulsoup4==4.15.0` 与 `html.parser` 执行确定性
+HTML→文本；`published_at` 只接受一致且带时区的 `article:published_time`，GitHub Document 固定为空。
+
+Request、Run、Discovery Artifact 与 Source 使用专用 Research 表。`idempotency_key` 控制一次业务
+任务重放，相同 key 不得改变 input hash；不同 key 允许在后续周期对相同问题重新 Research。已有
+canonical discovery 的 retry 不再调用模型，只重试失败 Source。零候选是 canonical success；部分
+成功、无有效候选、全部 Fetch 失败与 Runtime/Schema 失败使用稳定状态和错误码。
+
+Fetcher 获取的规范化正文按 SHA-256 计算 content hash，Raw source key 固定由
+`source_kind + canonical_url + content_hash` 生成。同 URL 同内容跨运行复用，内容变化形成新
+observation。模型正文和 relevance summary 永远不是 Evidence；真实材料必须先写 public Raw，再走
+`Raw → Normalize → Signal → Deduplicate → Event Reconciliation`。本切片不新增 Public API、Ask、
+Event Detail、NOW 或前端 Contract，也不直接修改任何事实层。
+
 ---
 
 ## 7.3 Hermes / OpenClaw / Agent-Reach
@@ -3746,7 +3785,6 @@ Glass 只用于：
 
 - Analysis Model API 供应商与模型
 - Analysis Adapter SDK
-- Hermes / OpenClaw / Agent-Reach 实际调用接口
 - TG News 当前源码输入输出
 - 精确 Database ER Model
 - 最终字体
@@ -3770,6 +3808,9 @@ Glass 只用于：
 - TrendRadar Phase 3 v1 拆分边界与固定来源：IS 内部 NewsNow / RSS 薄
   Adapter；7 个固定 Hotlist 与 Hacker News RSS；不引入其 AI、SQLite、通知、
   MCP 或 Scheduler。
+- Research Integration v1：OpenClaw headless JSON envelope、Agent-Reach capability/doctor
+  边界、严格事实快照、专用 Request/Run/Artifact/Source 表、`web_page / github_document`
+  来源枚举、直接 HTTPS Fetcher、URL/SSRF/published_at/Raw 幂等与失败语义。
 
 未冻结前：
 

@@ -22,6 +22,17 @@ from infoscope.models.intelligence import (
     TimelineClaim,
     TimelineEntry,
 )
+from infoscope.models.research import (
+    ResearchDiscoveryArtifact,
+    ResearchRequest,
+    ResearchRequestEvent,
+    ResearchRun,
+    ResearchSource,
+    ResearchSourceKind,
+    ResearchSourceStatus,
+    ResearchStatus,
+    ResearchTrigger,
+)
 
 __all__ = [
     "Base",
@@ -40,6 +51,15 @@ __all__ = [
     "PipelineRun",
     "PipelineRunStatus",
     "RawInformation",
+    "ResearchDiscoveryArtifact",
+    "ResearchRequest",
+    "ResearchRequestEvent",
+    "ResearchRun",
+    "ResearchSource",
+    "ResearchSourceKind",
+    "ResearchSourceStatus",
+    "ResearchStatus",
+    "ResearchTrigger",
     "Signal",
     "SourceVisibility",
     "TimelineClaim",

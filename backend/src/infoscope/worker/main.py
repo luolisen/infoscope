@@ -5,6 +5,7 @@ import asyncio
 import logging
 import signal
 from datetime import UTC, datetime
+from pathlib import Path
 from uuid import UUID
 
 import httpx
@@ -17,6 +18,10 @@ from infoscope.analysis import (
 )
 from infoscope.config import get_settings
 from infoscope.db import close_database, ping_database, session_factory
+from infoscope.integrations.research.client import OpenClawConfig, OpenClawResearchClient
+from infoscope.integrations.research.fetcher import DirectHTTPSResearchFetcher
+from infoscope.integrations.research.health import AgentReachHealthChecker
+from infoscope.integrations.research.schemas import ResearchRequestSpec
 from infoscope.integrations.telegram import (
     TelegramCollector,
     TelegramNewsClient,
@@ -41,6 +46,7 @@ from infoscope.services.event_reconstruction import (
 )
 from infoscope.services.normalization import NormalizationResult, NormalizationRunner
 from infoscope.services.pipeline import PipelineRepository
+from infoscope.services.research import ResearchRepository, ResearchRunner
 from infoscope.services.window_analysis import WindowAnalysisRunner, WindowRunResult
 
 logger = logging.getLogger("infoscope.worker")
@@ -273,6 +279,53 @@ async def analyze_base_once(source_artifact_id: UUID) -> IntelligenceResult:
     return result
 
 
+async def research_once(
+    *,
+    request_file: Path | None = None,
+    retry_request_id: UUID | None = None,
+) -> None:
+    if (request_file is None) == (retry_request_id is None):
+        raise ValueError("exactly one research request input is required")
+    settings = get_settings()
+    config = OpenClawConfig(
+        executable=settings.research_openclaw_executable,
+        config_path=settings.resolved_research_openclaw_config_path,
+        state_dir=settings.resolved_research_openclaw_state_dir,
+        model=settings.research_openclaw_model,
+        timeout_seconds=settings.research_timeout_seconds,
+    )
+    timeout = httpx.Timeout(connect=10, read=30, write=10, pool=10)
+    async with httpx.AsyncClient(
+        timeout=timeout,
+        follow_redirects=False,
+        trust_env=False,
+    ) as client:
+        async with session_factory() as database:
+            runner = ResearchRunner(
+                repository=ResearchRepository(database),
+                acquisition=AcquisitionRepository(database),
+                client=OpenClawResearchClient(config),
+                fetcher=DirectHTTPSResearchFetcher(client),
+                max_attempts=settings.research_max_attempts,
+                health_checker=AgentReachHealthChecker(
+                    settings.research_agent_reach_executable
+                ),
+            )
+            if request_file is not None:
+                request_document = await asyncio.to_thread(request_file.read_text, "utf-8")
+                spec = ResearchRequestSpec.model_validate_json(request_document)
+                request = await runner.create_and_run(spec)
+            else:
+                request = await runner.run(retry_request_id)  # type: ignore[arg-type]
+    logger.info(
+        "research complete request_id=%s status=%s attempts=%d error_code=%s",
+        request.id,
+        request.status,
+        request.attempt_count,
+        request.error_code,
+    )
+
+
 async def run(
     *,
     once: bool = False,
@@ -289,6 +342,8 @@ async def run(
     reconstruct_timeline_artifact: UUID | None = None,
     analyze_conflicts_artifact: UUID | None = None,
     analyze_base_artifact: UUID | None = None,
+    research_request_file: Path | None = None,
+    retry_research_request: UUID | None = None,
 ) -> None:
     settings = get_settings()
     stop = asyncio.Event()
@@ -323,6 +378,11 @@ async def run(
                 await analyze_conflicts_once(analyze_conflicts_artifact)
             if analyze_base_artifact is not None:
                 await analyze_base_once(analyze_base_artifact)
+            if research_request_file is not None or retry_research_request is not None:
+                await research_once(
+                    request_file=research_request_file,
+                    retry_request_id=retry_research_request,
+                )
             logger.info("worker heartbeat")
             if (
                 once
@@ -339,6 +399,8 @@ async def run(
                 or reconstruct_timeline_artifact is not None
                 or analyze_conflicts_artifact is not None
                 or analyze_base_artifact is not None
+                or research_request_file is not None
+                or retry_research_request is not None
             ):
                 return
             try:
@@ -431,6 +493,19 @@ def parse_args() -> argparse.Namespace:
         metavar="ARTIFACT_ID",
         help="Create Base Analysis from one canonical Conflict Analysis artifact",
     )
+    research_group = parser.add_mutually_exclusive_group()
+    research_group.add_argument(
+        "--research-request-file",
+        type=Path,
+        metavar="JSON_FILE",
+        help="Run one frozen internal Research request from JSON",
+    )
+    research_group.add_argument(
+        "--retry-research-request",
+        type=UUID,
+        metavar="REQUEST_ID",
+        help="Retry failed sources for one Research request",
+    )
     return parser.parse_args()
 
 
@@ -456,6 +531,8 @@ def main() -> int:
                 reconstruct_timeline_artifact=args.reconstruct_timeline_artifact,
                 analyze_conflicts_artifact=args.analyze_conflicts_artifact,
                 analyze_base_artifact=args.analyze_base_artifact,
+                research_request_file=args.research_request_file,
+                retry_research_request=args.retry_research_request,
             )
         )
     return 0

@@ -67,7 +67,7 @@ class DeterministicNormalizer:
     """Map collector-specific Raw records to one source-neutral Signal without AI."""
 
     def normalize(self, raw: RawInformation) -> SignalInput:
-        if raw.source_type not in {"telegram", "trend_radar"}:
+        if raw.source_type not in {"telegram", "trend_radar", "research"}:
             raise NormalizationError("NORMALIZE_UNSUPPORTED_SOURCE")
         if raw.content_text is None:
             raise NormalizationError("NORMALIZE_EMPTY_CONTENT")
@@ -88,11 +88,17 @@ class DeterministicNormalizer:
                     raw.provenance,
                     ("platform", "chat_title", "chat_username", "url"),
                 )
-        else:
+        elif raw.source_type == "trend_radar":
             title = self._trendradar_title(raw)
             public_provenance = _allowlist(
                 raw.provenance,
                 ("source_kind", "source_name", "url"),
+            )
+        else:
+            title = _string(raw.payload.get("title"))
+            public_provenance = _allowlist(
+                raw.provenance,
+                ("source_kind", "canonical_url"),
             )
 
         return SignalInput(

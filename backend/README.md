@@ -229,6 +229,61 @@ type, categorical importance, topics, and Event-local entities. Existing snapsho
 replaced while immutable pipeline artifacts retain history. The model cannot change Event or Claim
 state or promote unstructured Evidence into new facts. No Public API or frontend contract is added.
 
+Research Integration v1 uses OpenClaw for headless public-source discovery and Agent-Reach only
+as the installed capability/health layer. The model returns URLs, never Evidence text. The backend
+validates each URL against the frozen HTTPS/SSRF policy, fetches the real public document, and
+persists it as `source_type=research` Raw before normal normalization and deduplication.
+
+Install and configure the pinned external runtime separately, then verify it locally:
+
+```bash
+npm install --global openclaw@2026.7.1-2
+agent-reach doctor
+openclaw --version
+openclaw agent --help
+```
+
+Provision a dedicated regular OpenClaw config containing the `infoscope-research` agent, its
+workspace, and least-privilege tool policy. Configure its path, isolated state directory, and model
+reference in `.env`. Export `DEEPSEEK_API_KEY` in the worker process environment; it is the only
+model credential variable admitted by the fixed subprocess allowlist. The adapter also admits only
+`PATH`, `HOME`, and its isolated `TMPDIR`, then injects `OPENCLAW_CONFIG_PATH` and
+`OPENCLAW_STATE_DIR`; no other inherited environment variables reach OpenClaw. Never commit the
+credential or runtime state.
+
+The adapter invokes `openclaw agent --local --agent infoscope-research --session-key
+research-<request_id>` with a 0600 UTF-8 prompt file inside a per-run 0700 work directory. The
+request-scoped session key prevents context from being shared between Research requests. It never
+uses the Gateway, stdin, delivery, a channel, or a recipient. The prompt and per-run work directory
+are cleaned on every outcome. Run an internal request from a local JSON file:
+
+```bash
+uv run --project backend alembic upgrade head
+uv run --project backend python -m infoscope.worker \
+  --research-request-file /absolute/path/to/request.json
+uv run --project backend python -m infoscope.worker \
+  --retry-research-request REQUEST_ID
+```
+
+The request file contains only the internal trigger and selection input; the backend reads and
+validates the complete fact snapshot from PostgreSQL:
+
+```json
+{
+  "idempotency_key": "00000000-0000-4000-8000-000000000001",
+  "trigger": "ask_missing_fact",
+  "source_event_ids": ["00000000-0000-4000-8000-000000000002"],
+  "research_questions": ["What verified public update is missing?"],
+  "missing_fact_descriptions": [],
+  "allowed_source_kinds": ["web_page", "github_document"]
+}
+```
+
+The v1 fetcher never follows redirects or uses cookies, authorization headers, proxy environment,
+IP-literal hosts, private addresses, or authenticated sources. HTML extraction is locked to
+Beautiful Soup 4.15.0 with Python's `html.parser`. A Research result never directly changes Event,
+Claim, Timeline, Conflict, Base Analysis, NOW, or any Public API contract.
+
 Checks:
 
 ```bash

@@ -41,6 +41,13 @@ class Settings(BaseSettings):
     window_analysis_max_signals: int = Field(default=200, gt=0, le=5000)
     window_analysis_max_input_chars: int = Field(default=100_000, gt=0, le=10_000_000)
     event_reconstruction_candidate_limit: int = Field(default=100, gt=0, le=1000)
+    research_openclaw_executable: str = "openclaw"
+    research_agent_reach_executable: str = "agent-reach"
+    research_openclaw_config_path: Path = Path(".state/openclaw/research.json")
+    research_openclaw_state_dir: Path = Path(".state/openclaw/research")
+    research_openclaw_model: str = Field(default="deepseek/deepseek-v4-pro", min_length=1)
+    research_timeout_seconds: int = Field(default=300, gt=0, le=1800)
+    research_max_attempts: int = Field(default=3, gt=0, le=10)
 
     @property
     def resolved_trendradar_config_path(self) -> Path:
@@ -53,6 +60,18 @@ class Settings(BaseSettings):
         if self.telegram_session_path.is_absolute():
             return self.telegram_session_path
         return REPOSITORY_ROOT / self.telegram_session_path
+
+    @property
+    def resolved_research_openclaw_config_path(self) -> Path:
+        if self.research_openclaw_config_path.is_absolute():
+            return self.research_openclaw_config_path
+        return REPOSITORY_ROOT / self.research_openclaw_config_path
+
+    @property
+    def resolved_research_openclaw_state_dir(self) -> Path:
+        if self.research_openclaw_state_dir.is_absolute():
+            return self.research_openclaw_state_dir
+        return REPOSITORY_ROOT / self.research_openclaw_state_dir
 
 
 @lru_cache
