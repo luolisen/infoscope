@@ -38,6 +38,14 @@ describe("BriefPage", () => {
     expect(await screen.findByRole("heading", { name: /your brief is waiting/i })).toBeInTheDocument();
   });
 
+  it("treats a generated deterministic-empty Brief as an empty state", async () => {
+    vi.mocked(fetchLatestBrief).mockResolvedValue({ generated_at: "2026-08-16T13:05:00Z", items: [] });
+    renderBrief();
+
+    expect(await screen.findByRole("heading", { name: /nothing is in your current brief/i })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Latest Brief")).not.toBeInTheDocument();
+  });
+
   it("renders backend order unchanged and links every item to Event Detail", async () => {
     vi.mocked(fetchLatestBrief).mockResolvedValue({
       generated_at: "2026-08-16T13:05:00Z",

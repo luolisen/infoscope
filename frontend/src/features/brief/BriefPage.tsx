@@ -14,8 +14,8 @@ export function BriefPage() {
   }
 
   const { generated_at: generatedAt, items } = brief.data;
-  if (generatedAt === null && items.length === 0) {
-    return <main className="main-content brief-page"><p className="editorial-label">BRIEF</p><header className="brief-header"><h1>Your Brief is waiting.</h1><p>A new Brief will appear after the current event view is ready.</p></header></main>;
+  if (items.length === 0) {
+    return <main className="main-content brief-page"><p className="editorial-label">BRIEF</p><header className="brief-header"><h1>{generatedAt === null ? "Your Brief is waiting." : "Nothing is in your current Brief."}</h1><p>{generatedAt === null ? "A new Brief will appear after the current event view is ready." : `Generated ${generatedAt}. There are no current Brief items.`}</p></header></main>;
   }
 
   return (
