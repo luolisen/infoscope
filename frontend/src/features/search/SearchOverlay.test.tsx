@@ -46,4 +46,21 @@ describe("SearchOverlay", () => {
     await screen.findByRole("link", { name: "Second" });
     expect(searchEvents).toHaveBeenLastCalledWith("AI", "opaque-cursor");
   });
+
+  it("keeps the first page visible when loading the next page fails", async () => {
+    vi.mocked(searchEvents)
+      .mockResolvedValueOnce({ next_cursor: "opaque-cursor", items: [{ id: "event-1", title: "First page result", overview: "Overview", state: "developing", display_time: "2026-08-16T13:00:00Z", updated_at: "2026-08-16T13:00:00Z", why_it_matters: "Why", new_claim_count: 0, conflict_count: 0, topics: [], saved: false }] })
+      .mockRejectedValueOnce(new Error("next page failed"));
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={queryClient}><SearchOverlay onClose={() => undefined} open /></QueryClientProvider>);
+
+    fireEvent.change(screen.getByPlaceholderText("Search your event history"), { target: { value: "AI" } });
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    await screen.findByRole("link", { name: "First page result" });
+    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+
+    expect(await screen.findByText("We could not load more results.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "First page result" })).toBeInTheDocument();
+    expect(screen.queryByText("We could not search your event history.")).not.toBeInTheDocument();
+  });
 });
