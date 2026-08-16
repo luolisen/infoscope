@@ -326,6 +326,29 @@ D
 - 用户看到新的列表；
 - 当前后台回写 Queue 仍继续使用原来的顺序。 
 
+Event Backwrite v1 使用独立的 `backwrite_cycles`、`backwrite_items`、
+`backwrite_reconciliation_runs` 和 immutable reconciliation artifacts。Runner 只消费 Backend
+已经生成的用户可见有序 Event ID，不从 Event 时间字段推导顺序。Phase 5 再把 Personalization
+的正式可见集合接到该 Provider 边界。
+
+Provider 是 Cycle 创建的强制依赖，并对每个 Event 再做可见性校验。Phase 4 默认 Provider
+稳定返回 unavailable；CLI 只提交 user/cycle identity，不能注入 Event ID，也不能回退到全库。
+
+Reconciliation 输入是完整、严格、可 hash 的 Event 事实快照与本 item canonical Signals。
+输入不包含 Raw、collector metadata 或私密来源身份；private-sanitized Evidence 的 provenance
+必须为空。模型返回后在同一事务中锁定 Event、Evidence、Claim、Timeline、Conflict、Base
+Analysis 和 canonical/observation Signals，重新构建输入并比较 hash。
+
+Backwrite 添加 EventSignal 时使用专用 reconciliation run 外键。Hourly Pipeline run、Ask
+reconciliation run 和 Backwrite reconciliation run 三种来源必须恰好一个非空。Research 成功
+但没有可用 canonical Signal 时使用确定性的 no-change artifact 且不调用模型；Research 或
+Normalize 失败不能伪装为 no-change。
+
+模型给出 Event update 后，Backend 在一个锁定事务中暂存 Event/EventSignal 更新，并按
+Claims、Timeline、Conflicts、Base Analysis 顺序生成和严格校验下游输出。只有全部阶段成功，
+才提交事实层、immutable final artifact 和 completed item。任一阶段失败会 rollback 整个暂存
+更新，因此 Public Event Detail 不会看到新 Event 与旧 Intelligence 的混合状态。
+
 ### 更新周期
 
 维护流程不采用固定整点执行。

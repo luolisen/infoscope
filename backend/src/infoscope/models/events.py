@@ -36,8 +36,10 @@ class EventSignal(Base):
     __table_args__ = (
         UniqueConstraint("event_id", "signal_id", name="uq_event_signals_event_signal"),
         CheckConstraint(
-            "(attached_by_pipeline_run_id IS NOT NULL) <> "
-            "(attached_by_ask_reconciliation_run_id IS NOT NULL)",
+            "(CASE WHEN attached_by_pipeline_run_id IS NOT NULL THEN 1 ELSE 0 END + "
+            "CASE WHEN attached_by_ask_reconciliation_run_id IS NOT NULL THEN 1 ELSE 0 END + "
+            "CASE WHEN attached_by_backwrite_reconciliation_run_id IS NOT NULL "
+            "THEN 1 ELSE 0 END) = 1",
             name="ck_event_signals_exactly_one_source",
         ),
     )
@@ -54,6 +56,11 @@ class EventSignal(Base):
     )
     attached_by_ask_reconciliation_run_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("ask_event_reconciliation_runs.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    attached_by_backwrite_reconciliation_run_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("backwrite_reconciliation_runs.id", ondelete="RESTRICT"),
         nullable=True,
         index=True,
     )

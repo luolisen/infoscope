@@ -1560,6 +1560,33 @@ Frontend 展示新的 Event 列表。
 - 已处理 Event 因重新排序而被本轮重复处理。
 - 未处理 Event 因列表变化被本轮遗漏。
 
+### Event Backwrite v1 冻结补充
+
+- Phase 4 Backwrite Runner 只消费 Backend 提供的 `user_id + ordered_event_ids`；不得自行查询或
+  按 Event 时间字段排序。Phase 5 Personalization 接入正式的用户可见 Snapshot Provider。
+- Cycle 创建必须调用 `UserVisibleEventSnapshotProvider` 获取顺序，并逐项 fail-closed 复核
+  `user_id` 可见性；内部 CLI 不接受 Event ID。Phase 5 Provider 尚未接入时返回稳定的
+  `BACKWRITE_VISIBILITY_PROVIDER_UNAVAILABLE`，不得退化为“所有 Event 可见”。
+- `backwrite_reconciliation_input.v1` 固定包含 item/Event ID、当前 Event、Base Analysis、
+  Claims、Timeline、Conflicts、当前 Event Evidence，以及本 item Research 产生并完成 canonical
+  deduplication 的 canonical Signals。
+- canonical Signal 固定包含 canonical ID、按来源候选与 Signal 创建顺序排列的 observation
+  IDs、title、sanitized text、可空 published time、visibility 和 public-safe provenance。
+- Event、Claims、Timeline、Conflicts、Evidence 均按 Backend UUID 顺序；Research observation
+  按候选 index、Signal `created_at/id` 排序；canonical Signal 按首次 observation 出现顺序。
+- 私密 Signal 只允许 sanitized text 与 null provenance；不得传 Raw、collector metadata、
+  Research rationale、私密来源身份或内部 provenance。
+- 模型返回后必须锁定并重新构建上述完整输入；hash 变化以
+  `BACKWRITE_INPUT_CHANGED` fail-closed。
+- 新 EventSignal 只允许引用专用 `backwrite_reconciliation_runs.id`。Pipeline、Ask、Backwrite
+  三种 attached run 数据库字段必须恰好一个非空。
+- Research succeeded/partial 且没有可用 canonical Signal 时，生成 canonical no-change
+  artifact，不调用模型，空 `unassigned_signal_ids` 合法。无合法候选、Research 失败、全部获取
+  或 Normalize 失败仍走 item failure/retry，不得伪造 no-change。
+- `update` 必须在同一锁定事务内依次生成并校验 Claims、Timeline、Conflicts、Base Analysis；
+  Event/EventSignal、四层事实、最终 artifact 与 item completed 状态只能一次性提交。任一模型、
+  Schema、关系或持久化失败时整体 rollback，不得暴露新 Event 与旧事实层的混合状态。
+
 ### 单 Event 回写链
 
 ```text

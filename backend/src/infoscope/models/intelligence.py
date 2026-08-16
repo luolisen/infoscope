@@ -38,6 +38,11 @@ class ClaimSignal(Base):
     __tablename__ = "claim_signals"
     __table_args__ = (
         UniqueConstraint("claim_id", "signal_id", name="uq_claim_signals_claim_signal"),
+        CheckConstraint(
+            "(attached_by_pipeline_run_id IS NOT NULL) <> "
+            "(attached_by_backwrite_reconciliation_run_id IS NOT NULL)",
+            name="ck_claim_signals_exactly_one_source",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
@@ -47,8 +52,13 @@ class ClaimSignal(Base):
     signal_id: Mapped[UUID] = mapped_column(
         ForeignKey("signals.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    attached_by_pipeline_run_id: Mapped[UUID] = mapped_column(
-        ForeignKey("pipeline_runs.id", ondelete="RESTRICT"), nullable=False, index=True
+    attached_by_pipeline_run_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("pipeline_runs.id", ondelete="RESTRICT"), nullable=True, index=True
+    )
+    attached_by_backwrite_reconciliation_run_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("backwrite_reconciliation_runs.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -76,6 +86,11 @@ class TimelineClaim(Base):
     __tablename__ = "timeline_claims"
     __table_args__ = (
         UniqueConstraint("timeline_entry_id", "claim_id", name="uq_timeline_claims_entry_claim"),
+        CheckConstraint(
+            "(attached_by_pipeline_run_id IS NOT NULL) <> "
+            "(attached_by_backwrite_reconciliation_run_id IS NOT NULL)",
+            name="ck_timeline_claims_exactly_one_source",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
@@ -85,8 +100,13 @@ class TimelineClaim(Base):
     claim_id: Mapped[UUID] = mapped_column(
         ForeignKey("claims.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    attached_by_pipeline_run_id: Mapped[UUID] = mapped_column(
-        ForeignKey("pipeline_runs.id", ondelete="RESTRICT"), nullable=False, index=True
+    attached_by_pipeline_run_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("pipeline_runs.id", ondelete="RESTRICT"), nullable=True, index=True
+    )
+    attached_by_backwrite_reconciliation_run_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("backwrite_reconciliation_runs.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -113,6 +133,11 @@ class ConflictClaim(Base):
     __tablename__ = "conflict_claims"
     __table_args__ = (
         UniqueConstraint("conflict_id", "claim_id", name="uq_conflict_claims_conflict_claim"),
+        CheckConstraint(
+            "(attached_by_pipeline_run_id IS NOT NULL) <> "
+            "(attached_by_backwrite_reconciliation_run_id IS NOT NULL)",
+            name="ck_conflict_claims_exactly_one_source",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
@@ -122,8 +147,13 @@ class ConflictClaim(Base):
     claim_id: Mapped[UUID] = mapped_column(
         ForeignKey("claims.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    attached_by_pipeline_run_id: Mapped[UUID] = mapped_column(
-        ForeignKey("pipeline_runs.id", ondelete="RESTRICT"), nullable=False, index=True
+    attached_by_pipeline_run_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("pipeline_runs.id", ondelete="RESTRICT"), nullable=True, index=True
+    )
+    attached_by_backwrite_reconciliation_run_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("backwrite_reconciliation_runs.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -134,6 +164,11 @@ class ConflictSignal(Base):
     __tablename__ = "conflict_signals"
     __table_args__ = (
         UniqueConstraint("conflict_id", "signal_id", name="uq_conflict_signals_conflict_signal"),
+        CheckConstraint(
+            "(attached_by_pipeline_run_id IS NOT NULL) <> "
+            "(attached_by_backwrite_reconciliation_run_id IS NOT NULL)",
+            name="ck_conflict_signals_exactly_one_source",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
@@ -143,8 +178,13 @@ class ConflictSignal(Base):
     signal_id: Mapped[UUID] = mapped_column(
         ForeignKey("signals.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    attached_by_pipeline_run_id: Mapped[UUID] = mapped_column(
-        ForeignKey("pipeline_runs.id", ondelete="RESTRICT"), nullable=False, index=True
+    attached_by_pipeline_run_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("pipeline_runs.id", ondelete="RESTRICT"), nullable=True, index=True
+    )
+    attached_by_backwrite_reconciliation_run_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("backwrite_reconciliation_runs.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -159,14 +199,24 @@ class BaseAnalysis(Base):
             name="ck_base_analyses_importance",
         ),
         UniqueConstraint("event_id", name="uq_base_analyses_event"),
+        CheckConstraint(
+            "(source_artifact_id IS NOT NULL) <> "
+            "(source_backwrite_reconciliation_run_id IS NOT NULL)",
+            name="ck_base_analyses_exactly_one_source",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     event_id: Mapped[UUID] = mapped_column(
         ForeignKey("events.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    source_artifact_id: Mapped[UUID] = mapped_column(
-        ForeignKey("pipeline_artifacts.id", ondelete="RESTRICT"), nullable=False, index=True
+    source_artifact_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("pipeline_artifacts.id", ondelete="RESTRICT"), nullable=True, index=True
+    )
+    source_backwrite_reconciliation_run_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("backwrite_reconciliation_runs.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
     )
     summary: Mapped[str] = mapped_column(Text, nullable=False)
     event_type: Mapped[str] = mapped_column(String(64), nullable=False)

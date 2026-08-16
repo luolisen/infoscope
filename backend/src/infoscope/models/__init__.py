@@ -24,6 +24,13 @@ from infoscope.models.ask import (
     AskRun,
 )
 from infoscope.models.auth import User, UserSession
+from infoscope.models.backwrite import (
+    BackwriteCycle,
+    BackwriteItem,
+    BackwriteReconciliationArtifact,
+    BackwriteReconciliationRun,
+    BackwriteResearchArtifact,
+)
 from infoscope.models.base import Base
 from infoscope.models.events import Event, EventSignal
 from infoscope.models.intelligence import (
@@ -63,6 +70,11 @@ __all__ = [
     "AskResearchBridge",
     "AskRun",
     "BaseAnalysis",
+    "BackwriteCycle",
+    "BackwriteItem",
+    "BackwriteReconciliationArtifact",
+    "BackwriteReconciliationRun",
+    "BackwriteResearchArtifact",
     "Claim",
     "ClaimSignal",
     "Conflict",

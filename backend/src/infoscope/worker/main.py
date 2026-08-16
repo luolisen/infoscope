@@ -18,6 +18,7 @@ from infoscope.analysis import (
     load_analysis_config,
 )
 from infoscope.analysis.ask_schemas import AskRequestSpec
+from infoscope.analysis.backwrite_schemas import BackwriteSnapshotSpec
 from infoscope.config import get_settings
 from infoscope.db import close_database, ping_database, session_factory
 from infoscope.integrations.research.client import OpenClawConfig, OpenClawResearchClient
@@ -42,6 +43,11 @@ from infoscope.services.ask_finalization import AskFinalizationRepository, AskFi
 from infoscope.services.ask_research_bridge import (
     AskResearchBridgeRepository,
     AskResearchBridgeRunner,
+)
+from infoscope.services.backwrite import (
+    BackwriteRepository,
+    BackwriteRunner,
+    UnavailableUserVisibleEventSnapshotProvider,
 )
 from infoscope.services.base_analysis import BaseAnalysisRepository, BaseAnalysisRunner
 from infoscope.services.claims_timeline import (
@@ -456,6 +462,74 @@ async def run_ask_finalization_once(ask_id: UUID) -> None:
     )
 
 
+async def run_backwrite_snapshot_once(snapshot_file: Path) -> None:
+    settings = get_settings()
+    document = await asyncio.to_thread(snapshot_file.read_text, "utf-8")
+    spec = BackwriteSnapshotSpec.model_validate_json(document)
+    async with session_factory() as database:
+        cycle, _inserted = await BackwriteRepository(database).create_or_reuse_cycle(
+            spec,
+            provider=UnavailableUserVisibleEventSnapshotProvider(),
+            max_attempts=settings.backwrite_max_attempts,
+        )
+    if cycle.item_count == 0:
+        logger.info(
+            "Backwrite cycle complete cycle_id=%s status=%s item_count=0 error_code=%s",
+            cycle.id,
+            cycle.status,
+            cycle.error_code,
+        )
+        return
+    analysis_config = load_analysis_config(settings)
+    openclaw_config = OpenClawConfig(
+        executable=settings.research_openclaw_executable,
+        config_path=settings.resolved_research_openclaw_config_path,
+        state_dir=settings.resolved_research_openclaw_state_dir,
+        model=settings.research_openclaw_model,
+        timeout_seconds=settings.research_timeout_seconds,
+    )
+    timeout = httpx.Timeout(connect=10, read=30, write=10, pool=10)
+    async with httpx.AsyncClient(
+        timeout=timeout,
+        follow_redirects=False,
+        trust_env=False,
+    ) as research_client:
+        async with httpx.AsyncClient(trust_env=False) as analysis_client:
+            async with session_factory() as database:
+                acquisition = AcquisitionRepository(database)
+                research_repository = ResearchRepository(database)
+                research_runner = ResearchRunner(
+                    repository=research_repository,
+                    acquisition=acquisition,
+                    client=OpenClawResearchClient(openclaw_config),
+                    fetcher=DirectHTTPSResearchFetcher(research_client),
+                    max_attempts=settings.research_max_attempts,
+                    health_checker=AgentReachHealthChecker(
+                        settings.research_agent_reach_executable,
+                        state_dir=settings.resolved_research_openclaw_state_dir,
+                    ),
+                )
+                repository = BackwriteRepository(database)
+                cycle = await BackwriteRunner(
+                    repository=repository,
+                    research_repository=research_repository,
+                    research_runner=research_runner,
+                    acquisition=acquisition,
+                    client=DeepSeekIntelligenceClient(
+                        client=analysis_client,
+                        config=analysis_config,
+                    ),
+                    max_attempts=settings.backwrite_max_attempts,
+                ).run_cycle(cycle.id)
+    logger.info(
+        "Backwrite cycle complete cycle_id=%s status=%s item_count=%d error_code=%s",
+        cycle.id,
+        cycle.status,
+        cycle.item_count,
+        cycle.error_code,
+    )
+
+
 async def process_ask_queue_once() -> bool:
     async with session_factory() as database:
         request = (
@@ -511,6 +585,7 @@ async def run(
     ask_event_reconciliation: UUID | None = None,
     ask_finalization: UUID | None = None,
     process_ask_queue: bool = False,
+    backwrite_snapshot_file: Path | None = None,
 ) -> None:
     settings = get_settings()
     stop = asyncio.Event()
@@ -564,6 +639,8 @@ async def run(
                 await run_ask_finalization_once(ask_finalization)
             if process_ask_queue:
                 ask_processed = await process_ask_queue_once()
+            if backwrite_snapshot_file is not None:
+                await run_backwrite_snapshot_once(backwrite_snapshot_file)
             logger.info("worker heartbeat")
             if (
                 once
@@ -587,6 +664,7 @@ async def run(
                 or ask_research_bridge is not None
                 or ask_event_reconciliation is not None
                 or ask_finalization is not None
+                or backwrite_snapshot_file is not None
             ):
                 return
             if ask_processed:
@@ -730,6 +808,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Continuously process persisted pending Ask requests",
     )
+    parser.add_argument(
+        "--backwrite-snapshot-file",
+        type=Path,
+        metavar="JSON_FILE",
+        help="Run one Backend-produced frozen Backwrite Event snapshot",
+    )
     return parser.parse_args()
 
 
@@ -763,6 +847,7 @@ def main() -> int:
                 ask_event_reconciliation=args.run_ask_event_reconciliation,
                 ask_finalization=args.run_ask_finalization,
                 process_ask_queue=args.process_ask_queue,
+                backwrite_snapshot_file=args.backwrite_snapshot_file,
             )
         )
     return 0
