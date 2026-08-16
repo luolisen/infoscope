@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchHealth } from "./api/health";
 import { fetchSession, sessionQueryKey } from "./api/session";
 import { AuthScreen } from "./features/auth/AuthScreen";
+import { AskPanel } from "./features/ask/AskPanel";
 import { EventDetail } from "./features/events/EventDetail";
 import { OnboardingPending } from "./features/auth/OnboardingPending";
 import { NowShell } from "./features/now/NowShell";
@@ -36,7 +37,15 @@ export function App() {
 function ReadyApp() {
   const healthQuery = useQuery({ queryKey: ["health"], queryFn: fetchHealth });
   const [locationHash, setLocationHash] = useState(() => window.location.hash);
+  const [selectedEventIds, setSelectedEventIds] = useState<string[]>([]);
   const eventId = locationHash.match(/^#event\/([^/]+)$/)?.[1];
+
+  const toggleEventSelection = (eventIdToToggle: string) => {
+    setSelectedEventIds((ids) => {
+      if (ids.includes(eventIdToToggle)) return ids.filter((selectedId) => selectedId !== eventIdToToggle);
+      return ids.length === 8 ? ids : [...ids, eventIdToToggle];
+    });
+  };
 
   useEffect(() => {
     const updateLocation = () => setLocationHash(window.location.hash);
@@ -74,7 +83,10 @@ function ReadyApp() {
         </nav>
       </aside>
 
-      {eventId === undefined ? <NowShell /> : <EventDetail eventId={eventId} onBack={() => { window.location.hash = ""; }} />}
+      <div className="content-column">
+        {eventId === undefined ? <NowShell onToggleEventSelection={toggleEventSelection} selectedEventIds={selectedEventIds} /> : <EventDetail eventId={eventId} onBack={() => { window.location.hash = ""; }} onToggleEventSelection={toggleEventSelection} selectedEventIds={selectedEventIds} />}
+        <AskPanel onClearSelection={() => setSelectedEventIds([])} selectedEventIds={selectedEventIds} />
+      </div>
     </div>
   );
 }
