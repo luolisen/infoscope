@@ -89,6 +89,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/events/{event_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Event Detail */
+        get: operations["get_event_detail_api_v1_events__event_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/health": {
         parameters: {
             query?: never;
@@ -284,6 +301,16 @@ export interface components {
              */
             status: "running";
         };
+        /**
+         * BaseAnalysisImportance
+         * @enum {string}
+         */
+        BaseAnalysisImportance: "low" | "medium" | "high" | "critical";
+        /**
+         * ClaimState
+         * @enum {string}
+         */
+        ClaimState: "confirmed" | "unresolved" | "conflicting" | "contradicted";
         /** CredentialsRequest */
         CredentialsRequest: {
             /** Password */
@@ -303,6 +330,125 @@ export interface components {
         /** ErrorResponse */
         ErrorResponse: {
             error: components["schemas"]["ErrorDetail"];
+        };
+        /** EventDetailBaseAnalysis */
+        EventDetailBaseAnalysis: {
+            /** Entities */
+            entities: components["schemas"]["EventDetailEntity"][];
+            /** Event Type */
+            event_type: string;
+            importance: components["schemas"]["BaseAnalysisImportance"];
+            /** Summary */
+            summary: string;
+            /** Topics */
+            topics: string[];
+        };
+        /** EventDetailClaim */
+        EventDetailClaim: {
+            /** Evidence Ids */
+            evidence_ids: string[];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            state: components["schemas"]["ClaimState"];
+            /** Text */
+            text: string;
+        };
+        /** EventDetailConflict */
+        EventDetailConflict: {
+            /** Claim Ids */
+            claim_ids: string[];
+            /** Evidence Ids */
+            evidence_ids: string[];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Summary */
+            summary: string;
+        };
+        /** EventDetailEntity */
+        EventDetailEntity: {
+            /** Entity Type */
+            entity_type: string;
+            /** Name */
+            name: string;
+        };
+        /** EventDetailEvidence */
+        EventDetailEvidence: {
+            /** Author Name */
+            author_name: string | null;
+            /** Excerpt */
+            excerpt: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            platform: components["schemas"]["EvidencePlatform"];
+            /** Published At */
+            published_at: string | null;
+            /** Url */
+            url: string | null;
+            visibility: components["schemas"]["EvidenceVisibility"];
+        };
+        /** EventDetailResponse */
+        EventDetailResponse: {
+            base_analysis: components["schemas"]["EventDetailBaseAnalysis"];
+            /** Claims */
+            claims: components["schemas"]["EventDetailClaim"][];
+            /** Conflicts */
+            conflicts: components["schemas"]["EventDetailConflict"][];
+            /**
+             * Display Time
+             * Format: date-time
+             */
+            display_time: string;
+            /** Evidence */
+            evidence: components["schemas"]["EventDetailEvidence"][];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Overview */
+            overview: string;
+            /** Saved */
+            saved: boolean;
+            state: components["schemas"]["EventState"];
+            /** Timeline */
+            timeline: components["schemas"]["EventDetailTimelineEntry"][];
+            /** Title */
+            title: string;
+            /** Topics */
+            topics: string[];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Why It Matters */
+            why_it_matters: string;
+        };
+        /** EventDetailTimelineEntry */
+        EventDetailTimelineEntry: {
+            /** Claim Ids */
+            claim_ids: string[];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /** Summary */
+            summary: string;
         };
         /**
          * EventState
@@ -339,6 +485,16 @@ export interface components {
             /** Why It Matters */
             why_it_matters: string;
         };
+        /**
+         * EvidencePlatform
+         * @enum {string}
+         */
+        EvidencePlatform: "telegram" | "x" | "youtube" | "web" | "rss";
+        /**
+         * EvidenceVisibility
+         * @enum {string}
+         */
+        EvidenceVisibility: "public" | "private_sanitized";
         /**
          * FocusId
          * @enum {string}
@@ -751,6 +907,75 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_event_detail_api_v1_events__event_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: {
+                is_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventDetailResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -2506,7 +2506,14 @@ Response：
   "state": "developing",
   "display_time": "2026-08-15T12:58:00Z",
   "updated_at": "2026-08-15T13:01:00Z",
-  "why_it_matters": "个性化解释。",
+  "base_analysis": {
+    "summary": "当前基础分析。",
+    "event_type": "technology",
+    "importance": "high",
+    "topics": ["AI"],
+    "entities": [{"name": "OpenAI", "entity_type": "organization"}]
+  },
+  "why_it_matters": "当前基础分析。",
   "topics": ["AI"],
   "saved": false,
   "claims": [
@@ -2578,6 +2585,25 @@ Privacy：
 - `private_sanitized` 的私密 Telegram 不得返回群名、群 username、invite link、internal ID。
 - 私密 Telegram 的 `author_name` 与 `url` 必须为 `null`。
 - `public` Evidence 可以返回公开作者与公开 URL。
+
+Event Detail Public API v1 冻结规则：
+
+- ready user 通过共享 Event catalog 的独立访问策略读取；不存在或不可访问统一 404
+  `EVENT_NOT_FOUND`，缺少当前 Base Analysis 为 409 `EVENT_NOT_READY`，不返回残缺 Detail。
+- Phase 4 的 `why_it_matters` 固定映射当前 `BaseAnalysis.summary`，根级 `topics` 保持 Base Analysis
+  顺序；`saved` 在 Save/Archive 持久化切片前固定为 false。Base Analysis 不暴露 source artifact、
+  rationale、provider、model 或 token usage。
+- Claims 按 `(created_at ASC, id ASC)`，Timeline 按 `(occurred_at ASC, id ASC)`，Conflicts 按
+  `(created_at ASC, id ASC)`，Evidence 按 `(published_at DESC NULLS LAST, created_at DESC, id ASC)`；
+  Frontend 不二次排序。
+- relation ID 数组去重并按对应顶层 Claims/Evidence 顺序返回。Claim/Timeline/Conflict 及其关系必须
+  全部属于当前 Event，Evidence 必须来自真实 EventSignal；跨 Event、悬空或重复关系 fail-closed。
+- 当前 platform 映射固定为 Telegram → telegram、TrendRadar rss → rss、TrendRadar hotlist → web、
+  Research web_page/github_document → web；x/youtube 仅保留为未来枚举值。公开 provenance 只扁平为
+  author_name/url，不返回原 provenance。
+- private_sanitized 仅允许 Telegram、null public provenance、null author_name/url 与已脱敏正文；异常
+  provenance 或未知来源映射 fail-closed。所有时间为 UTC ISO 8601，Evidence published_at 可空且不得
+  推断。GET 同步返回完整只读 Detail，不分页、不使用 Polling。
 
 ---
 
