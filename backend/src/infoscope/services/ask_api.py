@@ -12,7 +12,7 @@ from infoscope.analysis.ask_schemas import AskFinalAnswerPayload, AskRequestSpec
 from infoscope.config import Settings, get_settings
 from infoscope.db import get_session
 from infoscope.errors import ApiError
-from infoscope.models import AskFinalArtifact, AskRequest, Event, User
+from infoscope.models import AskFinalArtifact, AskRequest, User
 from infoscope.schemas.ask import (
     AskAcceptedResponse,
     AskCompletedResponse,
@@ -28,27 +28,7 @@ from infoscope.services.ask_comparison import (
     AskComparisonError,
     AskComparisonRepository,
 )
-
-
-class EventAccessPolicy:
-    """Shared-catalog v1 policy behind a replaceable authorization boundary."""
-
-    def __init__(self, database: AsyncSession) -> None:
-        self.database = database
-
-    async def require_all(self, user: User, event_ids: list[UUID]) -> None:
-        _ = user
-        available = set(
-            (
-                await self.database.execute(select(Event.id).where(Event.id.in_(event_ids)))
-            ).scalars()
-        )
-        if available != set(event_ids):
-            raise ApiError(
-                status_code=status.HTTP_404_NOT_FOUND,
-                code="ASK_EVENT_NOT_AVAILABLE",
-                message="A selected Event is not available.",
-            )
+from infoscope.services.event_access import EventAccessPolicy
 
 
 class AskService:
@@ -65,7 +45,14 @@ class AskService:
     async def create(self, user: User, value: AskCreateRequest) -> AskAcceptedResponse:
         ask_id = uuid4()
         repository = AskComparisonRepository(self.database)
-        await self.access_policy.require_all(user, value.event_ids)
+        try:
+            await self.access_policy.require_all(user, value.event_ids)
+        except ApiError as error:
+            raise ApiError(
+                status_code=status.HTTP_404_NOT_FOUND,
+                code="ASK_EVENT_NOT_AVAILABLE",
+                message="A selected Event is not available.",
+            ) from error
         try:
             snapshot = await repository.input_snapshot(
                 ask_id=ask_id,

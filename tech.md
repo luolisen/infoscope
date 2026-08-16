@@ -931,6 +931,19 @@ TG News 不直接生成 NOW、Event 或 Brief。
   `ASK_FAILED`。ready user 在当前 shared local-demo Event catalog 中可访问全部现存 Event，缺失/不可
   访问统一 404，缺少 Base Analysis 为 409。FastAPI 不运行模型任务，不使用 WebSocket。
 
+## Event Detail Public API v1（已冻结）
+
+- `GET /api/v1/events/{event_id}` 是 ready-user 同步只读接口；共享 catalog 的 Event 不存在/不可访问
+  统一 404 `EVENT_NOT_FOUND`，缺少当前 Base Analysis 为 409 `EVENT_NOT_READY`。
+- DTO 包含 Event、Base Analysis safe content、Claims、Timeline、Conflicts 与 EventSignal Evidence。
+  Phase 4 暂以 Base Analysis summary/topics 填充 why_it_matters/topics，saved 固定 false。
+- Backend 固定 Claims/Timeline/Conflicts/Evidence 排序；所有 relation IDs 按对应顶层列表顺序返回。
+  跨 Event、悬空、重复关系或 Evidence 不属于 Event 时 fail-closed，不返回部分结果。
+- Public Evidence 仅按受控来源映射输出 platform、author_name、url；private_sanitized 只允许 Telegram
+  脱敏正文和 null provenance/author/url。未知 source/provenance 或私密 provenance 异常 fail-closed。
+- display_time/updated_at 来自 Event；Timeline occurred_at 与 Evidence published_at 使用 UTC，后者可
+  空且不得推断。本切片不修改事实层、不分页、不使用 Polling。
+
 ---
 
 # 十、完整数据 Pipeline

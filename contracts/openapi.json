@@ -226,6 +226,26 @@
         "title": "AskRunningResponse",
         "type": "object"
       },
+      "BaseAnalysisImportance": {
+        "enum": [
+          "low",
+          "medium",
+          "high",
+          "critical"
+        ],
+        "title": "BaseAnalysisImportance",
+        "type": "string"
+      },
+      "ClaimState": {
+        "enum": [
+          "confirmed",
+          "unresolved",
+          "conflicting",
+          "contradicted"
+        ],
+        "title": "ClaimState",
+        "type": "string"
+      },
       "CredentialsRequest": {
         "properties": {
           "password": {
@@ -281,6 +301,323 @@
           "error"
         ],
         "title": "ErrorResponse",
+        "type": "object"
+      },
+      "EventDetailBaseAnalysis": {
+        "properties": {
+          "entities": {
+            "items": {
+              "$ref": "#/components/schemas/EventDetailEntity"
+            },
+            "title": "Entities",
+            "type": "array"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "importance": {
+            "$ref": "#/components/schemas/BaseAnalysisImportance"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "topics": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Topics",
+            "type": "array"
+          }
+        },
+        "required": [
+          "summary",
+          "event_type",
+          "importance",
+          "topics",
+          "entities"
+        ],
+        "title": "EventDetailBaseAnalysis",
+        "type": "object"
+      },
+      "EventDetailClaim": {
+        "properties": {
+          "evidence_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Evidence Ids",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ClaimState"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "text",
+          "state",
+          "evidence_ids"
+        ],
+        "title": "EventDetailClaim",
+        "type": "object"
+      },
+      "EventDetailConflict": {
+        "properties": {
+          "claim_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Claim Ids",
+            "type": "array"
+          },
+          "evidence_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Evidence Ids",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "claim_ids",
+          "summary",
+          "evidence_ids"
+        ],
+        "title": "EventDetailConflict",
+        "type": "object"
+      },
+      "EventDetailEntity": {
+        "properties": {
+          "entity_type": {
+            "title": "Entity Type",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "entity_type"
+        ],
+        "title": "EventDetailEntity",
+        "type": "object"
+      },
+      "EventDetailEvidence": {
+        "properties": {
+          "author_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Name"
+          },
+          "excerpt": {
+            "title": "Excerpt",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "platform": {
+            "$ref": "#/components/schemas/EvidencePlatform"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          },
+          "visibility": {
+            "$ref": "#/components/schemas/EvidenceVisibility"
+          }
+        },
+        "required": [
+          "id",
+          "platform",
+          "visibility",
+          "author_name",
+          "url",
+          "published_at",
+          "excerpt"
+        ],
+        "title": "EventDetailEvidence",
+        "type": "object"
+      },
+      "EventDetailResponse": {
+        "properties": {
+          "base_analysis": {
+            "$ref": "#/components/schemas/EventDetailBaseAnalysis"
+          },
+          "claims": {
+            "items": {
+              "$ref": "#/components/schemas/EventDetailClaim"
+            },
+            "title": "Claims",
+            "type": "array"
+          },
+          "conflicts": {
+            "items": {
+              "$ref": "#/components/schemas/EventDetailConflict"
+            },
+            "title": "Conflicts",
+            "type": "array"
+          },
+          "display_time": {
+            "format": "date-time",
+            "title": "Display Time",
+            "type": "string"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/EventDetailEvidence"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "overview": {
+            "title": "Overview",
+            "type": "string"
+          },
+          "saved": {
+            "title": "Saved",
+            "type": "boolean"
+          },
+          "state": {
+            "$ref": "#/components/schemas/EventState"
+          },
+          "timeline": {
+            "items": {
+              "$ref": "#/components/schemas/EventDetailTimelineEntry"
+            },
+            "title": "Timeline",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "topics": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Topics",
+            "type": "array"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "why_it_matters": {
+            "title": "Why It Matters",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "overview",
+          "state",
+          "display_time",
+          "updated_at",
+          "base_analysis",
+          "why_it_matters",
+          "topics",
+          "saved",
+          "claims",
+          "timeline",
+          "conflicts",
+          "evidence"
+        ],
+        "title": "EventDetailResponse",
+        "type": "object"
+      },
+      "EventDetailTimelineEntry": {
+        "properties": {
+          "claim_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Claim Ids",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "occurred_at",
+          "summary",
+          "claim_ids"
+        ],
+        "title": "EventDetailTimelineEntry",
         "type": "object"
       },
       "EventState": {
@@ -361,6 +698,25 @@
         ],
         "title": "EventSummary",
         "type": "object"
+      },
+      "EvidencePlatform": {
+        "enum": [
+          "telegram",
+          "x",
+          "youtube",
+          "web",
+          "rss"
+        ],
+        "title": "EvidencePlatform",
+        "type": "string"
+      },
+      "EvidenceVisibility": {
+        "enum": [
+          "public",
+          "private_sanitized"
+        ],
+        "title": "EvidenceVisibility",
+        "type": "string"
       },
       "FocusId": {
         "enum": [
@@ -1138,6 +1494,105 @@
         "summary": "Register",
         "tags": [
           "auth"
+        ]
+      }
+    },
+    "/api/v1/events/{event_id}": {
+      "get": {
+        "operationId": "get_event_detail_api_v1_events__event_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Event Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "is_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Event Detail",
+        "tags": [
+          "events"
         ]
       }
     },
