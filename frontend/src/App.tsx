@@ -6,10 +6,12 @@ import { fetchSession, sessionQueryKey } from "./api/session";
 import { AuthScreen } from "./features/auth/AuthScreen";
 import { AskPanel } from "./features/ask/AskPanel";
 import { BriefPage } from "./features/brief/BriefPage";
+import { ArchivePage } from "./features/archive/ArchivePage";
 import { EventDetail } from "./features/events/EventDetail";
 import { MaintenancePanel } from "./features/maintenance/MaintenancePanel";
 import { OnboardingPending } from "./features/auth/OnboardingPending";
 import { NowShell } from "./features/now/NowShell";
+import { SearchOverlay } from "./features/search/SearchOverlay";
 
 const primaryNavigation = ["NOW", "BRIEF", "ARCHIVE"];
 const settingsNavigation = ["SCOPE", "SETTINGS"];
@@ -42,9 +44,11 @@ function ReadyApp() {
   const healthQuery = useQuery({ queryKey: ["health"], queryFn: fetchHealth });
   const [locationHash, setLocationHash] = useState(() => window.location.hash);
   const [selectedEvents, setSelectedEvents] = useState<SelectedEvent[]>([]);
+  const [searchOpen, setSearchOpen] = useState(false);
   const eventId = locationHash.match(/^#event\/([^/]+)$/)?.[1];
   const isSettings = locationHash === "#settings";
   const isBrief = locationHash === "#brief";
+  const isArchive = locationHash === "#archive";
 
   const toggleEventSelection = (eventToToggle: SelectedEvent) => {
     setSelectedEvents((events) => {
@@ -59,12 +63,23 @@ function ReadyApp() {
     return () => window.removeEventListener("hashchange", updateLocation);
   }, []);
 
+  useEffect(() => {
+    const openSearch = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setSearchOpen(true);
+      }
+    };
+    window.addEventListener("keydown", openSearch);
+    return () => window.removeEventListener("keydown", openSearch);
+  }, []);
+
   return (
     <div className="app-shell">
       <header className="topbar">
         <a className="wordmark" href="/" aria-label="Infoscope home">IS</a>
         <span className="meta">{healthQuery.isSuccess ? "SYSTEM / ONLINE" : "SYSTEM / CHECKING"}</span>
-        <button className="search-trigger" type="button" aria-label="Search, shortcut Command K">
+        <button className="search-trigger" onClick={() => setSearchOpen(true)} type="button" aria-label="Search, shortcut Command K">
           <span>Search</span>
           <kbd>⌘K</kbd>
         </button>
@@ -75,7 +90,7 @@ function ReadyApp() {
           <ul className="navigation-list">
             {primaryNavigation.map((item) => (
               <li key={item}>
-                <a aria-current={item === "NOW" && !isSettings && !isBrief || item === "BRIEF" && isBrief ? "page" : undefined} href={`#${item.toLowerCase()}`}>
+                <a aria-current={(item === "NOW" && !isSettings && !isBrief && !isArchive) || (item === "BRIEF" && isBrief) || (item === "ARCHIVE" && isArchive) ? "page" : undefined} href={`#${item.toLowerCase()}`}>
                   {item}
                 </a>
               </li>
@@ -90,9 +105,10 @@ function ReadyApp() {
       </aside>
 
       <div className="content-column">
-        {isSettings ? <MaintenancePanel /> : isBrief ? <BriefPage /> : eventId === undefined ? <NowShell onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} /> : <EventDetail eventId={eventId} onBack={() => { window.location.hash = ""; }} onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} />}
-        {!isSettings && !isBrief && <AskPanel onClearSelection={() => setSelectedEvents([])} selectedEvents={selectedEvents} />}
+        {isSettings ? <MaintenancePanel /> : isBrief ? <BriefPage /> : isArchive ? <ArchivePage /> : eventId === undefined ? <NowShell onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} /> : <EventDetail eventId={eventId} onBack={() => { window.location.hash = ""; }} onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} />}
+        {!isSettings && !isBrief && !isArchive && <AskPanel onClearSelection={() => setSelectedEvents([])} selectedEvents={selectedEvents} />}
       </div>
+      <SearchOverlay onClose={() => setSearchOpen(false)} open={searchOpen} />
     </div>
   );
 }

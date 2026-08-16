@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { eventDetailQueryKey, fetchEventDetail } from "../../api/events";
+import { SaveButton } from "./SaveButton";
 
 type EventDetailProps = {
   eventId: string;
@@ -46,6 +47,7 @@ export function EventDetail({ eventId, onBack, selectedEvents, onToggleEventSele
         <p className="detail-overview">{event.overview}</p>
         <p className="event-meta">Updated {formatTime(event.updated_at)} · Display time {formatTime(event.display_time)}</p>
         <button className="text-button detail-select" disabled={!selectedEvents.some((selected) => selected.id === event.id) && selectedEvents.length === 8} onClick={() => onToggleEventSelection({ id: event.id, title: event.title })} type="button">{selectedEvents.some((selected) => selected.id === event.id) ? "Remove from Ask selection" : "Add to Ask selection"}</button>
+        <SaveButton eventId={event.id} saved={event.saved} />
       </header>
 
       <section className="detail-section detail-analysis" aria-labelledby="analysis-heading">
