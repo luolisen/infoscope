@@ -167,6 +167,10 @@ class ResearchSource(Base):
         CheckConstraint("candidate_index >= 0", name="ck_research_sources_candidate_index"),
         CheckConstraint("attempt_count >= 0", name="ck_research_sources_attempt_count"),
         CheckConstraint(
+            "candidate_url_hash ~ '^[0-9a-f]{64}$'",
+            name="ck_research_sources_candidate_url_hash",
+        ),
+        CheckConstraint(
             "canonical_url_hash ~ '^[0-9a-f]{64}$'",
             name="ck_research_sources_url_hash",
         ),
@@ -178,8 +182,9 @@ class ResearchSource(Base):
     )
     candidate_index: Mapped[int] = mapped_column(Integer, nullable=False)
     source_kind: Mapped[str] = mapped_column(String(32), nullable=False)
-    canonical_url: Mapped[str] = mapped_column(Text, nullable=False)
-    canonical_url_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    candidate_url_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    canonical_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    canonical_url_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
     attempt_count: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"

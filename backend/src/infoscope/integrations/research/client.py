@@ -20,7 +20,7 @@ from infoscope.integrations.research.schemas import (
 
 OPENCLAW_VERSION = "2026.7.1-2"
 OPENCLAW_AGENT_ID = "infoscope-research"
-OPENCLAW_BASE_ENV_ALLOWLIST = ("PATH", "HOME", "TMPDIR")
+OPENCLAW_BASE_ENV_ALLOWLIST = ("PATH",)
 OPENCLAW_CREDENTIAL_ENV_ALLOWLIST = ("DEEPSEEK_API_KEY",)
 
 
@@ -160,7 +160,10 @@ class OpenClawResearchClient:
             if value:
                 environment[name] = value
         environment.setdefault("PATH", os.defpath)
-        environment.setdefault("HOME", str(Path.home()))
+        isolated_home = self.config.state_dir / "home"
+        isolated_home.mkdir(mode=0o700, parents=True, exist_ok=True)
+        isolated_home.chmod(0o700)
+        environment["HOME"] = str(isolated_home)
         environment["TMPDIR"] = str(self.config.state_dir / "tmp")
         Path(environment["TMPDIR"]).mkdir(mode=0o700, parents=True, exist_ok=True)
         environment["OPENCLAW_CONFIG_PATH"] = str(self.config.config_path.resolve())

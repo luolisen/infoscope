@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 from datetime import UTC, datetime
+from hashlib import sha256
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
@@ -24,8 +25,10 @@ from infoscope.integrations.research.fetcher import (
     _html_document,
     normalize_text,
 )
+from infoscope.integrations.research.health import AgentReachHealthChecker
 from infoscope.integrations.research.schemas import (
     ResearchDiscovery,
+    ResearchDiscoveryAudit,
     ResearchDiscoveryResponse,
     ResearchEvent,
     ResearchFactSnapshot,
@@ -39,7 +42,13 @@ from infoscope.integrations.research.url_policy import (
     canonicalize_url,
     validate_public_url,
 )
-from infoscope.models import ResearchSourceKind, ResearchStatus, Signal
+from infoscope.models import (
+    ResearchSource,
+    ResearchSourceKind,
+    ResearchSourceStatus,
+    ResearchStatus,
+    Signal,
+)
 from infoscope.services.normalization import DeterministicNormalizer
 from infoscope.services.research import ResearchError, ResearchRepository, ResearchRunner
 
@@ -245,10 +254,39 @@ async def test_openclaw_invocation_is_isolated_and_cleans_prompt(
     assert set(OPENCLAW_CREDENTIAL_ENV_ALLOWLIST) == {"DEEPSEEK_API_KEY"}
     assert environment["OPENCLAW_CONFIG_PATH"] == str(config_path.resolve())
     assert environment["OPENCLAW_STATE_DIR"] == str(state_dir.resolve())
+    assert environment["HOME"] == str(state_dir / "home")
     assert environment["TMPDIR"] == str(state_dir / "tmp")
     assert kwargs["cwd"] == workdir
     assert kwargs["stdin"] == os.devnull or kwargs["stdin"] == -3
     assert not captured["prompt_path"].exists()
+
+
+async def test_agent_reach_uses_same_isolated_home(monkeypatch, tmp_path: Path) -> None:
+    captured: dict[str, object] = {}
+
+    class Process:
+        async def wait(self):
+            return 0
+
+    async def create_subprocess_exec(*argv, **kwargs):
+        captured["argv"] = argv
+        captured["env"] = kwargs["env"]
+        return Process()
+
+    monkeypatch.setattr(
+        "infoscope.integrations.research.health.asyncio.create_subprocess_exec",
+        create_subprocess_exec,
+    )
+    monkeypatch.setenv("HOME", "/Users/alan")
+    monkeypatch.setenv("FORBIDDEN_SECRET", "must-not-leak")
+    state_dir = tmp_path / "state"
+    await AgentReachHealthChecker("agent-reach", state_dir=state_dir).check()
+
+    assert captured["argv"] == ("agent-reach", "doctor")
+    environment = captured["env"]
+    assert environment["HOME"] == str(state_dir / "home")
+    assert environment["TMPDIR"] == str(state_dir / "tmp")
+    assert "FORBIDDEN_SECRET" not in environment
 
 
 def test_fact_snapshot_rejects_cross_event_relations_and_naive_time() -> None:
@@ -311,10 +349,16 @@ def test_canonical_json_is_stable_and_url_policy_is_exact() -> None:
         "https://example.com/a//b", ResearchSourceKind.WEB_PAGE
     )
     assert doubled == "https://example.com/a//b"
+    escaped, _host = canonicalize_url(
+        "https://example.com/a%2fb%25c?q=%2f%25", ResearchSourceKind.WEB_PAGE
+    )
+    assert escaped == "https://example.com/a%2Fb%25c?q=%2F%25"
     with pytest.raises(ResearchURLRejected, match="RESEARCH_URL_REJECTED"):
         canonicalize_url("https://user@example.com/", ResearchSourceKind.WEB_PAGE)
     with pytest.raises(ResearchURLRejected, match="RESEARCH_URL_REJECTED"):
         canonicalize_url("https://example.com/%zz", ResearchSourceKind.WEB_PAGE)
+    with pytest.raises(ResearchURLRejected, match="RESEARCH_URL_REJECTED"):
+        canonicalize_url("https://example.com/%2", ResearchSourceKind.WEB_PAGE)
     with pytest.raises(ResearchURLRejected, match="RESEARCH_SOURCE_HOST_REJECTED"):
         canonicalize_url(
             "https://github.com/org/repo/blob/main/README.md",
@@ -425,7 +469,12 @@ async def test_zero_candidate_research_is_canonical_success() -> None:
             return None
 
         async def persist_discovery(self, **kwargs):
-            return SimpleNamespace(payload=kwargs["response"].payload.model_dump(mode="json"))
+            return SimpleNamespace(
+                payload=ResearchDiscoveryAudit(
+                    request_id=request.id,
+                    candidate_count=len(kwargs["candidates"]),
+                ).model_dump(mode="json")
+            )
 
         async def sources(self, request_id):
             return []
@@ -454,3 +503,96 @@ async def test_zero_candidate_research_is_canonical_success() -> None:
     )
     assert await runner.run(request.id, payload=payload) is request
     assert repository.status == (ResearchStatus.SUCCEEDED, None)
+
+
+async def test_invalid_and_duplicate_candidates_have_privacy_safe_audits() -> None:
+    request_id = uuid4()
+    discovery = ResearchDiscovery.model_validate(
+        {
+            "request_id": request_id,
+            "candidates": [
+                {
+                    "source_kind": "web_page",
+                    "source_url": "https://user:secret@example.com/report",
+                    "relevance_summary": "invalid",
+                },
+                {
+                    "source_kind": "web_page",
+                    "source_url": "https://example.com/a%2fb",
+                    "relevance_summary": "valid",
+                },
+                {
+                    "source_kind": "web_page",
+                    "source_url": "https://EXAMPLE.com:443/a%2Fb#fragment",
+                    "relevance_summary": "duplicate",
+                },
+            ],
+        }
+    )
+
+    async def validator(value, source_kind):
+        canonical_url, hostname = canonicalize_url(value, source_kind)
+        return ValidatedURL(
+            canonical_url=canonical_url,
+            canonical_url_hash=sha256(canonical_url.encode()).hexdigest(),
+            hostname=hostname,
+            addresses=frozenset({"203.0.113.10"}),
+        )
+
+    runner = ResearchRunner(
+        repository=object(),  # type: ignore[arg-type]
+        acquisition=object(),  # type: ignore[arg-type]
+        client=object(),  # type: ignore[arg-type]
+        fetcher=object(),  # type: ignore[arg-type]
+        max_attempts=3,
+        url_validator=validator,
+    )
+    audits = await runner._audit_candidates(discovery)
+
+    assert [audit.status for audit in audits] == [
+        ResearchSourceStatus.FAILED,
+        ResearchSourceStatus.PENDING,
+        ResearchSourceStatus.FAILED,
+    ]
+    assert audits[0].error_code == "RESEARCH_URL_REJECTED"
+    assert audits[0].canonical_url is None
+    assert audits[0].candidate_url_hash == sha256(
+        discovery.candidates[0].source_url.encode()
+    ).hexdigest()
+    assert audits[1].canonical_url == "https://example.com/a%2Fb"
+    assert audits[2].error_code == "RESEARCH_DUPLICATE_CANDIDATE"
+    assert audits[2].canonical_url is None
+
+    class Database:
+        def __init__(self):
+            self.added = []
+
+        def add(self, value):
+            self.added.append(value)
+
+        async def commit(self):
+            return None
+
+    database = Database()
+    repository = ResearchRepository(database)  # type: ignore[arg-type]
+    artifact = await repository.persist_discovery(
+        request=SimpleNamespace(id=request_id, input_hash="a" * 64),
+        run=SimpleNamespace(id=uuid4()),
+        response=ResearchDiscoveryResponse(
+            payload=discovery,
+            provider="deepseek",
+            model="deepseek-v4-pro",
+            usage=RuntimeUsage(),
+        ),
+        candidates=audits,
+    )
+    assert artifact.payload == {
+        "schema_version": "research_discovery_audit.v1",
+        "request_id": str(request_id),
+        "candidate_count": 3,
+    }
+    assert "source_url" not in json.dumps(artifact.payload)
+    persisted_sources = [item for item in database.added if isinstance(item, ResearchSource)]
+    assert len(persisted_sources) == 3
+    assert persisted_sources[0].canonical_url is None
+    assert persisted_sources[0].candidate_url_hash == audits[0].candidate_url_hash

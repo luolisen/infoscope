@@ -1037,9 +1037,10 @@ Research v1 固定 `openclaw@2026.7.1-2`，使用
 `research_discovery.v1` 的公开候选 URL，回显的 `request_id` 必须与 Request 主键一致。
 
 OpenClaw 使用独立 regular config、state 与每次运行的 0700 workdir；Prompt 是 workdir 内的 0600
-UTF-8 临时文件，并在成功或失败后始终清理。子进程不得继承完整环境：基础 allowlist 固定为
-`PATH / HOME / TMPDIR`，Backend 注入 `OPENCLAW_CONFIG_PATH / OPENCLAW_STATE_DIR`，模型凭据 allowlist
-固定且仅含 `DEEPSEEK_API_KEY`，不得配置通配规则。稳定版 JSON 只解析 `payloads + meta`：排除
+UTF-8 临时文件，并在成功或失败后始终清理。OpenClaw 与 Agent-Reach 的 `HOME / TMPDIR` 均固定为
+research state 下的 0700 专用目录，不继承用户真实 HOME。子进程不得继承完整环境：只继承
+`PATH`，Backend 注入 `OPENCLAW_CONFIG_PATH / OPENCLAW_STATE_DIR`，模型凭据 allowlist 固定且仅含
+`DEEPSEEK_API_KEY`，不得配置通配规则。稳定版 JSON 只解析 `payloads + meta`：排除
 reasoning/commentary 后必须恰好一个非空且非错误的 visible text，provider/model/usage 只从
 `meta.agentMeta` 读取。非零退出、外层超时、aborted、meta error/failureSignal、错误 payload 或
 协议偏差使用稳定内部错误码。
@@ -1059,6 +1060,11 @@ Request、Run、Discovery Artifact 与 Source 使用专用 Research 表。`idemp
 任务重放，相同 key 不得改变 input hash；不同 key 允许在后续周期对相同问题重新 Research。已有
 canonical discovery 的 retry 不再调用模型，只重试失败 Source。零候选是 canonical success；部分
 成功、无有效候选、全部 Fetch 失败与 Runtime/Schema 失败使用稳定状态和错误码。
+
+每个候选都必须持久化一条 Source 审计：合法候选保存 canonical URL；非法 URL、SSRF 与 canonical
+重复候选保存 failed、稳定 error code 和原始 URL 的 SHA-256，不保存原始候选 URL。Discovery
+artifact 也只保存 privacy-safe request/candidate count。URL percent normalization 解码 unreserved，
+保留其他合法 escape 并统一大写十六进制，只拒绝非法或不完整 escape。
 
 Fetcher 获取的规范化正文按 SHA-256 计算 content hash，Raw source key 固定由
 `source_kind + canonical_url + content_hash` 生成。同 URL 同内容跨运行复用，内容变化形成新

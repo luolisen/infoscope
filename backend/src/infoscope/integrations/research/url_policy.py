@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
-import re
 import socket
 from dataclasses import dataclass
 from hashlib import sha256
@@ -10,7 +9,7 @@ from urllib.parse import SplitResult, urlsplit, urlunsplit
 
 from infoscope.models import ResearchSourceKind
 
-_PERCENT = re.compile(r"%([0-9a-fA-F]{2})")
+_HEX = frozenset("0123456789abcdefABCDEF")
 _UNRESERVED = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
 
 
@@ -29,14 +28,22 @@ class ValidatedURL:
 
 
 def _normalize_percent(value: str) -> str:
-    def replace(match: re.Match[str]) -> str:
-        character = chr(int(match.group(1), 16))
-        return character if character in _UNRESERVED else f"%{match.group(1).upper()}"
-
-    normalized = _PERCENT.sub(replace, value)
-    if "%" in normalized:
-        raise ResearchURLRejected("RESEARCH_URL_REJECTED")
-    return normalized
+    normalized: list[str] = []
+    index = 0
+    while index < len(value):
+        if value[index] != "%":
+            normalized.append(value[index])
+            index += 1
+            continue
+        if index + 2 >= len(value) or any(
+            character not in _HEX for character in value[index + 1 : index + 3]
+        ):
+            raise ResearchURLRejected("RESEARCH_URL_REJECTED")
+        hexadecimal = value[index + 1 : index + 3]
+        character = chr(int(hexadecimal, 16))
+        normalized.append(character if character in _UNRESERVED else f"%{hexadecimal.upper()}")
+        index += 3
+    return "".join(normalized)
 
 
 def _remove_dot_segments(path: str) -> str:

@@ -308,7 +308,8 @@ async def research_once(
                 fetcher=DirectHTTPSResearchFetcher(client),
                 max_attempts=settings.research_max_attempts,
                 health_checker=AgentReachHealthChecker(
-                    settings.research_agent_reach_executable
+                    settings.research_agent_reach_executable,
+                    state_dir=settings.resolved_research_openclaw_state_dir,
                 ),
             )
             if request_file is not None:

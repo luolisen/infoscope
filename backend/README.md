@@ -246,10 +246,11 @@ openclaw agent --help
 Provision a dedicated regular OpenClaw config containing the `infoscope-research` agent, its
 workspace, and least-privilege tool policy. Configure its path, isolated state directory, and model
 reference in `.env`. Export `DEEPSEEK_API_KEY` in the worker process environment; it is the only
-model credential variable admitted by the fixed subprocess allowlist. The adapter also admits only
-`PATH`, `HOME`, and its isolated `TMPDIR`, then injects `OPENCLAW_CONFIG_PATH` and
-`OPENCLAW_STATE_DIR`; no other inherited environment variables reach OpenClaw. Never commit the
-credential or runtime state.
+model credential variable admitted by the fixed subprocess allowlist. The adapter inherits only
+`PATH`; it fixes `HOME` and `TMPDIR` to 0700 directories below the dedicated Research state and
+injects `OPENCLAW_CONFIG_PATH` and `OPENCLAW_STATE_DIR`. Agent-Reach doctor uses the same isolated
+HOME and TMPDIR. No other inherited environment variables reach either subprocess. Never commit
+the credential or runtime state.
 
 The adapter invokes `openclaw agent --local --agent infoscope-research --session-key
 research-<request_id>` with a 0600 UTF-8 prompt file inside a per-run 0700 work directory. The

@@ -8,18 +8,19 @@ from infoscope.integrations.research.client import ResearchRuntimeError
 
 
 class AgentReachHealthChecker:
-    def __init__(self, executable: str = "agent-reach", timeout_seconds: int = 30) -> None:
+    def __init__(
+        self,
+        executable: str = "agent-reach",
+        *,
+        state_dir: Path,
+        timeout_seconds: int = 30,
+    ) -> None:
         self.executable = executable
+        self.state_dir = state_dir
         self.timeout_seconds = timeout_seconds
 
     async def check(self) -> None:
-        environment = {
-            name: value
-            for name in ("PATH", "HOME", "TMPDIR")
-            if (value := os.environ.get(name))
-        }
-        environment.setdefault("PATH", os.defpath)
-        environment.setdefault("HOME", str(Path.home()))
+        environment = await asyncio.to_thread(self._subprocess_env)
         try:
             process = await asyncio.create_subprocess_exec(
                 self.executable,
@@ -39,3 +40,16 @@ class AgentReachHealthChecker:
             raise ResearchRuntimeError("RESEARCH_CAPABILITY_UNAVAILABLE") from error
         if returncode != 0:
             raise ResearchRuntimeError("RESEARCH_CAPABILITY_UNAVAILABLE")
+
+    def _subprocess_env(self) -> dict[str, str]:
+        isolated_home = self.state_dir / "home"
+        isolated_tmp = self.state_dir / "tmp"
+        isolated_home.mkdir(mode=0o700, parents=True, exist_ok=True)
+        isolated_tmp.mkdir(mode=0o700, parents=True, exist_ok=True)
+        isolated_home.chmod(0o700)
+        isolated_tmp.chmod(0o700)
+        environment = {name: value for name in ("PATH",) if (value := os.environ.get(name))}
+        environment.setdefault("PATH", os.defpath)
+        environment["HOME"] = str(isolated_home)
+        environment["TMPDIR"] = str(isolated_tmp)
+        return environment

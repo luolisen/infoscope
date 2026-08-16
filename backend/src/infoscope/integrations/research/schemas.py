@@ -223,6 +223,12 @@ class ResearchDiscovery(StrictModel):
     candidates: list[ResearchCandidate] = Field(max_length=12)
 
 
+class ResearchDiscoveryAudit(StrictModel):
+    schema_version: Literal["research_discovery_audit.v1"] = "research_discovery_audit.v1"
+    request_id: UUID
+    candidate_count: int = Field(ge=0, le=12)
+
+
 class RuntimeUsage(StrictModel):
     input: int = Field(default=0, ge=0)
     output: int = Field(default=0, ge=0)

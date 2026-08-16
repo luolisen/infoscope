@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
@@ -20,6 +21,7 @@ from infoscope.integrations.research.schemas import (
     ResearchClaim,
     ResearchConflict,
     ResearchDiscovery,
+    ResearchDiscoveryAudit,
     ResearchDiscoveryResponse,
     ResearchEvent,
     ResearchEvidence,
@@ -59,6 +61,17 @@ class ResearchError(RuntimeError):
     def __init__(self, error_code: str) -> None:
         super().__init__(error_code)
         self.error_code = error_code
+
+
+@dataclass(frozen=True, slots=True)
+class ResearchCandidateAudit:
+    candidate_index: int
+    source_kind: ResearchSourceKind
+    candidate_url_hash: str
+    status: ResearchSourceStatus
+    canonical_url: str | None = None
+    canonical_url_hash: str | None = None
+    error_code: str | None = None
 
 
 class ResearchDiscoveryClient(Protocol):
@@ -293,30 +306,34 @@ class ResearchRepository:
         request: ResearchRequest,
         run: ResearchRun,
         response: ResearchDiscoveryResponse,
-        validated: list[tuple[int, ValidatedURL]],
+        candidates: list[ResearchCandidateAudit],
     ) -> ResearchDiscoveryArtifact:
         artifact = ResearchDiscoveryArtifact(
             research_request_id=request.id,
             created_by_run_id=run.id,
-            schema_version="research_discovery.v1",
+            schema_version="research_discovery_audit.v1",
             input_hash=request.input_hash,
-            payload=response.payload.model_dump(mode="json"),
+            payload=ResearchDiscoveryAudit(
+                request_id=request.id,
+                candidate_count=len(candidates),
+            ).model_dump(mode="json"),
             runtime="openclaw",
             provider=response.provider,
             model=response.model,
             token_usage=response.usage.model_dump(mode="json"),
         )
         self.database.add(artifact)
-        for index, item in validated:
-            candidate = response.payload.candidates[index]
+        for candidate in candidates:
             self.database.add(
                 ResearchSource(
                     research_request_id=request.id,
-                    candidate_index=index,
+                    candidate_index=candidate.candidate_index,
                     source_kind=candidate.source_kind.value,
-                    canonical_url=item.canonical_url,
-                    canonical_url_hash=item.canonical_url_hash,
-                    status=ResearchSourceStatus.PENDING.value,
+                    candidate_url_hash=candidate.candidate_url_hash,
+                    canonical_url=candidate.canonical_url,
+                    canonical_url_hash=candidate.canonical_url_hash,
+                    status=candidate.status.value,
+                    error_code=candidate.error_code,
                 )
             )
         await self.database.commit()
@@ -408,45 +425,34 @@ class ResearchRunner:
             payload = ResearchRequestPayload.model_validate(request.request_payload)
         try:
             artifact = await self.repository.artifact(request.id)
-            invalid_candidates = 0
             if artifact is None:
                 if self.health_checker is not None:
                     await self.health_checker.check()
                 with TemporaryDirectory(prefix="infoscope-research-") as workdir:
                     response = await self.client.discover(payload, workdir=Path(workdir))
-                validated: list[tuple[int, ValidatedURL]] = []
-                seen: set[str] = set()
-                for index, candidate in enumerate(response.payload.candidates):
-                    try:
-                        value = await self.url_validator(
-                            candidate.source_url, candidate.source_kind
-                        )
-                    except ResearchURLRejected:
-                        invalid_candidates += 1
-                        continue
-                    if value.canonical_url_hash in seen:
-                        invalid_candidates += 1
-                        continue
-                    seen.add(value.canonical_url_hash)
-                    validated.append((index, value))
+                candidates = await self._audit_candidates(response.payload)
                 artifact = await self.repository.persist_discovery(
                     request=request,
                     run=run,
                     response=response,
-                    validated=validated,
+                    candidates=candidates,
                 )
             try:
-                discovery = ResearchDiscovery.model_validate(artifact.payload)
+                discovery_audit = ResearchDiscoveryAudit.model_validate(artifact.payload)
             except ValueError as error:
                 raise ResearchError("RESEARCH_DISCOVERY_SCHEMA_INVALID") from error
             sources = await self.repository.sources(request.id)
-            invalid_candidates = max(invalid_candidates, len(discovery.candidates) - len(sources))
-            if not discovery.candidates:
+            if (
+                discovery_audit.request_id != request.id
+                or len(sources) != discovery_audit.candidate_count
+            ):
+                raise ResearchError("RESEARCH_SOURCE_AUDIT_INCOMPLETE")
+            if discovery_audit.candidate_count == 0:
                 await self.repository.finish(
                     request, run, status=ResearchStatus.SUCCEEDED, error_code=None
                 )
                 return request
-            if not sources:
+            if not sources or not any(source.canonical_url is not None for source in sources):
                 await self.repository.finish(
                     request,
                     run,
@@ -455,7 +461,10 @@ class ResearchRunner:
                 )
                 return request
             for source in sources:
-                if source.status == ResearchSourceStatus.SUCCEEDED.value:
+                if (
+                    source.status == ResearchSourceStatus.SUCCEEDED.value
+                    or source.canonical_url is None
+                ):
                     continue
                 await self.repository.source_started(source)
                 try:
@@ -473,7 +482,7 @@ class ResearchRunner:
             if succeeded == 0:
                 status = ResearchStatus.FAILED
                 error_code = "RESEARCH_ALL_SOURCES_FAILED"
-            elif succeeded < len(discovery.candidates) or invalid_candidates:
+            elif succeeded < len(sources):
                 status = ResearchStatus.PARTIAL
                 error_code = "RESEARCH_PARTIAL_SOURCE_FAILURE"
             else:
@@ -489,6 +498,52 @@ class ResearchRunner:
                 error_code=error.error_code,
             )
             raise
+
+    async def _audit_candidates(
+        self, discovery: ResearchDiscovery
+    ) -> list[ResearchCandidateAudit]:
+        audits: list[ResearchCandidateAudit] = []
+        seen: set[str] = set()
+        for index, candidate in enumerate(discovery.candidates):
+            candidate_url_hash = sha256(candidate.source_url.encode("utf-8")).hexdigest()
+            try:
+                validated = await self.url_validator(
+                    candidate.source_url, candidate.source_kind
+                )
+            except ResearchURLRejected as error:
+                audits.append(
+                    ResearchCandidateAudit(
+                        candidate_index=index,
+                        source_kind=candidate.source_kind,
+                        candidate_url_hash=candidate_url_hash,
+                        status=ResearchSourceStatus.FAILED,
+                        error_code=error.error_code,
+                    )
+                )
+                continue
+            if validated.canonical_url_hash in seen:
+                audits.append(
+                    ResearchCandidateAudit(
+                        candidate_index=index,
+                        source_kind=candidate.source_kind,
+                        candidate_url_hash=candidate_url_hash,
+                        status=ResearchSourceStatus.FAILED,
+                        error_code="RESEARCH_DUPLICATE_CANDIDATE",
+                    )
+                )
+                continue
+            seen.add(validated.canonical_url_hash)
+            audits.append(
+                ResearchCandidateAudit(
+                    candidate_index=index,
+                    source_kind=candidate.source_kind,
+                    candidate_url_hash=candidate_url_hash,
+                    status=ResearchSourceStatus.PENDING,
+                    canonical_url=validated.canonical_url,
+                    canonical_url_hash=validated.canonical_url_hash,
+                )
+            )
+        return audits
 
     async def _persist_raw(
         self,
