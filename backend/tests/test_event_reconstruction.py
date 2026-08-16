@@ -56,7 +56,7 @@ def _source() -> tuple[PipelineArtifact, PipelineRun, Signal]:
         input_hash="a" * 64,
         payload=payload.model_dump(mode="json"),
         provider="deepseek",
-        model="deepseek-v4-pro",
+        model="deepseek-v4-flash",
         token_usage={},
     )
     signal = Signal(
@@ -200,7 +200,7 @@ class FakeClient:
         return EventReconstructionResponse(
             payload=payload,
             provider="deepseek",
-            model="deepseek-v4-pro",
+            model="deepseek-v4-flash",
             token_usage=TokenUsage(total_tokens=10),
         )
 
@@ -246,7 +246,7 @@ async def test_same_input_reuses_prior_artifact_without_model_call() -> None:
         input_hash="c" * 64,
         payload=prior_payload.model_dump(mode="json"),
         provider="deepseek",
-        model="deepseek-v4-pro",
+        model="deepseek-v4-flash",
         token_usage={},
     )
     events = FakeEvents(artifact, source_run, signal, prior=prior)

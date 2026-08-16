@@ -178,7 +178,7 @@ async def test_intelligence_adapter_uses_strict_personalization_prompt_and_schem
         return httpx.Response(
             200,
             json={
-                "model": "deepseek-v4-pro",
+                "model": "deepseek-v4-flash",
                 "choices": [
                     {
                         "finish_reason": "stop",

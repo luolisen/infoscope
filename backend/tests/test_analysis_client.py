@@ -55,7 +55,7 @@ async def test_client_rotates_keys_on_retry_and_parses_json_output() -> None:
         return httpx.Response(
             200,
             json={
-                "model": "deepseek-v4-pro",
+                "model": "deepseek-v4-flash",
                 "choices": [
                     {
                         "finish_reason": "stop",

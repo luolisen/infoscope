@@ -143,7 +143,7 @@ DeepSeek endpoint locally (never commit real keys):
 
 ```dotenv
 ANALYSIS_API_BASE_URL=https://api.deepseek.com
-ANALYSIS_MODEL=deepseek-v4-pro
+ANALYSIS_MODEL=deepseek-v4-flash
 ANALYSIS_API_KEYS=sk-first,sk-second,sk-third
 ```
 

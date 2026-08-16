@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     normalization_batch_size: int = Field(default=500, gt=0, le=5000)
     deduplication_batch_size: int = Field(default=500, gt=0, le=5000)
     analysis_api_base_url: str = "https://api.deepseek.com"
-    analysis_model: str = "deepseek-v4-pro"
+    analysis_model: str = "deepseek-v4-flash"
     analysis_api_keys: SecretStr | None = None
     analysis_timeout_seconds: float = Field(default=180, gt=0)
     analysis_max_retries: int = Field(default=3, ge=0, le=10)
@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     research_agent_reach_executable: str = "agent-reach"
     research_openclaw_config_path: Path = Path(".state/openclaw/research.json")
     research_openclaw_state_dir: Path = Path(".state/openclaw/research")
-    research_openclaw_model: str = Field(default="deepseek/deepseek-v4-pro", min_length=1)
+    research_openclaw_model: str = Field(default="deepseek/deepseek-v4-flash", min_length=1)
     research_timeout_seconds: int = Field(default=300, gt=0, le=1800)
     research_max_attempts: int = Field(default=3, gt=0, le=10)
     ask_comparison_max_attempts: int = Field(default=3, gt=0, le=10)
