@@ -25,6 +25,7 @@ from infoscope.integrations.telegram import (
 from infoscope.integrations.trendradar import TrendRadarCollector, load_trendradar_config
 from infoscope.integrations.trendradar.client import NewsNowClient, RSSClient
 from infoscope.services.acquisition import AcquisitionRepository
+from infoscope.services.base_analysis import BaseAnalysisRepository, BaseAnalysisRunner
 from infoscope.services.claims_timeline import (
     ClaimExtractionRunner,
     ConflictAnalysisRunner,
@@ -253,6 +254,25 @@ async def analyze_conflicts_once(source_artifact_id: UUID) -> IntelligenceResult
     return result
 
 
+async def analyze_base_once(source_artifact_id: UUID) -> IntelligenceResult:
+    config = load_analysis_config(get_settings())
+    async with httpx.AsyncClient() as client:
+        async with session_factory() as database:
+            result = await BaseAnalysisRunner(
+                repository=BaseAnalysisRepository(database),
+                pipeline=PipelineRepository(database),
+                client=DeepSeekIntelligenceClient(client=client, config=config),
+            ).run(source_artifact_id)
+    logger.info(
+        "base analysis complete run_id=%s created=%d updated=%d reused=%s",
+        result.run_id,
+        result.created,
+        result.updated,
+        result.reused_artifact,
+    )
+    return result
+
+
 async def run(
     *,
     once: bool = False,
@@ -268,6 +288,7 @@ async def run(
     extract_claims_artifact: UUID | None = None,
     reconstruct_timeline_artifact: UUID | None = None,
     analyze_conflicts_artifact: UUID | None = None,
+    analyze_base_artifact: UUID | None = None,
 ) -> None:
     settings = get_settings()
     stop = asyncio.Event()
@@ -300,6 +321,8 @@ async def run(
                 await reconstruct_timeline_once(reconstruct_timeline_artifact)
             if analyze_conflicts_artifact is not None:
                 await analyze_conflicts_once(analyze_conflicts_artifact)
+            if analyze_base_artifact is not None:
+                await analyze_base_once(analyze_base_artifact)
             logger.info("worker heartbeat")
             if (
                 once
@@ -315,6 +338,7 @@ async def run(
                 or extract_claims_artifact is not None
                 or reconstruct_timeline_artifact is not None
                 or analyze_conflicts_artifact is not None
+                or analyze_base_artifact is not None
             ):
                 return
             try:
@@ -401,6 +425,12 @@ def parse_args() -> argparse.Namespace:
         metavar="ARTIFACT_ID",
         help="Analyze Conflicts from one canonical Timeline Reconstruction artifact",
     )
+    parser.add_argument(
+        "--analyze-base-artifact",
+        type=UUID,
+        metavar="ARTIFACT_ID",
+        help="Create Base Analysis from one canonical Conflict Analysis artifact",
+    )
     return parser.parse_args()
 
 
@@ -425,6 +455,7 @@ def main() -> int:
                 extract_claims_artifact=args.extract_claims_artifact,
                 reconstruct_timeline_artifact=args.reconstruct_timeline_artifact,
                 analyze_conflicts_artifact=args.analyze_conflicts_artifact,
+                analyze_base_artifact=args.analyze_base_artifact,
             )
         )
     return 0

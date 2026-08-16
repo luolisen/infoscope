@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from infoscope.analysis.schemas import AnalysisSignal, StrictModel, TokenUsage
 
@@ -367,6 +367,166 @@ class ConflictAnalysisArtifact(StrictModel):
 
 class ConflictAnalysisResponse(StrictModel):
     payload: ConflictAnalysisPayload
+    provider: str
+    model: str
+    token_usage: TokenUsage
+
+
+class BaseAnalysisClaimInput(StrictModel):
+    claim_id: UUID
+    text: str
+    state: Literal["confirmed", "unresolved", "conflicting", "contradicted"]
+    evidence_signal_ids: list[UUID]
+
+
+class BaseAnalysisTimelineInput(StrictModel):
+    timeline_entry_id: UUID
+    occurred_at: datetime
+    summary: str
+    claim_ids: list[UUID]
+
+
+class BaseAnalysisConflictInput(StrictModel):
+    conflict_id: UUID
+    summary: str
+    claim_ids: list[UUID]
+    evidence_signal_ids: list[UUID]
+
+
+class BaseAnalysisEntity(StrictModel):
+    name: str = Field(min_length=1, max_length=512)
+    entity_type: str = Field(pattern=r"^[a-z0-9][a-z0-9._-]{0,63}$")
+
+    @field_validator("name")
+    @classmethod
+    def strip_name(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("entity name must not be blank")
+        return stripped
+
+
+class BaseAnalysisContent(StrictModel):
+    summary: str = Field(min_length=1, max_length=8000)
+    event_type: str = Field(pattern=r"^[a-z0-9][a-z0-9._-]{0,63}$")
+    importance: Literal["low", "medium", "high", "critical"]
+    topics: list[str] = Field(max_length=12)
+    entities: list[BaseAnalysisEntity] = Field(max_length=32)
+
+    @field_validator("summary")
+    @classmethod
+    def strip_summary(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("summary must not be blank")
+        return stripped
+
+    @field_validator("topics")
+    @classmethod
+    def normalize_topics(cls, values: list[str]) -> list[str]:
+        normalized = [value.strip() for value in values]
+        if any(not value or len(value) > 64 for value in normalized):
+            raise ValueError("topics must contain non-blank values up to 64 characters")
+        folded = [value.casefold() for value in normalized]
+        if len(folded) != len(set(folded)):
+            raise ValueError("topics must be unique case-insensitively")
+        return normalized
+
+    @model_validator(mode="after")
+    def entities_are_unique(self) -> BaseAnalysisContent:
+        identities = [(item.name.casefold(), item.entity_type) for item in self.entities]
+        if len(identities) != len(set(identities)):
+            raise ValueError("entities must be unique by name and entity_type")
+        return self
+
+
+class ExistingBaseAnalysisCandidate(BaseAnalysisContent):
+    base_analysis_id: UUID
+    event_id: UUID
+
+
+class EventBaseAnalysisInput(StrictModel):
+    event_id: UUID
+    title: str
+    overview: str
+    state: Literal["developing", "confirmed", "conflicting", "cooling"]
+    display_time: datetime
+    claims: list[BaseAnalysisClaimInput]
+    timeline: list[BaseAnalysisTimelineInput]
+    conflicts: list[BaseAnalysisConflictInput]
+    evidence_signals: list[ConflictEvidenceSignal]
+
+
+class NewBaseAnalysisDecision(BaseAnalysisContent):
+    decision_key: str = Field(pattern=r"^[a-z0-9][a-z0-9._-]{0,127}$")
+    event_id: UUID
+    rationale: str = Field(min_length=1, max_length=4000)
+
+
+class ExistingBaseAnalysisUpdate(NewBaseAnalysisDecision):
+    existing_base_analysis_id: UUID
+
+
+class BaseAnalysisPayload(StrictModel):
+    schema_version: Literal["base_analysis.v1"] = "base_analysis.v1"
+    new_analyses: list[NewBaseAnalysisDecision]
+    existing_analysis_updates: list[ExistingBaseAnalysisUpdate]
+
+    @model_validator(mode="after")
+    def decisions_are_unique(self) -> BaseAnalysisPayload:
+        decisions = [*self.new_analyses, *self.existing_analysis_updates]
+        keys = [item.decision_key for item in decisions]
+        if len(keys) != len(set(keys)):
+            raise ValueError("decision_key values must be unique")
+        event_ids = [item.event_id for item in decisions]
+        if len(event_ids) != len(set(event_ids)):
+            raise ValueError("an event must have exactly one base analysis decision")
+        existing_ids = [item.existing_base_analysis_id for item in self.existing_analysis_updates]
+        if len(existing_ids) != len(set(existing_ids)):
+            raise ValueError("a base analysis cannot be updated more than once")
+        return self
+
+
+class BaseAnalysisAssignment(StrictModel):
+    decision_key: str
+    event_id: UUID
+    base_analysis_id: UUID
+    decision_type: Literal["new", "update"]
+
+
+class BaseAnalysisArtifact(StrictModel):
+    schema_version: Literal["base_analysis.v1"] = "base_analysis.v1"
+    source_artifact_id: UUID
+    model_output: BaseAnalysisPayload
+    assignments: list[BaseAnalysisAssignment]
+
+    @model_validator(mode="after")
+    def assignments_match_decisions(self) -> BaseAnalysisArtifact:
+        decisions = {
+            item.decision_key: (item.event_id, "new") for item in self.model_output.new_analyses
+        }
+        decisions.update(
+            {
+                item.decision_key: (item.event_id, "update")
+                for item in self.model_output.existing_analysis_updates
+            }
+        )
+        actual = {
+            item.decision_key: (item.event_id, item.decision_type) for item in self.assignments
+        }
+        if len(actual) != len(self.assignments) or actual != decisions:
+            raise ValueError("assignments must map every base analysis decision exactly once")
+        for decision in self.model_output.existing_analysis_updates:
+            assignment = next(
+                item for item in self.assignments if item.decision_key == decision.decision_key
+            )
+            if assignment.base_analysis_id != decision.existing_base_analysis_id:
+                raise ValueError("update assignment must preserve existing_base_analysis_id")
+        return self
+
+
+class BaseAnalysisResponse(StrictModel):
+    payload: BaseAnalysisPayload
     provider: str
     model: str
     token_usage: TokenUsage

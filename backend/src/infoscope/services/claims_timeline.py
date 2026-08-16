@@ -888,7 +888,7 @@ class IntelligenceRepository:
         )
 
 
-class _BaseRunner:
+class IntelligenceRunnerBase:
     pipeline_name: str
     artifact_type: str
 
@@ -982,7 +982,7 @@ class _BaseRunner:
         return hashlib.sha256(canonical.encode()).hexdigest()
 
 
-class ClaimExtractionRunner(_BaseRunner):
+class ClaimExtractionRunner(IntelligenceRunnerBase):
     pipeline_name = CLAIM_PIPELINE
     artifact_type = CLAIM_ARTIFACT
 
@@ -1061,7 +1061,7 @@ class ClaimExtractionRunner(_BaseRunner):
             raise IntelligenceError("CLAIM_OUTSIDE_CANDIDATES")
 
 
-class TimelineReconstructionRunner(_BaseRunner):
+class TimelineReconstructionRunner(IntelligenceRunnerBase):
     pipeline_name = TIMELINE_PIPELINE
     artifact_type = TIMELINE_ARTIFACT
 
@@ -1132,7 +1132,7 @@ class TimelineReconstructionRunner(_BaseRunner):
             raise IntelligenceError("TIMELINE_OUTSIDE_CANDIDATES")
 
 
-class ConflictAnalysisRunner(_BaseRunner):
+class ConflictAnalysisRunner(IntelligenceRunnerBase):
     pipeline_name = CONFLICT_PIPELINE
     artifact_type = CONFLICT_ARTIFACT
 

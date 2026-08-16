@@ -3,9 +3,11 @@ from __future__ import annotations
 import json
 
 from infoscope.analysis.intelligence_schemas import (
+    EventBaseAnalysisInput,
     EventClaimInput,
     EventConflictInput,
     EventTimelineInput,
+    ExistingBaseAnalysisCandidate,
     ExistingClaimCandidate,
     ExistingConflictCandidate,
     ExistingTimelineCandidate,
@@ -45,6 +47,19 @@ appear in at least one decision or unconflicted_claim_ids. unconflicted means no
 conflict in this run and never resolves a historical Conflict. Rationale is internal audit context,
 not Evidence. Never infer timestamps, source identities, or hidden provenance."""
 
+BASE_ANALYSIS_SYSTEM_PROMPT = """You produce user-independent Base Analysis for supplied Events
+from their already-persisted Claims, Timeline, Conflicts, and restricted Evidence. Summarize only
+the supplied fact layer. Evidence may corroborate existing facts but must not be promoted into a
+new fact that is absent from Claims, Timeline, or Conflicts. Never personalize, rank for a user,
+write why-it-matters copy, or decide Event or Claim state. Return JSON only with schema_version
+base_analysis.v1, new_analyses, and existing_analysis_updates. Each decision has decision_key,
+event_id, summary, event_type, importance, topics, entities, and rationale; updates also have
+existing_base_analysis_id. Importance is exactly low, medium, high, or critical and is independent
+of any user. event_type and entity_type are stable lowercase slugs. Return exactly one decision for
+every supplied Event. New decisions are only for Events without an existing candidate; updates
+must reference the supplied candidate for that Event. Rationale is internal audit context and is
+never Evidence. Never infer timestamps, source identities, hidden provenance, or external facts."""
+
 
 def build_claim_prompt(
     events: list[EventClaimInput], candidates: list[ExistingClaimCandidate]
@@ -81,6 +96,20 @@ def build_conflict_prompt(
         {
             "events": [item.model_dump(mode="json") for item in events],
             "existing_conflicts": [item.model_dump(mode="json") for item in candidates],
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def build_base_analysis_prompt(
+    events: list[EventBaseAnalysisInput], candidates: list[ExistingBaseAnalysisCandidate]
+) -> str:
+    return "Analyze these Events and return Base Analysis JSON only:\n" + json.dumps(
+        {
+            "events": [item.model_dump(mode="json") for item in events],
+            "existing_base_analyses": [item.model_dump(mode="json") for item in candidates],
         },
         ensure_ascii=False,
         sort_keys=True,

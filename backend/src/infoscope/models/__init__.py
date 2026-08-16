@@ -13,6 +13,7 @@ from infoscope.models.auth import User, UserSession
 from infoscope.models.base import Base
 from infoscope.models.events import Event, EventSignal
 from infoscope.models.intelligence import (
+    BaseAnalysis,
     Claim,
     ClaimSignal,
     Conflict,
@@ -24,6 +25,7 @@ from infoscope.models.intelligence import (
 
 __all__ = [
     "Base",
+    "BaseAnalysis",
     "Claim",
     "ClaimSignal",
     "Conflict",
