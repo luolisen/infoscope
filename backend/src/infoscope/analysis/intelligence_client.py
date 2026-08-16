@@ -7,6 +7,12 @@ from typing import Any, TypeVar
 import httpx
 from pydantic import BaseModel, ValidationError
 
+from infoscope.analysis.ask_prompt import ASK_COMPARISON_SYSTEM_PROMPT, build_ask_comparison_prompt
+from infoscope.analysis.ask_schemas import (
+    AskComparisonInput,
+    AskComparisonPayload,
+    AskComparisonResponse,
+)
 from infoscope.analysis.client import AnalysisError
 from infoscope.analysis.config import AnalysisConfig
 from infoscope.analysis.intelligence_prompt import (
@@ -98,6 +104,19 @@ class DeepSeekIntelligenceClient:
         )
         return BaseAnalysisResponse(
             payload=payload, provider="deepseek", model=model, token_usage=usage
+        )
+
+    async def compare_ask(self, value: AskComparisonInput) -> AskComparisonResponse:
+        payload, model, usage = await self._request(
+            system=ASK_COMPARISON_SYSTEM_PROMPT,
+            user=build_ask_comparison_prompt(value),
+            payload_type=AskComparisonPayload,
+        )
+        return AskComparisonResponse(
+            payload=payload,
+            provider="deepseek",
+            model=model,
+            token_usage=usage,
         )
 
     async def _next_key(self) -> str:

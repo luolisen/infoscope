@@ -171,3 +171,23 @@ async def test_worker_reconstructs_timeline_from_one_artifact_and_exits() -> Non
 
     reconstruct.assert_awaited_once_with(artifact_id)
     database_close.assert_awaited_once()
+
+
+async def test_worker_runs_one_ask_comparison_and_exits() -> None:
+    database_ping = AsyncMock()
+    database_close = AsyncMock()
+    compare = AsyncMock()
+    request_id = uuid4()
+
+    with (
+        patch("infoscope.worker.main.ping_database", database_ping),
+        patch("infoscope.worker.main.close_database", database_close),
+        patch("infoscope.worker.main.compare_ask_once", compare),
+    ):
+        await run(retry_ask_comparison=request_id)
+
+    compare.assert_awaited_once_with(
+        request_file=None,
+        retry_request_id=request_id,
+    )
+    database_close.assert_awaited_once()
