@@ -3,6 +3,10 @@
   "private": true,
   "packageManager": "pnpm@11.19.0",
   "scripts": {
+    "check": "./scripts/check.sh",
+    "demo": "./scripts/demo.sh start",
+    "demo:stop": "./scripts/demo.sh stop",
+    "demo:status": "./scripts/demo.sh status",
     "dev": "pnpm --dir frontend dev",
     "build": "pnpm --dir frontend build",
     "lint": "pnpm --dir frontend lint",

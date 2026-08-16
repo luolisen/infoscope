@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -219,6 +220,14 @@ class WindowAnalysisRunner:
                 finished_at=self.clock(),
                 upper_cursor=cursor_for(raws[-1]) if raws else None,
             )
+        except asyncio.CancelledError:
+            await self.pipeline.fail_run(
+                run,
+                finished_at=self.clock(),
+                next_retry_at=self.clock(),
+                error_code="WINDOW_RUN_INTERRUPTED",
+            )
+            raise
         except (AnalysisError, WindowAnalysisError) as error:
             retry_at = self.clock() + timedelta(minutes=5)
             await self.pipeline.fail_run(

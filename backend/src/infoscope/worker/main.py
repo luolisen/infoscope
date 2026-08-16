@@ -89,7 +89,7 @@ MAINTENANCE_BACKWRITE_NAMESPACE = UUIDType("44a8817e-991a-4c8c-883a-520677418a2d
 async def collect_trendradar_once() -> None:
     settings = get_settings()
     config = load_trendradar_config(settings.resolved_trendradar_config_path)
-    async with httpx.AsyncClient(follow_redirects=True) as client:
+    async with httpx.AsyncClient(follow_redirects=True, trust_env=False) as client:
         async with session_factory() as database:
             collector = TrendRadarCollector(
                 config=config,
@@ -184,7 +184,7 @@ async def analyze_windows_once(
         raise ValueError("retry_run_id and replay_run_id are mutually exclusive")
     settings = get_settings()
     config = load_analysis_config(settings)
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(trust_env=False) as client:
         async with session_factory() as database:
             runner = WindowAnalysisRunner(
                 acquisition=AcquisitionRepository(database),
@@ -215,7 +215,7 @@ async def analyze_windows_once(
 async def reconstruct_event_once(source_artifact_id: UUID) -> EventReconstructionResult:
     settings = get_settings()
     config = load_analysis_config(settings)
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(trust_env=False) as client:
         async with session_factory() as database:
             result = await EventReconstructionRunner(
                 events=EventRepository(database),
@@ -236,7 +236,7 @@ async def reconstruct_event_once(source_artifact_id: UUID) -> EventReconstructio
 
 async def extract_claims_once(source_artifact_id: UUID) -> IntelligenceResult:
     config = load_analysis_config(get_settings())
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(trust_env=False) as client:
         async with session_factory() as database:
             result = await ClaimExtractionRunner(
                 repository=IntelligenceRepository(database),
@@ -256,7 +256,7 @@ async def extract_claims_once(source_artifact_id: UUID) -> IntelligenceResult:
 
 async def reconstruct_timeline_once(source_artifact_id: UUID) -> IntelligenceResult:
     config = load_analysis_config(get_settings())
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(trust_env=False) as client:
         async with session_factory() as database:
             result = await TimelineReconstructionRunner(
                 repository=IntelligenceRepository(database),
@@ -276,7 +276,7 @@ async def reconstruct_timeline_once(source_artifact_id: UUID) -> IntelligenceRes
 
 async def analyze_conflicts_once(source_artifact_id: UUID) -> IntelligenceResult:
     config = load_analysis_config(get_settings())
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(trust_env=False) as client:
         async with session_factory() as database:
             result = await ConflictAnalysisRunner(
                 repository=IntelligenceRepository(database),
@@ -296,7 +296,7 @@ async def analyze_conflicts_once(source_artifact_id: UUID) -> IntelligenceResult
 
 async def analyze_base_once(source_artifact_id: UUID) -> IntelligenceResult:
     config = load_analysis_config(get_settings())
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(trust_env=False) as client:
         async with session_factory() as database:
             result = await BaseAnalysisRunner(
                 repository=BaseAnalysisRepository(database),
@@ -370,7 +370,7 @@ async def compare_ask_once(
         raise ValueError("exactly one Ask comparison request input is required")
     settings = get_settings()
     config = load_analysis_config(settings)
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(trust_env=False) as client:
         async with session_factory() as database:
             runner = AskComparisonRunner(
                 repository=AskComparisonRepository(database),
@@ -442,7 +442,7 @@ async def run_ask_research_bridge_once(ask_id: UUID) -> None:
 async def run_ask_event_reconciliation_once(ask_id: UUID) -> None:
     settings = get_settings()
     config = load_analysis_config(settings)
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(trust_env=False) as client:
         async with session_factory() as database:
             request = await AskEventReconciliationRunner(
                 repository=AskEventReconciliationRepository(database),
@@ -461,7 +461,7 @@ async def run_ask_event_reconciliation_once(ask_id: UUID) -> None:
 async def run_ask_finalization_once(ask_id: UUID) -> None:
     settings = get_settings()
     config = load_analysis_config(settings)
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(trust_env=False) as client:
         async with session_factory() as database:
             request = await AskFinalizationRunner(
                 repository=AskFinalizationRepository(database),
@@ -908,7 +908,10 @@ async def run(
                 except Exception:
                     logger.exception("Brief queue stage failed")
             if process_maintenance_queue:
-                await process_maintenance_queue_once()
+                try:
+                    await process_maintenance_queue_once()
+                except Exception:
+                    logger.exception("Maintenance queue stage failed")
             if backwrite_snapshot_file is not None:
                 await run_backwrite_snapshot_once(backwrite_snapshot_file)
             logger.info("worker heartbeat")
