@@ -874,6 +874,28 @@ TG News 不直接生成 NOW、Event 或 Brief。
   调用 Research。answerable 为 `completed/finalizing`。单 request 行锁与状态/Artifact 原子提交
   防止并发重复；失败不产生伪 Artifact。本切片不新增 Public API、不修改事实层。
 
+## Ask Research Bridge v1（已冻结）
+
+- `ask_research_bridges` 对 Ask、comparison artifact、Research request 与 UUIDv5 idempotency key
+  分别唯一，保存 `pending/running/completed/failed`、独立 attempt/max attempts、错误码和时间。
+  Research request 在创建前允许暂时为空，以审计 snapshot/privacy 等调用前失败；成功 Bridge 必须
+  已关联 Research request。
+- 初次与 retry 都锁定 Ask；running 不重入、completed 复用。retry 只读取既有 Research payload，
+  不重算输入 snapshot。三套 attempt 分离：Ask comparison、Bridge orchestration、Research runtime。
+- Research spec 固定 `ask_missing_fact`、原序 questions、按 selected Event 原序得到的 missing Event
+  并集，以及 `web_page / github_document`。Ask reason/rationale 不进入 Research prompt。
+- Bridge 通过 ResearchSource 的真实关系只读取 succeeded source 的 Raw，逐 Raw 定向执行
+  DeterministicNormalizer；禁止扫描或接管全局 pending Raw。已成功 Signal 幂等复用，processing
+  fail-closed。所有新材料仍严格经过 `Raw → Normalize → Signal`。
+- `ask_research_artifacts.payload` 严格为 `ask_research_bridge.v1`，只含关系 ID、candidate index、
+  有序 source Event IDs 与 Research succeeded/partial 状态。Signal 必须能由
+  `Signal.raw_information_id → ResearchSource.raw_information_id` 验证；artifact 不含 URL、正文、
+  provenance 或模型审计文本。
+- 可重试失败使 Ask 回到 `pending/awaiting_research` 且 Ask error 为空；terminal failure 为
+  `failed/awaiting_research`。成功至少需要一个 Signal，并将 artifact、Bridge completed、Ask
+  `pending/awaiting_reconciliation` 原子提交。配置 `ASK_RESEARCH_BRIDGE_MAX_ATTEMPTS` 默认 3。
+- 本切片不执行 Event Reconciliation、最终回答或自动调度，不新增 Public API/Frontend Contract。
+
 ---
 
 # 十、完整数据 Pipeline

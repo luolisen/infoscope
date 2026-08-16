@@ -9,7 +9,14 @@ from infoscope.models.acquisition import (
     Signal,
     SourceVisibility,
 )
-from infoscope.models.ask import AskComparisonArtifact, AskRequest, AskRequestEvent, AskRun
+from infoscope.models.ask import (
+    AskComparisonArtifact,
+    AskRequest,
+    AskRequestEvent,
+    AskResearchArtifact,
+    AskResearchBridge,
+    AskRun,
+)
 from infoscope.models.auth import User, UserSession
 from infoscope.models.base import Base
 from infoscope.models.events import Event, EventSignal
@@ -40,6 +47,8 @@ __all__ = [
     "AskComparisonArtifact",
     "AskRequest",
     "AskRequestEvent",
+    "AskResearchArtifact",
+    "AskResearchBridge",
     "AskRun",
     "BaseAnalysis",
     "Claim",

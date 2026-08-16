@@ -191,3 +191,20 @@ async def test_worker_runs_one_ask_comparison_and_exits() -> None:
         retry_request_id=request_id,
     )
     database_close.assert_awaited_once()
+
+
+async def test_worker_runs_one_ask_research_bridge_and_exits() -> None:
+    database_ping = AsyncMock()
+    database_close = AsyncMock()
+    bridge = AsyncMock()
+    ask_id = uuid4()
+
+    with (
+        patch("infoscope.worker.main.ping_database", database_ping),
+        patch("infoscope.worker.main.close_database", database_close),
+        patch("infoscope.worker.main.run_ask_research_bridge_once", bridge),
+    ):
+        await run(ask_research_bridge=ask_id)
+
+    bridge.assert_awaited_once_with(ask_id)
+    database_close.assert_awaited_once()
