@@ -816,6 +816,42 @@ TG News 不直接生成 NOW、Event 或 Brief。
 - source artifact 行锁、`(artifact_type, source_artifact_id)` 唯一幂等键、全批原子提交与失败
   rollback 沿用既有规则。本切片不新增 Public API、Event Detail、NOW 或 Frontend Contract。
 
+## Research Integration v1（已冻结）
+
+- 固定 `openclaw@2026.7.1-2`，使用
+  `openclaw agent --local --agent infoscope-research --session-key research-<request_id> --message-file <file> --model <id> --timeout <s> --json`
+  作为唯一 Runtime 协议；禁止 Gateway、stdin、deliver、channel 与 recipient。Agent-Reach 仅作
+  capability/doctor，不是 Backend Research API。`research_discovery.v1.request_id` 必须等于
+  `research_requests.id`。
+- OpenClaw 使用独立 regular config、state 与每次运行的 0700 workdir。Prompt 写入 workdir 内的
+  0600 UTF-8 临时文件，运行结束始终清理。OpenClaw 与 Agent-Reach 的 `HOME / TMPDIR` 固定为
+  research state 下的 0700 专用目录，不继承用户真实 HOME。子进程环境使用固定白名单：仅继承
+  `PATH`，路径选择器仅 `OPENCLAW_CONFIG_PATH / OPENCLAW_STATE_DIR`，模型凭据仅
+  `DEEPSEEK_API_KEY`；不得继承其他变量或使用通配规则。
+- 稳定版 JSON 只接受 `payloads + meta`：过滤 reasoning/commentary 后必须恰好有一个非空、非错误
+  visible text，并将其解析为 `research_discovery.v1`；provider/model/usage 仅取自
+  `meta.agentMeta`。非零退出、超时、aborted、meta error/failureSignal、错误 payload 或 envelope
+  偏差均映射为稳定内部错误码。
+- `research_fact_snapshot.v1` 严格承载同批 Event、Claim、Timeline、Conflict 与脱敏 Evidence。
+  Backend 在 canonicalize 前验证所有关系；private Evidence 不得携带 provenance。
+- v1 来源只允许 `web_page / github_document`。OpenClaw 只返回 URL；Backend 直接 HTTPS Fetch，
+  禁止凭据、IP literal、非 443、redirect、私网地址与 DNS rebinding。GitHub 只接收
+  `raw.githubusercontent.com`。
+- HTML 使用 `beautifulsoup4==4.15.0` + `html.parser` 确定性抽取。网页 `published_at` 只接受
+  一致且带时区的 `article:published_time`；GitHub Document 固定为 null。
+- 专用 `research_requests / research_runs / research_discovery_artifacts / research_sources` 保存请求、
+  attempt、canonical discovery 和逐来源状态。Idempotency key 不等同于 input hash；retry 复用
+  discovery，只重试失败来源。
+- 每个模型候选都必须产生 `research_sources` 审计行。合法候选保存 canonical URL；非法、SSRF 或
+  canonical 重复候选保存 failed、稳定 error code 与原始 URL 的 SHA-256，不保存原始 URL。
+  Discovery artifact 保存完整且有序的脱敏候选审计：accepted 项保存 source kind、canonical URL、
+  URL hash 与 relevance summary；rejected 项只保存 source kind、URL hash 与稳定 error code，绝不
+  保存原始候选 URL 或其 relevance summary。Percent normalization 只解码 unreserved 字符，合法
+  reserved escape 保留并统一为大写十六进制。
+- 真实 Fetch 内容使用规范化 UTF-8 正文计算 SHA-256，并以 kind、canonical URL、content hash
+  组成稳定 Raw key。模型内容不得直接成为 Signal；Research 结果必须重新经过 Raw→Signal 链路。
+- 本切片不新增 Public API、Ask、Event Detail、NOW 或 Frontend Contract，不修改事实层。
+
 ---
 
 # 十、完整数据 Pipeline
