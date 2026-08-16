@@ -51,6 +51,7 @@ from infoscope.models import (
     ResearchSourceKind,
     ResearchSourceStatus,
     ResearchStatus,
+    ResearchTrigger,
     Signal,
     SourceVisibility,
 )
@@ -211,10 +212,15 @@ class ResearchRepository:
     ) -> tuple[ResearchRequest, ResearchRequestPayload, bool]:
         request_id = uuid4()
         snapshot = await self.fact_snapshot(set(spec.source_event_ids))
+        source_event_ids = (
+            spec.source_event_ids
+            if spec.trigger == ResearchTrigger.ASK_MISSING_FACT
+            else sorted(spec.source_event_ids)
+        )
         payload = ResearchRequestPayload(
             request_id=request_id,
             trigger=spec.trigger,
-            source_event_ids=sorted(spec.source_event_ids),
+            source_event_ids=source_event_ids,
             research_questions=spec.research_questions,
             missing_fact_descriptions=spec.missing_fact_descriptions,
             current_fact_snapshot=snapshot,

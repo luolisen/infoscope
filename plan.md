@@ -1373,6 +1373,35 @@ Ask 同样服从来源隐私边界。私密 Telegram 可以使用脱敏后的正
   与模型输出属于内部敏感数据，不进入普通日志或 Public DTO。私密 Signal 仅传
   `sanitized_text + null provenance`。本切片不新增 Public API，不触发 Research，不修改事实层。
 
+### Ask Research Bridge v1（已冻结）
+
+- 仅消费 `pending/awaiting_research` 且 canonical comparison decision 为 `research_required` 的
+  Ask。初次无 Bridge；retry 只允许 Ask 仍为 `pending/awaiting_research`、Bridge 为 failed 且
+  `attempt_count < max_attempts`。running 不重入，completed 复用 artifact，terminal failed 不重试。
+- 每个 Ask Comparison 只建立一个 Research Request。`idempotency_key` 使用固定 namespace 的
+  UUIDv5，由 Ask ID、comparison artifact ID 与 schema version 组成，不含时间或 attempt。retry
+  读取已关联 Research Request 的原始 payload，不重新构造 Research snapshot。
+- Research trigger 固定为 `ask_missing_fact`；questions 按 missing facts 原顺序无损传入；source
+  Event 是全部 missing Event 的并集，并按原 selected Event 顺序排列；source kinds 固定为
+  `web_page / github_document`。reason 与 comparison rationale 只留在原 artifact，不截断、不传给
+  Research prompt。
+- Research 结果先写 Raw。Bridge 只定向处理该 Research Request 中 succeeded source 对应的 Raw；
+  pending/failed 可重新 Normalize，succeeded 复用既有 Signal，processing 不并发接管。Signal 仍只
+  能由 DeterministicNormalizer 生成，Research 模型内容不能直接成为 Signal。
+- `ask_research_bridges` 独立保存 status、attempt/max attempts、稳定错误码与 Ask/Comparison/
+  Research 唯一关系。三套计数互不覆盖：Ask request 只计 Database Comparison，Bridge 只计编排，
+  Research request 只计 Research runtime/fetch。
+- `ask_research_bridge.v1` 是下一步 Event Reconciliation 的 canonical source artifact，只保存 Ask、
+  Comparison、Research IDs、有序 source Event IDs，以及每个成功来源的 candidate index、source ID、
+  Raw ID、Signal IDs 和 `succeeded/partial` Research status；不复制 URL、正文、provenance、reason、
+  rationale 或模型输出。无 Signal 不创建 artifact。
+- Bridge attempt 期间 Ask 为 `running/awaiting_research`。可重试失败恢复为
+  `pending/awaiting_research`，错误只保存在 Bridge；不可重试、底层或 Bridge attempts 耗尽、以及
+  `ASK_RESEARCH_NO_USABLE_SIGNALS` 进入 `failed/awaiting_research` 终态。至少一个有效 Signal 时，
+  artifact、Bridge completed 与 Ask `pending/awaiting_reconciliation` 原子提交。
+- 本切片不自动调度、不执行 Event Reconciliation、不生成最终回答、不修改事实层，也不新增
+  Public API 或 Frontend Contract。
+
 ---
 
 ## 8.6 Event Backwrite / Event 回写

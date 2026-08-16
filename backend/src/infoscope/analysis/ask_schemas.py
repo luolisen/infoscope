@@ -155,6 +155,45 @@ class AskComparisonResponse(StrictModel):
     token_usage: TokenUsage
 
 
+class AskResearchResult(StrictModel):
+    candidate_index: int = Field(ge=0, le=11)
+    research_source_id: UUID
+    raw_information_id: UUID
+    signal_ids: list[UUID] = Field(min_length=1)
+
+    @field_validator("signal_ids")
+    @classmethod
+    def signals_are_unique(cls, values: list[UUID]) -> list[UUID]:
+        if len(values) != len(set(values)):
+            raise ValueError("bridge result signal_ids must be unique")
+        return values
+
+
+class AskResearchArtifactPayload(StrictModel):
+    schema_version: Literal["ask_research_bridge.v1"] = "ask_research_bridge.v1"
+    ask_id: UUID
+    comparison_artifact_id: UUID
+    research_request_id: UUID
+    source_event_ids: list[UUID] = Field(min_length=1, max_length=8)
+    research_status: Literal["succeeded", "partial"]
+    results: list[AskResearchResult] = Field(min_length=1, max_length=12)
+
+    @model_validator(mode="after")
+    def relations_are_unique(self) -> AskResearchArtifactPayload:
+        if len(self.source_event_ids) != len(set(self.source_event_ids)):
+            raise ValueError("source_event_ids must be unique")
+        indexes = [item.candidate_index for item in self.results]
+        source_ids = [item.research_source_id for item in self.results]
+        raw_ids = [item.raw_information_id for item in self.results]
+        if len(indexes) != len(set(indexes)):
+            raise ValueError("candidate indexes must be unique")
+        if len(source_ids) != len(set(source_ids)):
+            raise ValueError("research source ids must be unique")
+        if len(raw_ids) != len(set(raw_ids)):
+            raise ValueError("raw information ids must be unique")
+        return self
+
+
 def ask_input_hash(value: AskComparisonInput) -> str:
     document = {
         "question": value.question,

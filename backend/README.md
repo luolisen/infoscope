@@ -288,6 +288,18 @@ IP-literal hosts, private addresses, or authenticated sources. HTML extraction i
 Beautiful Soup 4.15.0 with Python's `html.parser`. A Research result never directly changes Event,
 Claim, Timeline, Conflict, Base Analysis, NOW, or any Public API contract.
 
+After an internal Ask Database Comparison returns `research_required`, run its frozen Research
+Bridge explicitly with the Ask ID:
+
+```bash
+uv run --project backend python -m infoscope.worker \
+  --run-ask-research-bridge ASK_ID
+```
+
+The Bridge reuses exactly one idempotent Research request, normalizes only that request's
+successful Raw records into Signals, and stops at `pending / awaiting_reconciliation`. It does not
+run Event Reconciliation, generate the final answer, or expose a Public API.
+
 Checks:
 
 ```bash

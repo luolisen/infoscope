@@ -32,6 +32,10 @@ from infoscope.integrations.trendradar import TrendRadarCollector, load_trendrad
 from infoscope.integrations.trendradar.client import NewsNowClient, RSSClient
 from infoscope.services.acquisition import AcquisitionRepository
 from infoscope.services.ask_comparison import AskComparisonRepository, AskComparisonRunner
+from infoscope.services.ask_research_bridge import (
+    AskResearchBridgeRepository,
+    AskResearchBridgeRunner,
+)
 from infoscope.services.base_analysis import BaseAnalysisRepository, BaseAnalysisRunner
 from infoscope.services.claims_timeline import (
     ClaimExtractionRunner,
@@ -361,6 +365,52 @@ async def compare_ask_once(
     )
 
 
+async def run_ask_research_bridge_once(ask_id: UUID) -> None:
+    settings = get_settings()
+    config = OpenClawConfig(
+        executable=settings.research_openclaw_executable,
+        config_path=settings.resolved_research_openclaw_config_path,
+        state_dir=settings.resolved_research_openclaw_state_dir,
+        model=settings.research_openclaw_model,
+        timeout_seconds=settings.research_timeout_seconds,
+    )
+    timeout = httpx.Timeout(connect=10, read=30, write=10, pool=10)
+    async with httpx.AsyncClient(
+        timeout=timeout,
+        follow_redirects=False,
+        trust_env=False,
+    ) as client:
+        async with session_factory() as database:
+            acquisition = AcquisitionRepository(database)
+            research_repository = ResearchRepository(database)
+            research_runner = ResearchRunner(
+                repository=research_repository,
+                acquisition=acquisition,
+                client=OpenClawResearchClient(config),
+                fetcher=DirectHTTPSResearchFetcher(client),
+                max_attempts=settings.research_max_attempts,
+                health_checker=AgentReachHealthChecker(
+                    settings.research_agent_reach_executable,
+                    state_dir=settings.resolved_research_openclaw_state_dir,
+                ),
+            )
+            request = await AskResearchBridgeRunner(
+                repository=AskResearchBridgeRepository(database),
+                research_repository=research_repository,
+                research_runner=research_runner,
+                acquisition=acquisition,
+                max_attempts=settings.ask_research_bridge_max_attempts,
+                research_max_attempts=settings.research_max_attempts,
+            ).run(ask_id)
+    logger.info(
+        "Ask Research Bridge complete request_id=%s status=%s stage=%s error_code=%s",
+        request.id,
+        request.status,
+        request.stage,
+        request.error_code,
+    )
+
+
 async def run(
     *,
     once: bool = False,
@@ -381,6 +431,7 @@ async def run(
     retry_research_request: UUID | None = None,
     ask_comparison_request_file: Path | None = None,
     retry_ask_comparison: UUID | None = None,
+    ask_research_bridge: UUID | None = None,
 ) -> None:
     settings = get_settings()
     stop = asyncio.Event()
@@ -425,6 +476,8 @@ async def run(
                     request_file=ask_comparison_request_file,
                     retry_request_id=retry_ask_comparison,
                 )
+            if ask_research_bridge is not None:
+                await run_ask_research_bridge_once(ask_research_bridge)
             logger.info("worker heartbeat")
             if (
                 once
@@ -445,6 +498,7 @@ async def run(
                 or retry_research_request is not None
                 or ask_comparison_request_file is not None
                 or retry_ask_comparison is not None
+                or ask_research_bridge is not None
             ):
                 return
             try:
@@ -563,6 +617,12 @@ def parse_args() -> argparse.Namespace:
         metavar="REQUEST_ID",
         help="Retry one failed Ask Database Comparison request",
     )
+    parser.add_argument(
+        "--run-ask-research-bridge",
+        type=UUID,
+        metavar="ASK_ID",
+        help="Run or retry the frozen Research Bridge for one Ask request",
+    )
     return parser.parse_args()
 
 
@@ -592,6 +652,7 @@ def main() -> int:
                 retry_research_request=args.retry_research_request,
                 ask_comparison_request_file=args.ask_comparison_request_file,
                 retry_ask_comparison=args.retry_ask_comparison,
+                ask_research_bridge=args.run_ask_research_bridge,
             )
         )
     return 0

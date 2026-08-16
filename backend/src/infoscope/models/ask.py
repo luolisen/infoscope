@@ -27,7 +27,7 @@ class AskRequest(Base):
             name="ck_ask_requests_status",
         ),
         CheckConstraint(
-            "stage IN ('comparing', 'awaiting_research', 'finalizing')",
+            "stage IN ('comparing', 'awaiting_research', 'awaiting_reconciliation', 'finalizing')",
             name="ck_ask_requests_stage",
         ),
         CheckConstraint("attempt_count >= 0", name="ck_ask_requests_attempt_count"),
@@ -122,6 +122,87 @@ class AskComparisonArtifact(Base):
     provider: Mapped[str] = mapped_column(String(64), nullable=False)
     model: Mapped[str] = mapped_column(String(128), nullable=False)
     token_usage: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class AskResearchBridge(Base):
+    __tablename__ = "ask_research_bridges"
+    __table_args__ = (
+        UniqueConstraint("ask_request_id", name="uq_ask_research_bridges_request"),
+        UniqueConstraint(
+            "comparison_artifact_id", name="uq_ask_research_bridges_comparison_artifact"
+        ),
+        UniqueConstraint("research_request_id", name="uq_ask_research_bridges_research_request"),
+        UniqueConstraint("idempotency_key", name="uq_ask_research_bridges_idempotency_key"),
+        CheckConstraint(
+            "status IN ('pending', 'running', 'completed', 'failed')",
+            name="ck_ask_research_bridges_status",
+        ),
+        CheckConstraint("attempt_count >= 0", name="ck_ask_research_bridges_attempt_count"),
+        CheckConstraint("max_attempts > 0", name="ck_ask_research_bridges_max_attempts"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    ask_request_id: Mapped[UUID] = mapped_column(
+        ForeignKey("ask_requests.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    comparison_artifact_id: Mapped[UUID] = mapped_column(
+        ForeignKey("ask_comparison_artifacts.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    research_request_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("research_requests.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    idempotency_key: Mapped[UUID] = mapped_column(nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    max_attempts: Mapped[int] = mapped_column(Integer, nullable=False)
+    error_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class AskResearchArtifact(Base):
+    __tablename__ = "ask_research_artifacts"
+    __table_args__ = (
+        UniqueConstraint("bridge_id", name="uq_ask_research_artifacts_bridge"),
+        UniqueConstraint("ask_request_id", name="uq_ask_research_artifacts_request"),
+        UniqueConstraint(
+            "comparison_artifact_id", name="uq_ask_research_artifacts_comparison_artifact"
+        ),
+        UniqueConstraint(
+            "research_request_id", name="uq_ask_research_artifacts_research_request"
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    bridge_id: Mapped[UUID] = mapped_column(
+        ForeignKey("ask_research_bridges.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    ask_request_id: Mapped[UUID] = mapped_column(
+        ForeignKey("ask_requests.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    comparison_artifact_id: Mapped[UUID] = mapped_column(
+        ForeignKey("ask_comparison_artifacts.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    research_request_id: Mapped[UUID] = mapped_column(
+        ForeignKey("research_requests.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    schema_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
