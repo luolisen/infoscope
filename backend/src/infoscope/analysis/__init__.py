@@ -11,6 +11,11 @@ from infoscope.analysis.intelligence_schemas import (
     TimelineReconstructionPayload,
     TimelineReconstructionResponse,
 )
+from infoscope.analysis.personalization_schemas import (
+    PersonalizationInput,
+    PersonalizationPayload,
+    PersonalizationResponse,
+)
 from infoscope.analysis.reconstruction_client import DeepSeekEventReconstructionClient
 from infoscope.analysis.reconstruction_schemas import (
     EventReconstructionPayload,
@@ -33,6 +38,9 @@ __all__ = [
     "ConflictAnalysisResponse",
     "EventReconstructionPayload",
     "EventReconstructionResponse",
+    "PersonalizationInput",
+    "PersonalizationPayload",
+    "PersonalizationResponse",
     "WindowAnalysisPayload",
     "TimelineReconstructionPayload",
     "TimelineReconstructionResponse",

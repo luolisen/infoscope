@@ -66,6 +66,17 @@ from infoscope.analysis.intelligence_schemas import (
     TimelineReconstructionPayload,
     TimelineReconstructionResponse,
 )
+from infoscope.analysis.personalization_prompt import (
+    PERSONALIZATION_SYSTEM_PROMPT,
+    build_personalization_prompt,
+)
+from infoscope.analysis.personalization_schemas import (
+    MAX_CANONICAL_BYTES,
+    PersonalizationInput,
+    PersonalizationPayload,
+    PersonalizationResponse,
+    canonical_bytes,
+)
 from infoscope.analysis.schemas import TokenUsage
 
 PayloadT = TypeVar("PayloadT", bound=BaseModel)
@@ -185,6 +196,24 @@ class DeepSeekIntelligenceClient:
             token_usage=usage,
         )
 
+    async def personalize(self, value: PersonalizationInput) -> PersonalizationResponse:
+        if len(canonical_bytes(value)) > MAX_CANONICAL_BYTES:
+            raise AnalysisError("PERSONALIZATION_INPUT_LIMIT_EXCEEDED")
+        payload, model, usage = await self._request(
+            system=PERSONALIZATION_SYSTEM_PROMPT,
+            user=build_personalization_prompt(value),
+            payload_type=PersonalizationPayload,
+            output_limit=MAX_CANONICAL_BYTES,
+            schema_error="PERSONALIZATION_SCHEMA_INVALID",
+            output_error="PERSONALIZATION_OUTPUT_LIMIT_EXCEEDED",
+        )
+        return PersonalizationResponse(
+            payload=payload,
+            provider="deepseek",
+            model=model,
+            token_usage=usage,
+        )
+
     async def _next_key(self) -> str:
         async with self._key_lock:
             key = self.config.api_keys[self._key_index % len(self.config.api_keys)]
@@ -192,7 +221,14 @@ class DeepSeekIntelligenceClient:
             return key
 
     async def _request(
-        self, *, system: str, user: str, payload_type: type[PayloadT]
+        self,
+        *,
+        system: str,
+        user: str,
+        payload_type: type[PayloadT],
+        output_limit: int | None = None,
+        schema_error: str = "ANALYSIS_SCHEMA_INVALID",
+        output_error: str = "ANALYSIS_SCHEMA_INVALID",
     ) -> tuple[PayloadT, str, TokenUsage]:
         for attempt in range(self.config.max_retries + 1):
             try:
@@ -223,7 +259,13 @@ class DeepSeekIntelligenceClient:
                     )
                 if not response.is_success:
                     raise AnalysisError("ANALYSIS_REQUEST_REJECTED")
-                return self._parse(response.json(), payload_type)
+                return self._parse(
+                    response.json(),
+                    payload_type,
+                    output_limit=output_limit,
+                    schema_error=schema_error,
+                    output_error=output_error,
+                )
             except (httpx.HTTPError, json.JSONDecodeError) as error:
                 if attempt >= self.config.max_retries:
                     raise AnalysisError("ANALYSIS_REQUEST_FAILED") from error
@@ -234,13 +276,21 @@ class DeepSeekIntelligenceClient:
                     "ANALYSIS_INVALID_JSON",
                     "ANALYSIS_SCHEMA_INVALID",
                     "ANALYSIS_TRUNCATED",
+                    "PERSONALIZATION_SCHEMA_INVALID",
+                    "PERSONALIZATION_OUTPUT_LIMIT_EXCEEDED",
                 }:
                     raise
                 await asyncio.sleep(min(2**attempt, 8))
         raise AnalysisError("ANALYSIS_REQUEST_FAILED")
 
     def _parse(
-        self, document: dict[str, Any], payload_type: type[PayloadT]
+        self,
+        document: dict[str, Any],
+        payload_type: type[PayloadT],
+        *,
+        output_limit: int | None = None,
+        schema_error: str = "ANALYSIS_SCHEMA_INVALID",
+        output_error: str = "ANALYSIS_SCHEMA_INVALID",
     ) -> tuple[PayloadT, str, TokenUsage]:
         choices = document.get("choices")
         if not isinstance(choices, list) or not choices:
@@ -251,6 +301,8 @@ class DeepSeekIntelligenceClient:
         content = choice.get("message", {}).get("content")
         if not isinstance(content, str) or not content.strip():
             raise AnalysisError("ANALYSIS_EMPTY_RESPONSE")
+        if output_limit is not None and len(content.encode("utf-8")) > output_limit:
+            raise AnalysisError(output_error)
         try:
             payload = payload_type.model_validate(json.loads(content))
             usage_document = document.get("usage") or {}
@@ -263,5 +315,5 @@ class DeepSeekIntelligenceClient:
         except json.JSONDecodeError as error:
             raise AnalysisError("ANALYSIS_INVALID_JSON") from error
         except ValidationError as error:
-            raise AnalysisError("ANALYSIS_SCHEMA_INVALID") from error
+            raise AnalysisError(schema_error) from error
         return payload, str(document.get("model") or self.config.model), usage

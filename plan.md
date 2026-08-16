@@ -1235,6 +1235,33 @@ User FOCUS
 
 内部可以有评分，但不向用户展示无解释价值的精细小数。
 
+### Personalization v1 冻结补充
+
+- `personalization_input.v1` 只包含 User SCOPE/投资市场/FOCUS 与 Event、当前 Base Analysis；禁止
+  Claim、Timeline、Conflict、Evidence、Raw 和 provenance。Backend 顺序固定为
+  `display_time DESC, event_id ASC`。
+- `scope_prefilter.v1` 使用已确认的 versioned 中英文 SCOPE/市场词表，NFKC + casefold；ASCII
+  使用完整 token/phrase，中文使用完整词组。最多保留 100 个候选，不做模型分页或拆分。
+- canonical input 与 `personalization.v1` 完整输出各限 4,194,304 UTF-8 bytes；超限稳定失败，
+  不截断、删字段、部分恢复或部分提交。
+- 输出必须按输入顺序一一覆盖 Event，包含 relevant、critical/high/normal/low priority、
+  why_it_matters、personalized_angle、按 Profile 顺序的 matched SCOPE/FOCUS 与内部 rationale。
+  priority 只供 Brief 使用，绝不改变 NOW 时间排序。
+- `personalization_runs` 对 `(user_id,input_hash)`、idempotency key 和用户 active slot 唯一；
+  `personalization_artifacts` 与成功 Run 一对一且 immutable；`personalized_events` 对
+  `(artifact_id,event_id)` 和 snapshot position 唯一，并保存 NOW 所需 Event、Base topics、
+  Claim/Conflict count 与排序锚点快照。
+- 空 Prefilter 生成 deterministic empty artifact 且不调用模型。模型路径必须在同一事务重新锁定
+  User、Event、Base Analysis 并复核完整 input hash；变化或任一错误整体 rollback。
+- NOW 的 opaque Cursor 固定绑定 immutable artifact、display_time 和 event_id；同一分页始终读取
+  同一 artifact。没有 artifact 时返回合法空 NOW，不回退到全库。
+- 当前 NOW visible 只取最新 completed artifact 的 relevant Event；Historical accessible 是该用户
+  任一 completed artifact 中曾 relevant 的 Event。Event Detail/Ask 使用历史访问边界，Backwrite
+  Provider 使用当前可见边界且缺少 artifact 时 fail-closed。
+- Maintenance 顺序扩展为 `window_analysis → reconciliation → event_backwrite → personalization`；
+  Backwrite 使用本轮开始前 Snapshot，本轮 Personalization 供下一周期使用。独立 Worker 处理
+  `personalization_update_requested_at`，与 Maintenance 共享用户级数据库 active lock。
+
 ---
 
 ## 8.5 Ask Infoscope / 询问观澜

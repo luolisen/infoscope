@@ -53,6 +53,7 @@ class Settings(BaseSettings):
     ask_event_reconciliation_max_attempts: int = Field(default=3, gt=0, le=10)
     ask_finalization_max_attempts: int = Field(default=3, gt=0, le=10)
     backwrite_max_attempts: int = Field(default=3, gt=0, le=10)
+    personalization_max_attempts: int = Field(default=3, gt=0, le=10)
 
     @property
     def resolved_trendradar_config_path(self) -> Path:

@@ -72,6 +72,11 @@ from infoscope.services.maintenance import (
     MaintenanceRunner,
 )
 from infoscope.services.normalization import NormalizationResult, NormalizationRunner
+from infoscope.services.personalization import (
+    PersonalizationRepository,
+    PersonalizationRunner,
+    PersonalizationVisibleEventSnapshotProvider,
+)
 from infoscope.services.pipeline import PipelineRepository
 from infoscope.services.research import ResearchRepository, ResearchRunner
 from infoscope.services.window_analysis import WindowAnalysisRunner, WindowRunResult
@@ -552,6 +557,50 @@ async def run_backwrite_snapshot_once(snapshot_file: Path) -> None:
     )
 
 
+async def personalize_user_once(user_id: UUID) -> None:
+    settings = get_settings()
+    config = load_analysis_config(settings)
+    async with httpx.AsyncClient(trust_env=False) as client:
+        async with session_factory() as database:
+            runner = PersonalizationRunner(
+                PersonalizationRepository(database),
+                DeepSeekIntelligenceClient(client=client, config=config),
+                max_attempts=settings.personalization_max_attempts,
+            )
+            while True:
+                run = await runner.run_user(user_id)
+                if run.status != "pending":
+                    break
+    logger.info(
+        "personalization run complete run_id=%s user_id=%s status=%s error_code=%s",
+        run.id,
+        user_id,
+        run.status,
+        run.error_code,
+    )
+    if run.status != "completed":
+        raise MaintenanceError(run.error_code or "PERSONALIZATION_FAILED")
+
+
+async def process_personalization_queue_once() -> bool:
+    async with session_factory() as database:
+        user_id = (
+            await database.execute(
+                select(User.id)
+                .where(
+                    User.onboarding_completed.is_(True),
+                    User.personalization_update_requested_at.is_not(None),
+                )
+                .order_by(User.personalization_update_requested_at, User.id)
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+    if user_id is None:
+        return False
+    await personalize_user_once(user_id)
+    return True
+
+
 async def _derived_artifact(source_artifact_id: UUID, artifact_type: str) -> PipelineArtifact:
     async with session_factory() as database:
         artifact = (
@@ -610,8 +659,8 @@ async def process_maintenance_queue_once(
     *,
     snapshot_provider: UserVisibleEventSnapshotProvider | None = None,
 ) -> bool:
-    provider = snapshot_provider or UnavailableUserVisibleEventSnapshotProvider()
     async with session_factory() as database:
+        provider = snapshot_provider or PersonalizationVisibleEventSnapshotProvider(database)
         repository = MaintenanceRepository(database)
         await repository.enqueue_due()
 
@@ -646,12 +695,26 @@ async def process_maintenance_queue_once(
                     provider=provider,
                 )
 
+        async def personalization(_run: MaintenanceRun) -> None:
+            async with session_factory() as user_database:
+                user_ids = list(
+                    (
+                        await user_database.execute(
+                            select(User.id)
+                            .where(User.onboarding_completed.is_(True))
+                            .order_by(User.id)
+                        )
+                    ).scalars()
+                )
+            for user_id in user_ids:
+                await personalize_user_once(user_id)
+
         result = await MaintenanceRunner(
             repository,
             dict(
                 zip(
                     MAINTENANCE_PHASES,
-                    (window_analysis, reconciliation, event_backwrite),
+                    (window_analysis, reconciliation, event_backwrite, personalization),
                     strict=True,
                 )
             ),
@@ -723,6 +786,7 @@ async def run(
     ask_finalization: UUID | None = None,
     process_ask_queue: bool = False,
     process_maintenance_queue: bool = False,
+    process_personalization_queue: bool = False,
     backwrite_snapshot_file: Path | None = None,
 ) -> None:
     settings = get_settings()
@@ -777,6 +841,11 @@ async def run(
                 await run_ask_finalization_once(ask_finalization)
             if process_ask_queue:
                 ask_processed = await process_ask_queue_once()
+            if process_personalization_queue:
+                try:
+                    await process_personalization_queue_once()
+                except Exception:
+                    logger.exception("Personalization queue stage failed")
             if process_maintenance_queue:
                 await process_maintenance_queue_once()
             if backwrite_snapshot_file is not None:
@@ -954,6 +1023,11 @@ def parse_args() -> argparse.Namespace:
         help="Continuously schedule and process persisted Maintenance runs",
     )
     parser.add_argument(
+        "--process-personalization-queue",
+        action="store_true",
+        help="Continuously process users awaiting Personalization refresh",
+    )
+    parser.add_argument(
         "--backwrite-snapshot-file",
         type=Path,
         metavar="JSON_FILE",
@@ -993,6 +1067,7 @@ def main() -> int:
                 ask_finalization=args.run_ask_finalization,
                 process_ask_queue=args.process_ask_queue,
                 process_maintenance_queue=args.process_maintenance_queue,
+                process_personalization_queue=args.process_personalization_queue,
                 backwrite_snapshot_file=args.backwrite_snapshot_file,
             )
         )

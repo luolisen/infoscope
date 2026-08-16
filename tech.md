@@ -951,15 +951,17 @@ TG News 不直接生成 NOW、Event 或 Brief。
 - 只有 final artifact 与 completed 状态原子提交后，Public Polling 才能返回 completed。POST 只创建
   pending Ask；独立 Worker 依次驱动 comparing、awaiting_research、awaiting_reconciliation、finalizing。
 - GET 使用 pending/running/completed/failed 严格联合 DTO，owner-only；failed 只返回通用
-  `ASK_FAILED`。ready user 在当前 shared local-demo Event catalog 中可访问全部现存 Event，缺失/不可
-  访问统一 404，缺少 Base Analysis 为 409。FastAPI 不运行模型任务，不使用 WebSocket。
+  `ASK_FAILED`。Phase 5 Event access 只允许该用户任一 completed Personalization artifact 中曾
+  relevant 的 Event；缺失/不可访问统一 404，缺少 Base Analysis 为 409。FastAPI 不运行模型任务，
+  不使用 WebSocket。
 
 ## Event Detail Public API v1（已冻结）
 
 - `GET /api/v1/events/{event_id}` 是 ready-user 同步只读接口；共享 catalog 的 Event 不存在/不可访问
   统一 404 `EVENT_NOT_FOUND`，缺少当前 Base Analysis 为 409 `EVENT_NOT_READY`。
 - DTO 包含 Event、Base Analysis safe content、Claims、Timeline、Conflicts 与 EventSignal Evidence。
-  Phase 4 暂以 Base Analysis summary/topics 填充 why_it_matters/topics，saved 固定 false。
+  why_it_matters 使用该用户对此 Event 最近一次 relevant Personalization decision；topics 来自
+  Base Analysis，saved 暂固定 false。
 - Backend 固定 Claims/Timeline/Conflicts/Evidence 排序；所有 relation IDs 按对应顶层列表顺序返回。
   跨 Event、悬空、重复关系或 Evidence 不属于 Event 时 fail-closed，不返回部分结果。
 - Public Evidence 仅按受控来源映射输出 platform、author_name、url；private_sanitized 只允许 Telegram
