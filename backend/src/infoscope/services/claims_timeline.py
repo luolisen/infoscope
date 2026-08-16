@@ -21,6 +21,7 @@ from infoscope.analysis.intelligence_schemas import (
     ClaimExtractionResponse,
     ClaimTimelineInput,
     EventClaimInput,
+    EventTimelineInput,
     ExistingClaimCandidate,
     ExistingTimelineCandidate,
     TimelineAssignment,
@@ -60,7 +61,7 @@ class IntelligenceClientProtocol(Protocol):
     ) -> ClaimExtractionResponse: ...
 
     async def reconstruct_timeline(
-        self, *, claims: list[ClaimTimelineInput], candidates: list[ExistingTimelineCandidate]
+        self, *, events: list[EventTimelineInput], candidates: list[ExistingTimelineCandidate]
     ) -> TimelineReconstructionResponse: ...
 
 
@@ -193,7 +194,18 @@ class IntelligenceRepository:
 
     async def timeline_inputs(
         self, event_ids: set[UUID]
-    ) -> tuple[list[ClaimTimelineInput], list[ExistingTimelineCandidate]]:
+    ) -> tuple[list[EventTimelineInput], list[ExistingTimelineCandidate]]:
+        events = (
+            list(
+                (
+                    await self.database.execute(select(Event).where(Event.id.in_(event_ids)))
+                ).scalars()
+            )
+            if event_ids
+            else []
+        )
+        if {item.id for item in events} != event_ids:
+            raise IntelligenceError("TIMELINE_EVENT_MISSING")
         claims = (
             list(
                 (
@@ -206,17 +218,34 @@ class IntelligenceRepository:
         claim_links = (
             (
                 await self.database.execute(
-                    select(ClaimSignal.claim_id, ClaimSignal.signal_id).where(
-                        ClaimSignal.claim_id.in_([item.id for item in claims])
-                    )
+                    select(ClaimSignal.claim_id, Signal)
+                    .join(Signal, Signal.id == ClaimSignal.signal_id)
+                    .where(ClaimSignal.claim_id.in_([item.id for item in claims]))
                 )
             ).all()
             if claims
             else []
         )
-        evidence: dict[UUID, list[UUID]] = {item.id: [] for item in claims}
-        for claim_id, signal_id in claim_links:
-            evidence[claim_id].append(signal_id)
+        event_signal_rows = (
+            (
+                await self.database.execute(
+                    select(EventSignal.event_id, EventSignal.signal_id).where(
+                        EventSignal.event_id.in_(event_ids)
+                    )
+                )
+            ).all()
+            if event_ids
+            else []
+        )
+        event_signals = {
+            (event_id, signal_id) for event_id, signal_id in event_signal_rows
+        }
+        claim_events = {item.id: item.event_id for item in claims}
+        evidence: dict[UUID, list[AnalysisSignal]] = {item.id: [] for item in claims}
+        for claim_id, signal in claim_links:
+            if (claim_events[claim_id], signal.id) not in event_signals:
+                raise IntelligenceError("TIMELINE_EVIDENCE_OUTSIDE_EVENT")
+            evidence[claim_id].append(self._analysis_signal(signal))
         entries = (
             list(
                 (
@@ -242,16 +271,30 @@ class IntelligenceRepository:
         linked_claims: dict[UUID, list[UUID]] = {item.id: [] for item in entries}
         for entry_id, claim_id in timeline_links:
             linked_claims[entry_id].append(claim_id)
-        return (
-            [
+        claims_by_event: dict[UUID, list[ClaimTimelineInput]] = {
+            event_id: [] for event_id in event_ids
+        }
+        for item in claims:
+            claims_by_event[item.event_id].append(
                 ClaimTimelineInput(
                     claim_id=item.id,
                     event_id=item.event_id,
                     text=item.text,
                     state=item.state,
-                    evidence_signal_ids=evidence[item.id],
+                    evidence_signals=evidence[item.id],
                 )
-                for item in claims
+            )
+        return (
+            [
+                EventTimelineInput(
+                    event_id=item.id,
+                    title=item.title,
+                    overview=item.overview,
+                    state=item.state,
+                    display_time=item.display_time,
+                    claims=claims_by_event[item.id],
+                )
+                for item in events
             ],
             [
                 ExistingTimelineCandidate(
@@ -707,13 +750,13 @@ class TimelineReconstructionRunner(_BaseRunner):
             except ValueError as error:
                 raise IntelligenceError("TIMELINE_SOURCE_SCHEMA_INVALID") from error
             event_ids = {item.event_id for item in parsed.assignments}
-            claims, candidates = await self.repository.timeline_inputs(event_ids)
-            response = await self.client.reconstruct_timeline(claims=claims, candidates=candidates)
-            self._validate(response.payload, claims, candidates)
+            events, candidates = await self.repository.timeline_inputs(event_ids)
+            response = await self.client.reconstruct_timeline(events=events, candidates=candidates)
+            self._validate(response.payload, events, candidates)
             created, updated, attached, reused = await self.repository.persist_timeline(
                 run=run,
                 source_artifact_id=source.id,
-                input_hash=self._input_hash(source, claims, candidates),
+                input_hash=self._input_hash(source, events, candidates),
                 response=response,
                 candidate_ids={item.timeline_entry_id for item in candidates},
             )
@@ -732,10 +775,10 @@ class TimelineReconstructionRunner(_BaseRunner):
     @staticmethod
     def _validate(
         payload: TimelineReconstructionPayload,
-        claims: list[ClaimTimelineInput],
+        events: list[EventTimelineInput],
         candidates: list[ExistingTimelineCandidate],
     ) -> None:
-        claim_events = {item.claim_id: item.event_id for item in claims}
+        claim_events = {claim.claim_id: item.event_id for item in events for claim in item.claims}
         decisions = [*payload.new_entries, *payload.existing_entry_updates]
         for item in decisions:
             if any(claim_events.get(claim_id) != item.event_id for claim_id in item.claim_ids):
