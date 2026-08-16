@@ -473,6 +473,7 @@ async def test_zero_candidate_research_is_canonical_success() -> None:
                 payload=ResearchDiscoveryAudit(
                     request_id=request.id,
                     candidate_count=len(kwargs["candidates"]),
+                    candidates=[],
                 ).model_dump(mode="json")
             )
 
@@ -590,8 +591,39 @@ async def test_invalid_and_duplicate_candidates_have_privacy_safe_audits() -> No
         "schema_version": "research_discovery_audit.v1",
         "request_id": str(request_id),
         "candidate_count": 3,
+        "candidates": [
+            {
+                "candidate_index": 0,
+                "source_kind": "web_page",
+                "candidate_url_hash": audits[0].candidate_url_hash,
+                "decision": "rejected",
+                "canonical_url": None,
+                "relevance_summary": None,
+                "error_code": "RESEARCH_URL_REJECTED",
+            },
+            {
+                "candidate_index": 1,
+                "source_kind": "web_page",
+                "candidate_url_hash": audits[1].candidate_url_hash,
+                "decision": "accepted",
+                "canonical_url": "https://example.com/a%2Fb",
+                "relevance_summary": "valid",
+                "error_code": None,
+            },
+            {
+                "candidate_index": 2,
+                "source_kind": "web_page",
+                "candidate_url_hash": audits[2].candidate_url_hash,
+                "decision": "rejected",
+                "canonical_url": None,
+                "relevance_summary": None,
+                "error_code": "RESEARCH_DUPLICATE_CANDIDATE",
+            },
+        ],
     }
-    assert "source_url" not in json.dumps(artifact.payload)
+    serialized_artifact = json.dumps(artifact.payload)
+    assert "source_url" not in serialized_artifact
+    assert "user:secret" not in serialized_artifact
     persisted_sources = [item for item in database.added if isinstance(item, ResearchSource)]
     assert len(persisted_sources) == 3
     assert persisted_sources[0].canonical_url is None

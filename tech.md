@@ -844,8 +844,10 @@ TG News 不直接生成 NOW、Event 或 Brief。
   discovery，只重试失败来源。
 - 每个模型候选都必须产生 `research_sources` 审计行。合法候选保存 canonical URL；非法、SSRF 或
   canonical 重复候选保存 failed、稳定 error code 与原始 URL 的 SHA-256，不保存原始 URL。
-  Discovery artifact 同样不得保存原始候选 URL。Percent normalization 只解码 unreserved 字符，
-  合法 reserved escape 保留并统一为大写十六进制。
+  Discovery artifact 保存完整且有序的脱敏候选审计：accepted 项保存 source kind、canonical URL、
+  URL hash 与 relevance summary；rejected 项只保存 source kind、URL hash 与稳定 error code，绝不
+  保存原始候选 URL 或其 relevance summary。Percent normalization 只解码 unreserved 字符，合法
+  reserved escape 保留并统一为大写十六进制。
 - 真实 Fetch 内容使用规范化 UTF-8 正文计算 SHA-256，并以 kind、canonical URL、content hash
   组成稳定 Raw key。模型内容不得直接成为 Signal；Research 结果必须重新经过 Raw→Signal 链路。
 - 本切片不新增 Public API、Ask、Event Detail、NOW 或 Frontend Contract，不修改事实层。

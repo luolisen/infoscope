@@ -227,6 +227,39 @@ class ResearchDiscoveryAudit(StrictModel):
     schema_version: Literal["research_discovery_audit.v1"] = "research_discovery_audit.v1"
     request_id: UUID
     candidate_count: int = Field(ge=0, le=12)
+    candidates: list[ResearchDiscoveryAuditCandidate] = Field(max_length=12)
+
+    @model_validator(mode="after")
+    def candidates_are_complete(self) -> ResearchDiscoveryAudit:
+        indexes = [item.candidate_index for item in self.candidates]
+        if self.candidate_count != len(self.candidates) or indexes != list(
+            range(self.candidate_count)
+        ):
+            raise ValueError("discovery audit candidates must be complete and ordered")
+        return self
+
+
+class ResearchDiscoveryAuditCandidate(StrictModel):
+    candidate_index: int = Field(ge=0, le=11)
+    source_kind: ResearchSourceKind
+    candidate_url_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    decision: Literal["accepted", "rejected"]
+    canonical_url: str | None = Field(default=None, max_length=2048)
+    relevance_summary: str | None = Field(default=None, max_length=500)
+    error_code: str | None = Field(default=None, max_length=128)
+
+    @model_validator(mode="after")
+    def decision_fields_are_consistent(self) -> ResearchDiscoveryAuditCandidate:
+        if self.decision == "accepted":
+            if not self.canonical_url or not self.relevance_summary or self.error_code is not None:
+                raise ValueError("accepted candidate requires canonical URL and relevance")
+        elif (
+            self.canonical_url is not None
+            or self.relevance_summary is not None
+            or not self.error_code
+        ):
+            raise ValueError("rejected candidate only permits hash and error code")
+        return self
 
 
 class RuntimeUsage(StrictModel):

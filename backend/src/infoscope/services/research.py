@@ -22,6 +22,7 @@ from infoscope.integrations.research.schemas import (
     ResearchConflict,
     ResearchDiscovery,
     ResearchDiscoveryAudit,
+    ResearchDiscoveryAuditCandidate,
     ResearchDiscoveryResponse,
     ResearchEvent,
     ResearchEvidence,
@@ -316,6 +317,28 @@ class ResearchRepository:
             payload=ResearchDiscoveryAudit(
                 request_id=request.id,
                 candidate_count=len(candidates),
+                candidates=[
+                    ResearchDiscoveryAuditCandidate(
+                        candidate_index=candidate.candidate_index,
+                        source_kind=candidate.source_kind,
+                        candidate_url_hash=candidate.candidate_url_hash,
+                        decision=(
+                            "accepted"
+                            if candidate.status is ResearchSourceStatus.PENDING
+                            else "rejected"
+                        ),
+                        canonical_url=candidate.canonical_url,
+                        relevance_summary=(
+                            response.payload.candidates[
+                                candidate.candidate_index
+                            ].relevance_summary
+                            if candidate.status is ResearchSourceStatus.PENDING
+                            else None
+                        ),
+                        error_code=candidate.error_code,
+                    )
+                    for candidate in candidates
+                ],
             ).model_dump(mode="json"),
             runtime="openclaw",
             provider=response.provider,

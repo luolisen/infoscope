@@ -1063,8 +1063,10 @@ canonical discovery 的 retry 不再调用模型，只重试失败 Source。零�
 
 每个候选都必须持久化一条 Source 审计：合法候选保存 canonical URL；非法 URL、SSRF 与 canonical
 重复候选保存 failed、稳定 error code 和原始 URL 的 SHA-256，不保存原始候选 URL。Discovery
-artifact 也只保存 privacy-safe request/candidate count。URL percent normalization 解码 unreserved，
-保留其他合法 escape 并统一大写十六进制，只拒绝非法或不完整 escape。
+artifact 保存完整且有序的 privacy-safe 候选结果：accepted 项保存 source kind、canonical URL、URL
+hash 与 relevance summary；rejected 项仅保存 source kind、URL hash 与稳定 error code，不保存原始
+URL 或 relevance summary。URL percent normalization 解码 unreserved，保留其他合法 escape 并统一
+大写十六进制，只拒绝非法或不完整 escape。
 
 Fetcher 获取的规范化正文按 SHA-256 计算 content hash，Raw source key 固定由
 `source_kind + canonical_url + content_hash` 生成。同 URL 同内容跨运行复用，内容变化形成新

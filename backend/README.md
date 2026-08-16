@@ -233,6 +233,9 @@ Research Integration v1 uses OpenClaw for headless public-source discovery and A
 as the installed capability/health layer. The model returns URLs, never Evidence text. The backend
 validates each URL against the frozen HTTPS/SSRF policy, fetches the real public document, and
 persists it as `source_type=research` Raw before normal normalization and deduplication.
+The immutable discovery artifact keeps every candidate in order: accepted candidates retain the
+source kind, canonical URL, URL hash, and model relevance summary; rejected candidates retain only
+the source kind, URL hash, and stable error code, so credential-bearing raw URLs are never stored.
 
 Install and configure the pinned external runtime separately, then verify it locally:
 
