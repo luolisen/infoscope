@@ -89,6 +89,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/brief/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Latest Brief */
+        get: operations["latest_brief_api_v1_brief_latest_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/events/{event_id}": {
         parameters: {
             query?: never;
@@ -357,6 +374,27 @@ export interface components {
          * @enum {string}
          */
         BaseAnalysisImportance: "low" | "medium" | "high" | "critical";
+        /** BriefLatestItem */
+        BriefLatestItem: {
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+            /** Summary */
+            summary: string;
+            /** Title */
+            title: string;
+            /** Why It Matters */
+            why_it_matters: string;
+        };
+        /** BriefLatestResponse */
+        BriefLatestResponse: {
+            /** Generated At */
+            generated_at: string | null;
+            /** Items */
+            items: components["schemas"]["BriefLatestItem"][];
+        };
         /**
          * ClaimState
          * @enum {string}
@@ -1010,6 +1048,55 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    latest_brief_api_v1_brief_latest_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                is_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BriefLatestResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

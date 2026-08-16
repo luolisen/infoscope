@@ -33,7 +33,7 @@ from infoscope.integrations.telegram import (
 )
 from infoscope.integrations.trendradar import TrendRadarCollector, load_trendradar_config
 from infoscope.integrations.trendradar.client import NewsNowClient, RSSClient
-from infoscope.models import AskRequest, MaintenanceRun, PipelineArtifact, User
+from infoscope.models import AskRequest, BriefRun, MaintenanceRun, PipelineArtifact, User
 from infoscope.services.acquisition import AcquisitionRepository
 from infoscope.services.ask_comparison import AskComparisonRepository, AskComparisonRunner
 from infoscope.services.ask_event_reconciliation import (
@@ -52,6 +52,7 @@ from infoscope.services.backwrite import (
     UserVisibleEventSnapshotProvider,
 )
 from infoscope.services.base_analysis import BaseAnalysisRepository, BaseAnalysisRunner
+from infoscope.services.brief import BriefRepository, BriefRunner
 from infoscope.services.claims_timeline import (
     ClaimExtractionRunner,
     ConflictAnalysisRunner,
@@ -601,6 +602,60 @@ async def process_personalization_queue_once() -> bool:
     return True
 
 
+async def generate_brief_once(user_id: UUID) -> None:
+    settings = get_settings()
+    config = load_analysis_config(settings)
+    async with httpx.AsyncClient(trust_env=False) as client:
+        async with session_factory() as database:
+            runner = BriefRunner(
+                BriefRepository(database),
+                DeepSeekIntelligenceClient(client=client, config=config),
+                max_attempts=settings.brief_max_attempts,
+            )
+            while True:
+                run = await runner.run_user(user_id)
+                if run.status != "pending":
+                    break
+    logger.info(
+        "brief run complete run_id=%s user_id=%s status=%s error_code=%s",
+        run.id,
+        user_id,
+        run.status,
+        run.error_code,
+    )
+
+
+async def process_brief_queue_once() -> bool:
+    async with session_factory() as database:
+        user_ids = list(
+            (
+                await database.execute(
+                    select(User.id).where(User.onboarding_completed.is_(True)).order_by(User.id)
+                )
+            ).scalars()
+        )
+        repository = BriefRepository(database)
+        user_id = None
+        for candidate_id in user_ids:
+            source = await repository.latest_personalization_artifact(candidate_id)
+            if source is None:
+                continue
+            prior = (
+                await database.execute(
+                    select(BriefRun).where(
+                        BriefRun.source_personalization_artifact_id == source.id
+                    )
+                )
+            ).scalar_one_or_none()
+            if prior is None or prior.status == "pending":
+                user_id = candidate_id
+                break
+    if user_id is None:
+        return False
+    await generate_brief_once(user_id)
+    return True
+
+
 async def _derived_artifact(source_artifact_id: UUID, artifact_type: str) -> PipelineArtifact:
     async with session_factory() as database:
         artifact = (
@@ -787,6 +842,7 @@ async def run(
     process_ask_queue: bool = False,
     process_maintenance_queue: bool = False,
     process_personalization_queue: bool = False,
+    process_brief_queue: bool = False,
     backwrite_snapshot_file: Path | None = None,
 ) -> None:
     settings = get_settings()
@@ -846,6 +902,11 @@ async def run(
                     await process_personalization_queue_once()
                 except Exception:
                     logger.exception("Personalization queue stage failed")
+            if process_brief_queue:
+                try:
+                    await process_brief_queue_once()
+                except Exception:
+                    logger.exception("Brief queue stage failed")
             if process_maintenance_queue:
                 await process_maintenance_queue_once()
             if backwrite_snapshot_file is not None:
@@ -1028,6 +1089,11 @@ def parse_args() -> argparse.Namespace:
         help="Continuously process users awaiting Personalization refresh",
     )
     parser.add_argument(
+        "--process-brief-queue",
+        action="store_true",
+        help="Continuously generate Briefs for completed Personalization snapshots",
+    )
+    parser.add_argument(
         "--backwrite-snapshot-file",
         type=Path,
         metavar="JSON_FILE",
@@ -1068,6 +1134,7 @@ def main() -> int:
                 process_ask_queue=args.process_ask_queue,
                 process_maintenance_queue=args.process_maintenance_queue,
                 process_personalization_queue=args.process_personalization_queue,
+                process_brief_queue=args.process_brief_queue,
                 backwrite_snapshot_file=args.backwrite_snapshot_file,
             )
         )

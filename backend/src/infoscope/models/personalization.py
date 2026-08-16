@@ -146,6 +146,13 @@ class PersonalizedEvent(Base):
         UniqueConstraint(
             "artifact_id", "snapshot_position", name="uq_personalized_events_artifact_position"
         ),
+        UniqueConstraint(
+            "id",
+            "artifact_id",
+            "user_id",
+            "event_id",
+            name="uq_personalized_events_source_scope",
+        ),
         CheckConstraint("snapshot_position >= 0", name="ck_personalized_events_position"),
         CheckConstraint(
             "snapshot_new_claim_count >= 0 AND snapshot_conflict_count >= 0",

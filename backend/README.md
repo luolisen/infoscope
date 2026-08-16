@@ -392,6 +392,20 @@ event_id ASC`. `raw_information_count` is a database count for the captured one-
 priority never changes NOW chronology. Event Detail and Ask permit Events that were relevant in any
 completed user snapshot, while Backwrite visibility uses only the latest snapshot.
 
+Generate grounded Brief snapshots with the independent queue worker:
+
+```bash
+uv run --project backend python -m infoscope.worker --process-brief-queue
+```
+
+Brief selects at most eight relevant Events from each user's latest completed Personalization
+artifact using priority, then captured display time and Event UUID. Its strict model input contains
+only persisted Event/Base Analysis/Claim/Timeline/Conflict facts plus Personalization text. It never
+contains Raw, Signal/Evidence, provenance, collector metadata, or Research. A SERIALIZABLE commit
+rebuilds the complete input and rejects changed or superseded sources. Empty selections persist a
+deterministic artifact without a model call. `GET /api/v1/brief/latest` never falls back to an older
+Personalization source, and public titles come from immutable Brief Item snapshots.
+
 Checks:
 
 ```bash

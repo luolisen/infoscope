@@ -36,6 +36,21 @@ from infoscope.analysis.backwrite_schemas import (
     BackwriteReconciliationPayload,
     BackwriteReconciliationResponse,
 )
+from infoscope.analysis.brief_prompt import BRIEF_SYSTEM_PROMPT, build_brief_prompt
+from infoscope.analysis.brief_schemas import (
+    MAX_INPUT_BYTES as BRIEF_MAX_INPUT_BYTES,
+)
+from infoscope.analysis.brief_schemas import (
+    MAX_OUTPUT_BYTES as BRIEF_MAX_OUTPUT_BYTES,
+)
+from infoscope.analysis.brief_schemas import (
+    BriefInput,
+    BriefPayload,
+    BriefResponse,
+)
+from infoscope.analysis.brief_schemas import (
+    canonical_bytes as brief_canonical_bytes,
+)
 from infoscope.analysis.client import AnalysisError
 from infoscope.analysis.config import AnalysisConfig
 from infoscope.analysis.intelligence_prompt import (
@@ -214,6 +229,24 @@ class DeepSeekIntelligenceClient:
             token_usage=usage,
         )
 
+    async def generate_brief(self, value: BriefInput) -> BriefResponse:
+        if len(brief_canonical_bytes(value)) > BRIEF_MAX_INPUT_BYTES:
+            raise AnalysisError("BRIEF_INPUT_LIMIT_EXCEEDED")
+        payload, model, usage = await self._request(
+            system=BRIEF_SYSTEM_PROMPT,
+            user=build_brief_prompt(value),
+            payload_type=BriefPayload,
+            output_limit=BRIEF_MAX_OUTPUT_BYTES,
+            schema_error="BRIEF_SCHEMA_INVALID",
+            output_error="BRIEF_OUTPUT_LIMIT_EXCEEDED",
+        )
+        return BriefResponse(
+            payload=payload,
+            provider="deepseek",
+            model=model,
+            token_usage=usage,
+        )
+
     async def _next_key(self) -> str:
         async with self._key_lock:
             key = self.config.api_keys[self._key_index % len(self.config.api_keys)]
@@ -278,6 +311,8 @@ class DeepSeekIntelligenceClient:
                     "ANALYSIS_TRUNCATED",
                     "PERSONALIZATION_SCHEMA_INVALID",
                     "PERSONALIZATION_OUTPUT_LIMIT_EXCEEDED",
+                    "BRIEF_SCHEMA_INVALID",
+                    "BRIEF_OUTPUT_LIMIT_EXCEEDED",
                 }:
                     raise
                 await asyncio.sleep(min(2**attempt, 8))

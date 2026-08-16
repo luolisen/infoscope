@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 
 from infoscope.api.routes.ask import router as ask_router
 from infoscope.api.routes.auth import router as auth_router
+from infoscope.api.routes.brief import router as brief_router
 from infoscope.api.routes.events import router as events_router
 from infoscope.api.routes.health import router as health_router
 from infoscope.api.routes.maintenance import router as maintenance_router
@@ -31,6 +32,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(auth_router, prefix="/api/v1")
+app.include_router(brief_router, prefix="/api/v1")
 app.include_router(ask_router, prefix="/api/v1")
 app.include_router(events_router, prefix="/api/v1")
 app.include_router(health_router, prefix="/api/v1")
