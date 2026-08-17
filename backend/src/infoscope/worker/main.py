@@ -6,7 +6,7 @@ import logging
 import signal
 from datetime import UTC, datetime
 from pathlib import Path
-from uuid import UUID, uuid5
+from uuid import UUID, uuid4, uuid5
 from uuid import UUID as UUIDType
 
 import httpx
@@ -91,9 +91,26 @@ from infoscope.services.personalization import (
 from infoscope.services.pipeline import PipelineRepository
 from infoscope.services.research import ResearchRepository, ResearchRunner
 from infoscope.services.window_analysis import WindowAnalysisRunner, WindowRunResult
+from infoscope.services.worker_health import record_worker_heartbeat, remove_worker_heartbeat
 
 logger = logging.getLogger("infoscope.worker")
 MAINTENANCE_BACKWRITE_NAMESPACE = UUIDType("44a8817e-991a-4c8c-883a-520677418a2d")
+
+
+async def _run_heartbeat(
+    worker_id: UUID,
+    process_started_at: datetime,
+    interval_seconds: float,
+    stop: asyncio.Event,
+) -> None:
+    while not stop.is_set():
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=interval_seconds)
+        except TimeoutError:
+            try:
+                await record_worker_heartbeat(worker_id, process_started_at)
+            except Exception:
+                logger.exception("worker heartbeat update failed worker_id=%s", worker_id)
 
 
 async def collect_trendradar_once() -> None:
@@ -901,12 +918,35 @@ async def run(
 ) -> None:
     settings = get_settings()
     stop = asyncio.Event()
+    heartbeat_stop = asyncio.Event()
+    heartbeat_task: asyncio.Task[None] | None = None
+    worker_id: UUID | None = None
     loop = asyncio.get_running_loop()
 
     for signal_name in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(signal_name, stop.set)
 
     try:
+        is_queue_worker = any(
+            (
+                process_ask_queue,
+                process_maintenance_queue,
+                process_personalization_queue,
+                process_brief_queue,
+            )
+        )
+        if is_queue_worker:
+            worker_id = uuid4()
+            process_started_at = datetime.now(UTC)
+            await record_worker_heartbeat(worker_id, process_started_at)
+            heartbeat_task = asyncio.create_task(
+                _run_heartbeat(
+                    worker_id,
+                    process_started_at,
+                    settings.worker_heartbeat_seconds,
+                    heartbeat_stop,
+                )
+            )
         while not stop.is_set():
             ask_processed = False
             await ping_database()
@@ -1010,6 +1050,14 @@ async def run(
             except TimeoutError:
                 continue
     finally:
+        heartbeat_stop.set()
+        if heartbeat_task is not None:
+            await heartbeat_task
+        if worker_id is not None:
+            try:
+                await remove_worker_heartbeat(worker_id)
+            except Exception:
+                logger.exception("failed to remove worker heartbeat worker_id=%s", worker_id)
         await close_database()
 
 

@@ -18,11 +18,30 @@ alive() {
   [ -f "$1" ] && kill -0 "$(sed -n '1p' "$1")" 2>/dev/null
 }
 
+process_started_at() {
+  ps -p "$1" -o lstart= 2>/dev/null | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
+}
+
+write_pidfile() {
+  pidfile="$1"
+  pid="$2"
+  started_at=$(process_started_at "$pid")
+  [ -n "$started_at" ] || return 1
+  {
+    printf '%s\n' "$pid"
+    printf '%s\n' "$started_at"
+  } >"$pidfile"
+}
+
 process_matches() {
   pidfile="$1"
   expected="$2"
   alive "$pidfile" || return 1
   pid=$(sed -n '1p' "$pidfile")
+  recorded_started_at=$(sed -n '2p' "$pidfile")
+  [ -n "$recorded_started_at" ] || return 1
+  current_started_at=$(process_started_at "$pid")
+  [ "$recorded_started_at" = "$current_started_at" ] || return 1
   command=$(ps -p "$pid" -o command= 2>/dev/null || true)
   case "$command" in
     *"$expected"*) return 0 ;;
@@ -30,11 +49,29 @@ process_matches() {
   esac
 }
 
+port_in_use() {
+  command -v python3 >/dev/null 2>&1 || return 1
+  python3 -c 'import socket, sys
+s = socket.socket()
+s.settimeout(0.2)
+try:
+    occupied = s.connect_ex(("127.0.0.1", int(sys.argv[1]))) == 0
+finally:
+    s.close()
+raise SystemExit(0 if occupied else 1)' "$API_PORT"
+}
+
+health_has_worker() {
+  curl -fsS "http://127.0.0.1:$API_PORT/api/v1/health" 2>/dev/null \
+    | grep -q '"worker":"ok"'
+}
+
 preflight() {
   require docker
   require uv
   require pnpm
   require curl
+  require python3
   docker info >/dev/null 2>&1 || {
     printf 'Docker daemon is not running. Start Docker Desktop or Docker Engine.\n' >&2
     exit 1
@@ -65,16 +102,35 @@ start() {
     printf 'Infoscope is already running; use %s status or stop.\n' "$0" >&2
     exit 1
   fi
+  for pidfile in "$STATE/api.pid" "$STATE/worker.pid"; do
+    if [ -f "$pidfile" ]; then
+      printf 'Removing stale PID file: %s\n' "$pidfile" >&2
+      rm -f "$pidfile"
+    fi
+  done
+  if port_in_use; then
+    printf 'Port %s is occupied by an unmanaged process; refusing to start.\n' "$API_PORT" >&2
+    exit 1
+  fi
   cd "$ROOT"
   nohup env PATH="$HOME/.local/bin:$PATH" uv run --project backend --no-sync uvicorn \
     infoscope.api.app:app --host 127.0.0.1 --port "$API_PORT" \
     </dev/null >"$STATE/api.log" 2>&1 &
-  printf '%s\n' "$!" >"$STATE/api.pid"
+  api_pid="$!"
+  write_pidfile "$STATE/api.pid" "$api_pid" || {
+    printf 'API process exited before its identity could be recorded. See %s/api.log\n' "$STATE" >&2
+    exit 1
+  }
   nohup env PATH="$HOME/.local/bin:$PATH" uv run --project backend --no-sync python -m infoscope.worker \
     --process-ask-queue --process-maintenance-queue \
     --process-personalization-queue --process-brief-queue \
     </dev/null >"$STATE/worker.log" 2>&1 &
-  printf '%s\n' "$!" >"$STATE/worker.pid"
+  worker_pid="$!"
+  write_pidfile "$STATE/worker.pid" "$worker_pid" || {
+    printf 'Worker exited before its identity could be recorded. See %s/worker.log\n' "$STATE" >&2
+    stop
+    exit 1
+  }
   attempts=0
   until curl -fsS "http://127.0.0.1:$API_PORT/api/v1/health" >/dev/null 2>&1; do
     attempts=$((attempts + 1))
@@ -85,11 +141,22 @@ start() {
     fi
     sleep 1
   done
-  if ! process_matches "$STATE/worker.pid" "python -m infoscope.worker"; then
-    printf 'Worker failed to stay running. See %s/worker.log\n' "$STATE" >&2
+  process_matches "$STATE/api.pid" "uvicorn infoscope.api.app:app" || {
+    printf 'Health response did not come from this Demo API process. See %s/api.log\n' "$STATE" >&2
     stop
     exit 1
-  fi
+  }
+  attempts=0
+  until health_has_worker; do
+    attempts=$((attempts + 1))
+    if [ "$attempts" -ge 30 ] \
+      || ! process_matches "$STATE/worker.pid" "python -m infoscope.worker"; then
+      printf 'Worker failed readiness. See %s/worker.log\n' "$STATE" >&2
+      stop
+      exit 1
+    fi
+    sleep 1
+  done
   printf 'Infoscope is ready at http://127.0.0.1:%s\n' "$API_PORT"
 }
 
@@ -107,15 +174,26 @@ stop() {
 }
 
 status() {
-  for name in api worker; do
-    expected="uvicorn infoscope.api.app:app"
-    [ "$name" = worker ] && expected="python -m infoscope.worker"
-    if process_matches "$STATE/$name.pid" "$expected"; then
-      printf '%s: running\n' "$name"
+  if process_matches "$STATE/api.pid" "uvicorn infoscope.api.app:app"; then
+    printf 'api: running\n'
+  elif [ -f "$STATE/api.pid" ]; then
+    if port_in_use; then
+      printf 'api: stale PID file; unmanaged process on port %s\n' "$API_PORT"
     else
-      printf '%s: stopped\n' "$name"
+      printf 'api: stale PID file\n'
     fi
-  done
+  elif port_in_use; then
+    printf 'api: unmanaged process on port %s\n' "$API_PORT"
+  else
+    printf 'api: stopped\n'
+  fi
+  if process_matches "$STATE/worker.pid" "python -m infoscope.worker"; then
+    printf 'worker: running\n'
+  elif [ -f "$STATE/worker.pid" ]; then
+    printf 'worker: stale PID file\n'
+  else
+    printf 'worker: stopped\n'
+  fi
 }
 
 case "${1:-start}" in
