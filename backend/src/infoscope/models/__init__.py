@@ -64,6 +64,7 @@ from infoscope.models.research import (
     ResearchTrigger,
 )
 from infoscope.models.saved import EventSave
+from infoscope.models.worker import WorkerHeartbeat
 
 __all__ = [
     "Base",
@@ -124,4 +125,5 @@ __all__ = [
     "UserModelPreference",
     "UserSession",
     "WindowAnalysisBatchCache",
+    "WorkerHeartbeat",
 ]

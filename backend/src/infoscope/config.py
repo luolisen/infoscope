@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     session_ttl_seconds: int = Field(default=60 * 60 * 24 * 30, gt=0)
     session_cookie_secure: bool = False
     worker_poll_seconds: float = Field(default=30.0, gt=0)
+    worker_heartbeat_seconds: float = Field(default=5.0, gt=0, le=60)
+    worker_stale_after_seconds: float = Field(default=20.0, gt=0, le=300)
     trendradar_config_path: Path = Path("backend/config/trendradar.yaml")
     telegram_api_id: int | None = Field(default=None, gt=0)
     telegram_api_hash: SecretStr | None = None

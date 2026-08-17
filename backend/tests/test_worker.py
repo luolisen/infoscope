@@ -1,10 +1,28 @@
+import asyncio
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
 
-from infoscope.worker.main import process_ask_queue_once, run
+from infoscope.worker.main import _run_heartbeat, process_ask_queue_once, run
+
+
+async def test_heartbeat_runs_independently_until_stopped() -> None:
+    stop = asyncio.Event()
+    worker_id = uuid4()
+    started_at = datetime.now(UTC)
+    record = AsyncMock()
+
+    with patch("infoscope.worker.main.record_worker_heartbeat", record):
+        task = asyncio.create_task(_run_heartbeat(worker_id, started_at, 0.01, stop))
+        await asyncio.sleep(0.025)
+        stop.set()
+        await task
+
+    assert record.await_count >= 2
+    record.assert_awaited_with(worker_id, started_at)
 
 
 async def test_worker_once_checks_database_and_exits() -> None:

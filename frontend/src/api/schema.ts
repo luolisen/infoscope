@@ -718,15 +718,15 @@ export interface components {
             /**
              * Status
              * @default ok
-             * @constant
+             * @enum {string}
              */
-            status: "ok";
+            status: "ok" | "degraded";
             /**
              * Worker
              * @default ok
-             * @constant
+             * @enum {string}
              */
-            worker: "ok";
+            worker: "ok" | "unavailable";
         };
         /**
          * InvestmentMarketId

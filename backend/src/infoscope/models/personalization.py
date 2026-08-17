@@ -17,6 +17,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -177,7 +178,7 @@ class PersonalizedEvent(Base):
             "ix_personalized_events_artifact_visible_order",
             "artifact_id",
             "relevant",
-            "snapshot_display_time",
+            text("snapshot_display_time DESC"),
             "event_id",
         ),
     )

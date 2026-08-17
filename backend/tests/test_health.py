@@ -1,3 +1,5 @@
+from unittest.mock import AsyncMock
+
 from httpx import ASGITransport, AsyncClient
 
 from infoscope.api.app import app
@@ -13,6 +15,22 @@ class HealthyService(HealthService):
 class UnhealthyService(HealthService):
     async def check(self) -> HealthResponse:
         raise RuntimeError("database unavailable")
+
+
+async def test_health_service_reports_worker_unavailable_without_failing_api() -> None:
+    service = HealthService(database_ping=AsyncMock(), worker_check=AsyncMock(return_value=False))
+
+    response = await service.check()
+
+    assert response == HealthResponse(status="degraded", worker="unavailable")
+
+
+async def test_health_service_reports_worker_ready() -> None:
+    service = HealthService(database_ping=AsyncMock(), worker_check=AsyncMock(return_value=True))
+
+    response = await service.check()
+
+    assert response == HealthResponse()
 
 
 async def test_health_contract() -> None:

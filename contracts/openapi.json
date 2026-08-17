@@ -924,14 +924,20 @@
             "type": "string"
           },
           "status": {
-            "const": "ok",
             "default": "ok",
+            "enum": [
+              "ok",
+              "degraded"
+            ],
             "title": "Status",
             "type": "string"
           },
           "worker": {
-            "const": "ok",
             "default": "ok",
+            "enum": [
+              "ok",
+              "unavailable"
+            ],
             "title": "Worker",
             "type": "string"
           }
