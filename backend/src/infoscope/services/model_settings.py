@@ -7,6 +7,7 @@ from uuid import UUID
 
 from fastapi import Depends, status
 from pydantic import SecretStr
+from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -160,6 +161,7 @@ class ModelSettingsService:
                 set_={
                     "source_id": selection.source_id,
                     "model_id": selection.model_id,
+                    "updated_at": func.now(),
                 },
             )
         )

@@ -1,14 +1,17 @@
+import os
 from uuid import uuid4
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 from pydantic import SecretStr, ValidationError
+from sqlalchemy import delete
 
 from infoscope.analysis.config import AnalysisConfigurationError
 from infoscope.api.app import app
 from infoscope.api.dependencies import get_ready_user
 from infoscope.config import Settings
-from infoscope.models import User
+from infoscope.db import session_factory
+from infoscope.models import User, UserModelPreference
 from infoscope.schemas.model_settings import ModelSelection, ModelSettingsResponse
 from infoscope.services.model_settings import (
     ModelSettingsService,
@@ -75,6 +78,45 @@ def test_unconfigured_provider_fails_closed() -> None:
             Settings(_env_file=None),
             ModelSelection(source_id="gpt_5_5", model_id="gpt-5.5"),
         )
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(
+    os.environ.get("INFOSCOPE_POSTGRES_INTEGRATION") != "1",
+    reason="requires the local PostgreSQL integration database",
+)
+async def test_model_preference_upsert_preserves_created_at_and_advances_updated_at() -> None:
+    user = _ready_user()
+    service_settings = _settings()
+    initial_selection = ModelSelection(
+        source_id="deepseek_official",
+        model_id="deepseek-v4-flash",
+    )
+    updated_selection = ModelSelection(source_id="gpt_5_5", model_id="gpt-5.5")
+
+    try:
+        async with session_factory() as database:
+            database.add(user)
+            await database.commit()
+
+            service = ModelSettingsService(database, service_settings)
+            await service.update(user.id, initial_selection)
+            preference = await database.get(UserModelPreference, user.id)
+            assert preference is not None
+            created_at = preference.created_at
+            initial_updated_at = preference.updated_at
+
+            await service.update(user.id, updated_selection)
+            await database.refresh(preference)
+
+            assert preference.created_at == created_at
+            assert preference.updated_at > initial_updated_at
+            assert preference.source_id == updated_selection.source_id
+            assert preference.model_id == updated_selection.model_id
+    finally:
+        async with session_factory() as database:
+            await database.execute(delete(User).where(User.id == user.id))
+            await database.commit()
 
 
 class FakeModelSettingsService:
