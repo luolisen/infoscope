@@ -219,24 +219,27 @@ Maintenance
 - 人名、公司名、产品名、来源名和 URL。
 - Evidence 原文。
 
-需要 Alan 最终讨论确认：
+汉化边界：
 
 | 项目 | 推荐方案 |
 | --- | --- |
-| 一级导航 | 中文主名；英文作为小型 Editorial label，例如 `询问观澜 / ASK` |
-| NOW | 保留品牌词 NOW，主标题和说明中文 |
-| BRIEF | `简报 / BRIEF` |
-| ARCHIVE | `归档 / ARCHIVE` |
-| SCOPE | `关注范围 / SCOPE` |
-| SETTINGS | `设置 / SETTINGS` |
+| 侧边导航 | **不汉化**；固定保持 `NOW / ASK / BRIEF / ARCHIVE / SCOPE / SETTINGS` |
+| NOW 页面 | 侧边导航保留 NOW；页面主标题、统计和说明使用中文 |
+| ASK 页面 | 侧边导航固定 ASK；页面内使用“询问观澜” |
+| BRIEF 页面 | 侧边导航固定 BRIEF；页面标题和说明使用中文 |
+| ARCHIVE 页面 | 侧边导航固定 ARCHIVE；页面标题和说明使用中文 |
+| SCOPE 页面 | 侧边导航固定 SCOPE；页面标题、问题和提示使用中文 |
+| SETTINGS 页面 | 侧边导航固定 SETTINGS；设置项、状态和说明使用中文 |
 | Event title/overview | 新事实层优先生成中文，专有名词保留；是否重建既有 489 Events 需单独确认成本 |
 | Ask answer | 跟随中文 UI，默认中文；用户明确用其他语言提问时可跟随问题语言 |
+
+侧边导航的英文大写名称属于产品信息架构与 Editorial metadata，不得改成中文、双语或英文下方附中文小字。
 
 ### 问题 4 — Ask 升级为一级页面
 
 #### 4.1 导航与路由
 
-- 左侧一级工作区增加 `询问观澜 / ASK`，与 NOW、BRIEF、ARCHIVE 同级。
+- 左侧一级工作区增加 `ASK`，与 NOW、BRIEF、ARCHIVE 同级；页面内部主名称使用“询问观澜”。
 - 推荐顺序：NOW → ASK → BRIEF → ARCHIVE；SCOPE、SETTINGS 保持配置区。
 - 新路由使用 `#ask`。
 - Event Detail 不再渲染底部 Ask 输入框。
