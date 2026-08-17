@@ -20,6 +20,7 @@ from infoscope.analysis import (
 )
 from infoscope.analysis.ask_schemas import AskRequestSpec
 from infoscope.analysis.backwrite_schemas import BackwriteSnapshotSpec
+from infoscope.analysis.localization_client import EventLocalizationClient
 from infoscope.analysis.schemas import WindowAnalysisBatchArtifact, WindowAnalysisPayload
 from infoscope.config import get_settings
 from infoscope.db import close_database, ping_database, session_factory
@@ -37,12 +38,14 @@ from infoscope.integrations.trendradar.client import NewsNowClient, RSSClient
 from infoscope.models import (
     AskRequest,
     BriefRun,
+    EventLocalizationRun,
     MaintenanceRun,
     PipelineArtifact,
     PipelineRun,
     PipelineRunStatus,
     User,
 )
+from infoscope.schemas.model_settings import ModelSelection
 from infoscope.services.acquisition import AcquisitionRepository
 from infoscope.services.ask_comparison import AskComparisonRepository, AskComparisonRunner
 from infoscope.services.ask_event_reconciliation import (
@@ -70,6 +73,10 @@ from infoscope.services.claims_timeline import (
     TimelineReconstructionRunner,
 )
 from infoscope.services.deduplication import DeduplicationResult, ExactDeduplicationRunner
+from infoscope.services.event_localization_worker import (
+    EventLocalizationRepository,
+    EventLocalizationRunner,
+)
 from infoscope.services.event_reconstruction import (
     EventReconstructionResult,
     EventReconstructionRunner,
@@ -81,7 +88,10 @@ from infoscope.services.maintenance import (
     MaintenanceRepository,
     MaintenanceRunner,
 )
-from infoscope.services.model_settings import analysis_config_for_user
+from infoscope.services.model_settings import (
+    analysis_config_for_selection,
+    analysis_config_for_user,
+)
 from infoscope.services.normalization import NormalizationResult, NormalizationRunner
 from infoscope.services.personalization import (
     PersonalizationRepository,
@@ -686,9 +696,7 @@ async def process_brief_queue_once() -> bool:
                 continue
             prior = (
                 await database.execute(
-                    select(BriefRun).where(
-                        BriefRun.source_personalization_artifact_id == source.id
-                    )
+                    select(BriefRun).where(BriefRun.source_personalization_artifact_id == source.id)
                 )
             ).scalar_one_or_none()
             if prior is None or prior.status == "pending":
@@ -697,6 +705,41 @@ async def process_brief_queue_once() -> bool:
     if user_id is None:
         return False
     await generate_brief_once(user_id)
+    return True
+
+
+async def localize_events_once() -> EventLocalizationRun:
+    settings = get_settings()
+    config = analysis_config_for_selection(
+        settings,
+        ModelSelection(source_id="ai_ping", model_id="DeepSeek-V4-Flash-0731"),
+    )
+    async with httpx.AsyncClient(trust_env=False) as client:
+        run = await EventLocalizationRunner(
+            session_factory,
+            EventLocalizationClient(client=client, config=config),
+            provider=config.provider,
+            model=config.model,
+            batch_size=settings.event_localization_batch_size,
+            batch_concurrency=settings.event_localization_batch_concurrency,
+            max_attempts=settings.event_localization_max_attempts,
+        ).run()
+    logger.info(
+        "event localization run status run_id=%s status=%s completed=%d failed=%d total=%d",
+        run.id,
+        run.status,
+        run.completed_batch_count,
+        run.failed_batch_count,
+        run.batch_count,
+    )
+    return run
+
+
+async def process_event_localization_queue_once() -> bool:
+    async with session_factory() as database:
+        if not await EventLocalizationRepository(database).localization_needed():
+            return False
+    await localize_events_once()
     return True
 
 
@@ -731,8 +774,7 @@ async def reconcile_window_artifacts_once() -> None:
                             ),
                             and_(
                                 PipelineArtifact.artifact_type == "window_analysis_batch",
-                                PipelineArtifact.schema_version
-                                == "window_analysis_batch.v2",
+                                PipelineArtifact.schema_version == "window_analysis_batch.v2",
                             ),
                         ),
                     )
@@ -914,6 +956,8 @@ async def run(
     personalize_user: UUID | None = None,
     process_brief_queue: bool = False,
     generate_brief_user: UUID | None = None,
+    localize_events: bool = False,
+    process_event_localization_queue: bool = False,
     backwrite_snapshot_file: Path | None = None,
 ) -> None:
     settings = get_settings()
@@ -933,6 +977,7 @@ async def run(
                 process_maintenance_queue,
                 process_personalization_queue,
                 process_brief_queue,
+                process_event_localization_queue,
             )
         )
         if is_queue_worker:
@@ -949,6 +994,7 @@ async def run(
             )
         while not stop.is_set():
             ask_processed = False
+            localization_processed = False
             await ping_database()
             if collect_trendradar:
                 await collect_trendradar_once()
@@ -993,6 +1039,13 @@ async def run(
                 await run_ask_finalization_once(ask_finalization)
             if process_ask_queue:
                 ask_processed = await process_ask_queue_once()
+            if process_event_localization_queue:
+                try:
+                    localization_processed = await process_event_localization_queue_once()
+                except Exception:
+                    logger.exception("Event localization queue stage failed")
+            if localize_events:
+                await localize_events_once()
             if process_personalization_queue:
                 try:
                     await process_personalization_queue_once()
@@ -1041,9 +1094,10 @@ async def run(
                 or backwrite_snapshot_file is not None
                 or personalize_user is not None
                 or generate_brief_user is not None
+                or localize_events
             ):
                 return
-            if ask_processed:
+            if ask_processed or localization_processed:
                 continue
             try:
                 await asyncio.wait_for(stop.wait(), timeout=settings.worker_poll_seconds)
@@ -1224,6 +1278,17 @@ def parse_args() -> argparse.Namespace:
         metavar="USER_ID",
         help="Run or retry Brief generation for one ready user and exit",
     )
+    localization_group = parser.add_mutually_exclusive_group()
+    localization_group.add_argument(
+        "--localize-events",
+        action="store_true",
+        help="Localize the current Event snapshot into zh-CN and exit",
+    )
+    localization_group.add_argument(
+        "--process-event-localization-queue",
+        action="store_true",
+        help="Continuously localize stale or missing zh-CN Event projections",
+    )
     parser.add_argument(
         "--backwrite-snapshot-file",
         type=Path,
@@ -1269,6 +1334,8 @@ def main() -> int:
                 personalize_user=args.personalize_user,
                 process_brief_queue=args.process_brief_queue,
                 generate_brief_user=args.generate_brief_user,
+                localize_events=args.localize_events,
+                process_event_localization_queue=args.process_event_localization_queue,
                 backwrite_snapshot_file=args.backwrite_snapshot_file,
             )
         )

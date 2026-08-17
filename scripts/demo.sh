@@ -124,6 +124,7 @@ start() {
   nohup env PATH="$HOME/.local/bin:$PATH" uv run --project backend --no-sync python -m infoscope.worker \
     --process-ask-queue --process-maintenance-queue \
     --process-personalization-queue --process-brief-queue \
+    --process-event-localization-queue \
     </dev/null >"$STATE/worker.log" 2>&1 &
   worker_pid="$!"
   write_pidfile "$STATE/worker.pid" "$worker_pid" || {

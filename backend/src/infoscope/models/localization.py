@@ -26,7 +26,6 @@ class EventLocalizationRun(Base):
     __tablename__ = "event_localization_runs"
     __table_args__ = (
         UniqueConstraint("locale", "active_slot", name="uq_event_localization_runs_active"),
-        UniqueConstraint("locale", "input_hash", name="uq_event_localization_runs_input"),
         CheckConstraint("locale = 'zh-CN'", name="ck_event_localization_runs_locale"),
         CheckConstraint(
             "status IN ('pending', 'running', 'completed', 'failed')",
@@ -135,6 +134,10 @@ class EventLocalizationBatch(Base):
     max_attempts: Mapped[int] = mapped_column(Integer, nullable=False)
     artifact_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("event_localization_artifacts.id", ondelete="RESTRICT"), nullable=True
+    )
+    artifact_reused: Mapped[bool] = mapped_column(nullable=False, default=False)
+    token_usage: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
     )
     error_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

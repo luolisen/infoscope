@@ -68,6 +68,9 @@ class Settings(BaseSettings):
     personalization_batch_size: int = Field(default=10, gt=0, le=100)
     personalization_batch_concurrency: int = Field(default=2, gt=0, le=8)
     brief_max_attempts: int = Field(default=3, gt=0, le=10)
+    event_localization_batch_size: int = Field(default=10, gt=0, le=10)
+    event_localization_batch_concurrency: int = Field(default=2, gt=0, le=3)
+    event_localization_max_attempts: int = Field(default=3, gt=0, le=10)
 
     @property
     def resolved_trendradar_config_path(self) -> Path:

@@ -1,8 +1,12 @@
+import json
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
+import httpx
 import pytest
 
+from infoscope.analysis.config import AnalysisConfig
+from infoscope.analysis.localization_client import EventLocalizationClient
 from infoscope.analysis.localization_schemas import (
     EventLocalizationDecision,
     EventLocalizationInput,
@@ -107,3 +111,64 @@ async def test_projection_is_used_only_for_current_event_input_hash() -> None:
 
     event.updated_at = NOW + timedelta(seconds=1)
     assert await current_event_localizations(database, [event]) == {}  # type: ignore[arg-type]
+
+
+async def test_localization_client_uses_ai_ping_compatible_json_contract() -> None:
+    event = _event()
+    value = EventLocalizationInput(events=[event_localization_item(event)])
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        document = json.loads(request.content)
+        assert document["response_format"] == {"type": "json_object"}
+        assert "json" in document["messages"][1]["content"].casefold()
+        assert request.headers["authorization"] == "Bearer local-test-key"
+        return httpx.Response(
+            200,
+            json={
+                "model": "DeepSeek-V4-Flash-0731",
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {
+                            "content": json.dumps(
+                                {
+                                    "schema_version": "event_localization.v1",
+                                    "decisions": [
+                                        {
+                                            "event_id": str(event.id),
+                                            "title": "NVIDIA 向 Example AI 投资 $10 billion",
+                                            "overview": (
+                                                "该协议于 2026-08-18 开始。"
+                                                "详见 https://example.com/a."
+                                            ),
+                                        }
+                                    ],
+                                }
+                            )
+                        },
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": 10,
+                    "completion_tokens": 5,
+                    "total_tokens": 15,
+                },
+            },
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        response = await EventLocalizationClient(
+            client=client,
+            config=AnalysisConfig(
+                api_base_url="https://aiping.example.com/api/v1",
+                model="DeepSeek-V4-Flash-0731",
+                api_keys=("local-test-key",),
+                timeout_seconds=10,
+                max_retries=0,
+                max_tokens=4096,
+                provider="ai_ping",
+            ),
+        ).localize(value)
+
+    validate_localization_output(value, response.payload)
+    assert response.provider == "ai_ping"
