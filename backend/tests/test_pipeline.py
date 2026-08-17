@@ -4,9 +4,9 @@ from uuid import uuid4
 
 import pytest
 
-from infoscope.models import PipelineRun, PipelineRunStatus
+from infoscope.models import PipelineArtifact, PipelineRun, PipelineRunStatus
 from infoscope.pipeline import AcquisitionCursor, LogicalWindow, completed_windows
-from infoscope.services.pipeline import PipelineRepository
+from infoscope.services.pipeline import ArtifactWrite, PipelineRepository
 
 
 def test_logical_window_is_exactly_one_hour_and_half_open() -> None:
@@ -54,6 +54,9 @@ class FakeDatabase:
 
     def add(self, value: object) -> None:
         self.added.append(value)
+
+    def add_all(self, values: list[object]) -> None:
+        self.added.extend(values)
 
     async def commit(self) -> None:
         self.commits += 1
@@ -128,3 +131,55 @@ async def test_successful_run_can_be_replayed_for_the_same_raw_window() -> None:
     assert replay.window_end == completed.window_end
     assert replay.attempt == 2
     assert replay.status == PipelineRunStatus.RUNNING.value
+
+
+async def test_window_bundle_persists_batches_manifest_and_run_in_one_commit() -> None:
+    database = FakeDatabase()
+    repository = PipelineRepository(database)  # type: ignore[arg-type]
+    finished_at = datetime(2026, 8, 16, 10, tzinfo=UTC)
+    run = PipelineRun(
+        id=uuid4(),
+        pipeline_name="window_analysis",
+        status=PipelineRunStatus.RUNNING.value,
+        window_start=finished_at - timedelta(hours=1),
+        window_end=finished_at,
+        attempt=1,
+    )
+    batch_id = uuid4()
+    batch = ArtifactWrite(
+        id=batch_id,
+        artifact_type="window_analysis_batch",
+        artifact_key="000000",
+        schema_version="window_analysis_batch.v2",
+        input_hash="a" * 64,
+        payload={},
+        provider="test",
+        model="test",
+        token_usage={},
+    )
+    manifest = ArtifactWrite(
+        id=uuid4(),
+        artifact_type="window_analysis",
+        artifact_key="default",
+        schema_version="window_analysis.v2",
+        input_hash="b" * 64,
+        payload={"batch_artifact_ids": [str(batch_id)]},
+        provider="internal",
+        model="batched",
+        token_usage={},
+    )
+
+    batches, saved_manifest = await repository.persist_window_bundle(
+        run=run,
+        batches=[batch],
+        manifest=manifest,
+        finished_at=finished_at,
+        upper_cursor=None,
+    )
+
+    assert run.status == PipelineRunStatus.SUCCEEDED.value
+    assert database.commits == 1
+    assert len(database.added) == 2
+    assert isinstance(database.added[0], PipelineArtifact)
+    assert batches[0].artifact_key == "000000"
+    assert saved_manifest.artifact_key == "default"

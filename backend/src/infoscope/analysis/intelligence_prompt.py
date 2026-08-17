@@ -16,11 +16,16 @@ from infoscope.analysis.intelligence_schemas import (
 CLAIM_SYSTEM_PROMPT = """You extract independently verifiable Claims from supplied Events and
 their normalized Signals. Use no external facts. A Signal may support multiple Claims. Evidence
 IDs must be supplied Signal IDs belonging to the same Event. Existing updates may reference only
-provided Claim IDs. Never create Claim IDs and never decide Claim state. Return JSON only with
+provided Claim IDs; their evidence_signal_ids may contain only newly supplied Signal IDs and the
+selected candidate's existing evidence_signal_ids. Never create Claim IDs and never decide Claim
+state. Return JSON only with
 schema_version claim_extraction.v1, new_claims, existing_claim_updates, and unused_signal_ids.
 Each decision has decision_key, event_id, text, evidence_signal_ids, and rationale; updates also
-have existing_claim_id. The union of used and unused Signal IDs must cover every input Signal.
-Rationale is internal analysis and is never Evidence. Do not expose or infer private provenance."""
+have existing_claim_id. Emit unused_signal_ids as an empty array; the Backend derives the exact
+complement after validating Evidence references. Emit an existing_claim_update only when supplied
+new Evidence materially changes that Claim; never restate unchanged candidates. Keep text and
+rationale concise. Rationale
+is internal analysis and is never Evidence. Do not expose or infer private provenance."""
 
 TIMELINE_SYSTEM_PROMPT = """You reconstruct important Event evolution from supplied Events,
 Claims, and their normalized Evidence Signals. Ground every Timeline entry in the supplied
@@ -29,9 +34,12 @@ facts. Claim IDs and Evidence Signals must belong to the containing Event. Exist
 reference only supplied Timeline IDs. Never create Timeline IDs. Return JSON only with
 schema_version timeline_reconstruction.v1, new_entries, existing_entry_updates, and
 unused_claim_ids. Each decision has decision_key, event_id, occurred_at as an offset-aware ISO
-8601 time, summary, claim_ids, and rationale; updates also have existing_timeline_entry_id. The
-union of used and unused Claim IDs must cover every input Claim. Rationale is internal analysis
-and is never Evidence. Never infer or expose private source identities or hidden provenance."""
+8601 time, summary, claim_ids, and rationale; updates also have existing_timeline_entry_id.
+Rationale is internal analysis and is never Evidence. Emit unused_claim_ids as an empty array; the
+Backend derives the exact complement after validating Claim references. Emit an
+existing_entry_update only for a material change and never restate unchanged candidates. Keep
+summary and rationale concise. Never infer or
+expose private source identities or hidden provenance."""
 
 CONFLICT_SYSTEM_PROMPT = """You identify semantic conflicts from supplied Events, Claims, and
 their restricted Evidence Signals. A conflict is either two or more mutually inconsistent Claims,
@@ -42,10 +50,12 @@ IDs. Never create Conflict IDs and never decide Claim or Event state. Existing u
 append-only assertions: omitted historical relations are not removed. Return JSON only with
 schema_version conflict_analysis.v1, new_conflicts, existing_conflict_updates, and
 unconflicted_claim_ids. Each decision has decision_key, event_id, summary, claim_ids,
-evidence_signal_ids, and rationale; updates also have existing_conflict_id. Every input Claim must
-appear in at least one decision or unconflicted_claim_ids. unconflicted means no new or updated
-conflict in this run and never resolves a historical Conflict. Rationale is internal audit context,
-not Evidence. Never infer timestamps, source identities, or hidden provenance."""
+evidence_signal_ids, and rationale; updates also have existing_conflict_id. Only put Claims with a
+semantic conflict in decisions; existing updates are append-only. Rationale is internal audit
+context, not Evidence. Emit unconflicted_claim_ids as an empty array; the Backend derives the exact
+complement after validating Conflict references. Emit an existing_conflict_update only for a
+materially new contradiction and never restate unchanged candidates. Keep summary and rationale
+concise. Never infer timestamps, source identities, or hidden provenance."""
 
 BASE_ANALYSIS_SYSTEM_PROMPT = """You produce user-independent Base Analysis for supplied Events
 from their already-persisted Claims, Timeline, Conflicts, and restricted Evidence. Summarize only
@@ -55,10 +65,12 @@ write why-it-matters copy, or decide Event or Claim state. Return JSON only with
 base_analysis.v1, new_analyses, and existing_analysis_updates. Each decision has decision_key,
 event_id, summary, event_type, importance, topics, entities, and rationale; updates also have
 existing_base_analysis_id. Importance is exactly low, medium, high, or critical and is independent
-of any user. event_type and entity_type are stable lowercase slugs. Return exactly one decision for
-every supplied Event. New decisions are only for Events without an existing candidate; updates
-must reference the supplied candidate for that Event. Rationale is internal audit context and is
-never Evidence. Never infer timestamps, source identities, hidden provenance, or external facts."""
+of any user. event_type and entity_type are stable lowercase slugs. Every entities item contains
+exactly two fields: name and entity_type. Never add entity_id, id, aliases, or any other entity
+field. Return exactly one decision for every supplied Event. New decisions are only for Events
+without an existing candidate; updates must reference the supplied candidate for that Event.
+Rationale is internal audit context and is never Evidence. Never infer timestamps, source
+identities, hidden provenance, or external facts."""
 
 
 def build_claim_prompt(

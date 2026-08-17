@@ -1129,6 +1129,125 @@
         "title": "MaintenanceStatusResponse",
         "type": "object"
       },
+      "ModelOption": {
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "id": {
+            "enum": [
+              "deepseek-v4-flash",
+              "deepseek-v4-pro",
+              "gpt-5.5",
+              "DeepSeek-V4-Flash-0731",
+              "Kimi-K3",
+              "Qwen3.8-Max"
+            ],
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "available"
+        ],
+        "title": "ModelOption",
+        "type": "object"
+      },
+      "ModelSelection": {
+        "additionalProperties": false,
+        "properties": {
+          "model_id": {
+            "enum": [
+              "deepseek-v4-flash",
+              "deepseek-v4-pro",
+              "gpt-5.5",
+              "DeepSeek-V4-Flash-0731",
+              "Kimi-K3",
+              "Qwen3.8-Max"
+            ],
+            "title": "Model Id",
+            "type": "string"
+          },
+          "source_id": {
+            "enum": [
+              "deepseek_official",
+              "gpt_5_5",
+              "ai_ping"
+            ],
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "model_id"
+        ],
+        "title": "ModelSelection",
+        "type": "object"
+      },
+      "ModelSettingsResponse": {
+        "properties": {
+          "selection": {
+            "$ref": "#/components/schemas/ModelSelection"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/ModelSourceOption"
+            },
+            "title": "Sources",
+            "type": "array"
+          }
+        },
+        "required": [
+          "selection",
+          "sources"
+        ],
+        "title": "ModelSettingsResponse",
+        "type": "object"
+      },
+      "ModelSourceOption": {
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "id": {
+            "enum": [
+              "deepseek_official",
+              "gpt_5_5",
+              "ai_ping"
+            ],
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/ModelOption"
+            },
+            "title": "Models",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "available",
+          "models"
+        ],
+        "title": "ModelSourceOption",
+        "type": "object"
+      },
       "NowResponse": {
         "properties": {
           "items": {
@@ -2978,6 +3097,162 @@
         "summary": "Get Current Session",
         "tags": [
           "auth"
+        ]
+      }
+    },
+    "/api/v1/settings/models": {
+      "get": {
+        "operationId": "get_model_settings_api_v1_settings_models_get",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "is_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelSettingsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Model Settings",
+        "tags": [
+          "settings"
+        ]
+      },
+      "put": {
+        "operationId": "update_model_settings_api_v1_settings_models_put",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "is_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelSelection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelSettingsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Update Model Settings",
+        "tags": [
+          "settings"
         ]
       }
     }

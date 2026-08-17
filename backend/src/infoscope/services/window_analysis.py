@@ -8,14 +8,19 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
-from uuid import UUID
+from uuid import UUID, uuid4
+
+from sqlalchemy.exc import SQLAlchemyError
 
 from infoscope.analysis.client import AnalysisError
 from infoscope.analysis.schemas import (
-    SCHEMA_VERSION,
+    BATCH_SCHEMA_VERSION,
+    MANIFEST_SCHEMA_VERSION,
     AnalysisResponse,
     AnalysisSignal,
     TokenUsage,
+    WindowAnalysisBatchArtifact,
+    WindowAnalysisManifest,
     WindowAnalysisPayload,
 )
 from infoscope.models import (
@@ -27,10 +32,15 @@ from infoscope.models import (
 )
 from infoscope.pipeline import AcquisitionCursor, LogicalWindow, completed_windows
 from infoscope.services.acquisition import AcquisitionRepository, cursor_for
-from infoscope.services.pipeline import PipelineRepository
+from infoscope.services.pipeline import (
+    ArtifactWrite,
+    BatchCacheWrite,
+    PipelineRepository,
+)
 
 PIPELINE_NAME = "window_analysis"
 ARTIFACT_TYPE = "window_analysis"
+BATCH_ARTIFACT_TYPE = "window_analysis_batch"
 logger = logging.getLogger("infoscope.pipeline.window_analysis")
 
 
@@ -66,8 +76,10 @@ class WindowAnalysisRunner:
         client: AnalysisClientProtocol,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
         raw_page_size: int = 500,
-        max_signals: int = 200,
+        max_signals: int = 50,
         max_input_chars: int = 100_000,
+        max_batches: int = 64,
+        batch_concurrency: int = 3,
     ) -> None:
         self.acquisition = acquisition
         self.pipeline = pipeline
@@ -79,9 +91,15 @@ class WindowAnalysisRunner:
             raise ValueError("max_signals must be positive")
         if max_input_chars <= 0:
             raise ValueError("max_input_chars must be positive")
+        if max_batches <= 0:
+            raise ValueError("max_batches must be positive")
+        if batch_concurrency <= 0:
+            raise ValueError("batch_concurrency must be positive")
         self.raw_page_size = raw_page_size
         self.max_signals = max_signals
         self.max_input_chars = max_input_chars
+        self.max_batches = max_batches
+        self.batch_concurrency = batch_concurrency
 
     async def run_available(
         self,
@@ -201,26 +219,70 @@ class WindowAnalysisRunner:
         try:
             raws = await self._load_raws(window=window, lower_cursor=lower_cursor)
             signals = await self._analysis_signals(raws)
-            self._validate_input_size(signals)
-            response = await self._analyze(window=window, signals=signals)
-            self._validate_coverage(response.payload, signals)
+            batches = self._partition_signals(signals)
             input_hash = self._input_hash(window=window, signals=signals)
-            await self.pipeline.persist_artifact(
-                run=run,
-                artifact_type=ARTIFACT_TYPE,
-                schema_version=SCHEMA_VERSION,
-                input_hash=input_hash,
-                payload=response.payload.model_dump(mode="json"),
-                provider=response.provider,
-                model=response.model,
-                token_usage=response.token_usage.model_dump(mode="json"),
+            batch_input_hashes = [
+                self._batch_input_hash(
+                    window=window,
+                    signals=batch,
+                    batch_index=index,
+                    batch_count=len(batches),
+                    window_input_hash=input_hash,
+                )
+                for index, batch in enumerate(batches)
+            ]
+            responses = await self._analyze_batches(
+                window=window,
+                batches=batches,
+                batch_input_hashes=batch_input_hashes,
+                window_input_hash=input_hash,
             )
-            await self.pipeline.complete_run(
-                run,
+            batch_ids = [uuid4() for _ in batches]
+            batch_writes = [
+                ArtifactWrite(
+                    id=batch_ids[index],
+                    artifact_type=BATCH_ARTIFACT_TYPE,
+                    artifact_key=f"{index:06d}",
+                    schema_version=BATCH_SCHEMA_VERSION,
+                    input_hash=batch_input_hashes[index],
+                    payload=WindowAnalysisBatchArtifact(
+                        batch_index=index,
+                        batch_count=len(batches),
+                        window_input_hash=input_hash,
+                        model_output=responses[index].payload,
+                    ).model_dump(mode="json"),
+                    provider=responses[index].provider,
+                    model=responses[index].model,
+                    token_usage=responses[index].token_usage.model_dump(mode="json"),
+                )
+                for index, batch in enumerate(batches)
+            ]
+            manifest = ArtifactWrite(
+                id=uuid4(),
+                artifact_type=ARTIFACT_TYPE,
+                artifact_key="default",
+                schema_version=MANIFEST_SCHEMA_VERSION,
+                input_hash=input_hash,
+                payload=WindowAnalysisManifest(
+                    batch_artifact_ids=batch_ids,
+                    signal_count=len(signals),
+                    window_input_hash=input_hash,
+                ).model_dump(mode="json"),
+                provider="internal",
+                model="batched",
+                token_usage=self._combined_usage(responses).model_dump(mode="json"),
+            )
+            await self.pipeline.persist_window_bundle(
+                run=run,
+                batches=batch_writes,
+                manifest=manifest,
                 finished_at=self.clock(),
                 upper_cursor=cursor_for(raws[-1]) if raws else None,
             )
         except asyncio.CancelledError:
+            run_id = run.id
+            await self.pipeline.rollback()
+            run = await self.pipeline.get_run(run_id) or run
             await self.pipeline.fail_run(
                 run,
                 finished_at=self.clock(),
@@ -228,13 +290,21 @@ class WindowAnalysisRunner:
                 error_code="WINDOW_RUN_INTERRUPTED",
             )
             raise
-        except (AnalysisError, WindowAnalysisError) as error:
+        except (AnalysisError, WindowAnalysisError, SQLAlchemyError) as error:
+            run_id = run.id
+            await self.pipeline.rollback()
+            run = await self.pipeline.get_run(run_id) or run
             retry_at = self.clock() + timedelta(minutes=5)
+            error_code = (
+                error.error_code
+                if isinstance(error, (AnalysisError, WindowAnalysisError))
+                else "WINDOW_PERSISTENCE_FAILED"
+            )
             await self.pipeline.fail_run(
                 run,
                 finished_at=self.clock(),
                 next_retry_at=retry_at,
-                error_code=error.error_code,
+                error_code=error_code,
             )
             logger.warning(
                 "pipeline run failed pipeline=%s run_id=%s window_start=%s window_end=%s "
@@ -244,7 +314,7 @@ class WindowAnalysisRunner:
                 window.start.isoformat(),
                 window.end.isoformat(),
                 run.attempt,
-                error.error_code,
+                error_code,
                 retry_at.isoformat(),
             )
             return WindowRunResult(0, 1, 0, 0)
@@ -323,17 +393,40 @@ class WindowAnalysisRunner:
                 )
         return values
 
-    def _validate_input_size(self, signals: list[AnalysisSignal]) -> None:
-        if len(signals) > self.max_signals:
-            raise WindowAnalysisError("WINDOW_SIGNAL_LIMIT_EXCEEDED")
-        input_chars = sum(
+    def _partition_signals(
+        self, signals: list[AnalysisSignal]
+    ) -> list[list[AnalysisSignal]]:
+        if not signals:
+            return [[]]
+        batches: list[list[AnalysisSignal]] = []
+        current: list[AnalysisSignal] = []
+        current_chars = 0
+        for signal in signals:
+            signal_chars = self._signal_chars(signal)
+            if signal_chars > self.max_input_chars:
+                raise WindowAnalysisError("WINDOW_SIGNAL_INPUT_LIMIT_EXCEEDED")
+            if current and (
+                len(current) >= self.max_signals
+                or current_chars + signal_chars > self.max_input_chars
+            ):
+                batches.append(current)
+                current = []
+                current_chars = 0
+            current.append(signal)
+            current_chars += signal_chars
+        if current:
+            batches.append(current)
+        if len(batches) > self.max_batches:
+            raise WindowAnalysisError("WINDOW_BATCH_LIMIT_EXCEEDED")
+        return batches
+
+    @staticmethod
+    def _signal_chars(signal: AnalysisSignal) -> int:
+        return (
             len(signal.title or "")
             + len(signal.text)
             + len(json.dumps(signal.public_provenance, ensure_ascii=False))
-            for signal in signals
         )
-        if input_chars > self.max_input_chars:
-            raise WindowAnalysisError("WINDOW_INPUT_LIMIT_EXCEEDED")
 
     async def _analyze(
         self,
@@ -353,6 +446,128 @@ class WindowAnalysisRunner:
             model="none",
             token_usage=TokenUsage(),
         )
+
+    async def _analyze_batches(
+        self,
+        *,
+        window: LogicalWindow,
+        batches: list[list[AnalysisSignal]],
+        batch_input_hashes: list[str],
+        window_input_hash: str,
+    ) -> list[AnalysisResponse]:
+        if len(batch_input_hashes) != len(batches):
+            raise WindowAnalysisError("WINDOW_BATCH_HASH_COUNT_INVALID")
+        responses: list[AnalysisResponse | None] = [None] * len(batches)
+        cached = await self.pipeline.cached_window_batches(batch_input_hashes)
+        for index, input_hash in enumerate(batch_input_hashes):
+            item = cached.get(input_hash)
+            if item is None:
+                continue
+            try:
+                if item.schema_version != BATCH_SCHEMA_VERSION:
+                    raise ValueError("cache schema version mismatch")
+                payload = WindowAnalysisBatchArtifact.model_validate(item.payload)
+                if (
+                    payload.batch_index != index
+                    or payload.batch_count != len(batches)
+                    or payload.window_input_hash != window_input_hash
+                ):
+                    raise ValueError("cache batch identity mismatch")
+                self._validate_coverage(payload.model_output, batches[index])
+                responses[index] = AnalysisResponse(
+                    payload=payload.model_output,
+                    provider=item.provider,
+                    model=item.model,
+                    token_usage=TokenUsage.model_validate(item.token_usage),
+                )
+            except ValueError as error:
+                raise WindowAnalysisError("WINDOW_BATCH_CACHE_INVALID") from error
+            logger.info(
+                "pipeline batch reused pipeline=%s window_start=%s window_end=%s "
+                "batch_index=%d batch_count=%d signals=%d",
+                PIPELINE_NAME,
+                window.start.isoformat(),
+                window.end.isoformat(),
+                index,
+                len(batches),
+                len(batches[index]),
+            )
+
+        async def analyze_one(index: int, batch: list[AnalysisSignal]) -> AnalysisResponse:
+            logger.info(
+                "pipeline batch started pipeline=%s window_start=%s window_end=%s "
+                "batch_index=%d batch_count=%d signals=%d",
+                PIPELINE_NAME,
+                window.start.isoformat(),
+                window.end.isoformat(),
+                index,
+                len(batches),
+                len(batch),
+            )
+            response = await self._analyze(window=window, signals=batch)
+            self._validate_coverage(response.payload, batch)
+            logger.info(
+                "pipeline batch completed pipeline=%s window_start=%s window_end=%s "
+                "batch_index=%d batch_count=%d signals=%d",
+                PIPELINE_NAME,
+                window.start.isoformat(),
+                window.end.isoformat(),
+                index,
+                len(batches),
+                len(batch),
+            )
+            return response
+
+        missing = [index for index, response in enumerate(responses) if response is None]
+
+        async def cache_completed(
+            indexes: list[int], completed: list[AnalysisResponse]
+        ) -> None:
+            cache_writes: list[BatchCacheWrite] = []
+            for index, response in zip(indexes, completed, strict=True):
+                responses[index] = response
+                cache_payload = WindowAnalysisBatchArtifact(
+                    batch_index=index,
+                    batch_count=len(batches),
+                    window_input_hash=window_input_hash,
+                    model_output=response.payload,
+                )
+                cache_writes.append(
+                    BatchCacheWrite(
+                        input_hash=batch_input_hashes[index],
+                        schema_version=BATCH_SCHEMA_VERSION,
+                        payload=cache_payload.model_dump(mode="json"),
+                        provider=response.provider,
+                        model=response.model,
+                        token_usage=response.token_usage.model_dump(mode="json"),
+                    )
+                )
+            await self.pipeline.persist_window_batch_cache(cache_writes)
+
+        for offset in range(0, len(missing), self.batch_concurrency):
+            indexes = missing[offset : offset + self.batch_concurrency]
+            tasks = [
+                asyncio.create_task(analyze_one(index, batches[index])) for index in indexes
+            ]
+            try:
+                completed = list(await asyncio.gather(*tasks))
+            except BaseException:
+                for task in tasks:
+                    if not task.done():
+                        task.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
+                successful_indexes: list[int] = []
+                successful_responses: list[AnalysisResponse] = []
+                for index, task in zip(indexes, tasks, strict=True):
+                    if not task.cancelled() and task.exception() is None:
+                        successful_indexes.append(index)
+                        successful_responses.append(task.result())
+                await cache_completed(successful_indexes, successful_responses)
+                raise
+            await cache_completed(indexes, completed)
+        if any(response is None for response in responses):
+            raise WindowAnalysisError("WINDOW_BATCH_RESPONSE_MISSING")
+        return [response for response in responses if response is not None]
 
     @staticmethod
     def _validate_coverage(
@@ -392,3 +607,35 @@ class WindowAnalysisRunner:
             separators=(",", ":"),
         )
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _batch_input_hash(
+        *,
+        window: LogicalWindow,
+        signals: list[AnalysisSignal],
+        batch_index: int,
+        batch_count: int,
+        window_input_hash: str,
+    ) -> str:
+        document = {
+            "window": {"start": window.start.isoformat(), "end": window.end.isoformat()},
+            "batch_index": batch_index,
+            "batch_count": batch_count,
+            "window_input_hash": window_input_hash,
+            "signals": [signal.model_dump(mode="json") for signal in signals],
+        }
+        canonical = json.dumps(
+            document,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _combined_usage(responses: list[AnalysisResponse]) -> TokenUsage:
+        return TokenUsage(
+            prompt_tokens=sum(item.token_usage.prompt_tokens for item in responses),
+            completion_tokens=sum(item.token_usage.completion_tokens for item in responses),
+            total_tokens=sum(item.token_usage.total_tokens for item in responses),
+        )

@@ -8,6 +8,7 @@ from infoscope.models.acquisition import (
     RawInformation,
     Signal,
     SourceVisibility,
+    WindowAnalysisBatchCache,
 )
 from infoscope.models.ask import (
     AskComparisonArtifact,
@@ -45,6 +46,7 @@ from infoscope.models.intelligence import (
     TimelineEntry,
 )
 from infoscope.models.maintenance import MaintenanceRun
+from infoscope.models.model_preferences import UserModelPreference
 from infoscope.models.personalization import (
     PersonalizationArtifact,
     PersonalizationRun,
@@ -119,5 +121,7 @@ __all__ = [
     "TimelineClaim",
     "TimelineEntry",
     "User",
+    "UserModelPreference",
     "UserSession",
+    "WindowAnalysisBatchCache",
 ]

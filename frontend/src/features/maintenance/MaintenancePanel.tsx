@@ -42,7 +42,7 @@ export function MaintenancePanel() {
   }, [queryClient, terminalRun]);
 
   return (
-    <main className="main-content maintenance-panel" aria-labelledby="maintenance-heading">
+    <section className="maintenance-panel" aria-labelledby="maintenance-heading">
       <p className="editorial-label">MAINTENANCE</p>
       <h1 id="maintenance-heading">Keep the record current.</h1>
       <p className="maintenance-intro">Maintenance runs analyze the current record in the background. This page follows the server-managed cycle; it does not calculate a schedule locally.</p>
@@ -69,6 +69,6 @@ export function MaintenancePanel() {
       {runId !== null && run.isPending && <p className="maintenance-state" role="status">Waiting for the maintenance run…</p>}
       {runId !== null && run.isError && <><p className="auth-error" role="alert">We could not check this maintenance run. Please try again.</p><button className="text-button" onClick={() => { void run.refetch(); }} type="button">Retry status check</button></>}
       {runId !== null && run.data !== undefined && <p className="maintenance-state" role="status">Run {run.data.status}{run.data.phase === null ? "" : ` / ${run.data.phase}`}.</p>}
-    </main>
+    </section>
   );
 }

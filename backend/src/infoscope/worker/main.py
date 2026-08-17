@@ -10,7 +10,7 @@ from uuid import UUID, uuid5
 from uuid import UUID as UUIDType
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 
 from infoscope.analysis import (
     DeepSeekAnalysisClient,
@@ -20,6 +20,7 @@ from infoscope.analysis import (
 )
 from infoscope.analysis.ask_schemas import AskRequestSpec
 from infoscope.analysis.backwrite_schemas import BackwriteSnapshotSpec
+from infoscope.analysis.schemas import WindowAnalysisBatchArtifact, WindowAnalysisPayload
 from infoscope.config import get_settings
 from infoscope.db import close_database, ping_database, session_factory
 from infoscope.integrations.research.client import OpenClawConfig, OpenClawResearchClient
@@ -33,7 +34,15 @@ from infoscope.integrations.telegram import (
 )
 from infoscope.integrations.trendradar import TrendRadarCollector, load_trendradar_config
 from infoscope.integrations.trendradar.client import NewsNowClient, RSSClient
-from infoscope.models import AskRequest, BriefRun, MaintenanceRun, PipelineArtifact, User
+from infoscope.models import (
+    AskRequest,
+    BriefRun,
+    MaintenanceRun,
+    PipelineArtifact,
+    PipelineRun,
+    PipelineRunStatus,
+    User,
+)
 from infoscope.services.acquisition import AcquisitionRepository
 from infoscope.services.ask_comparison import AskComparisonRepository, AskComparisonRunner
 from infoscope.services.ask_event_reconciliation import (
@@ -72,6 +81,7 @@ from infoscope.services.maintenance import (
     MaintenanceRepository,
     MaintenanceRunner,
 )
+from infoscope.services.model_settings import analysis_config_for_user
 from infoscope.services.normalization import NormalizationResult, NormalizationRunner
 from infoscope.services.personalization import (
     PersonalizationRepository,
@@ -192,6 +202,8 @@ async def analyze_windows_once(
                 client=DeepSeekAnalysisClient(client=client, config=config),
                 max_signals=settings.window_analysis_max_signals,
                 max_input_chars=settings.window_analysis_max_input_chars,
+                max_batches=settings.window_analysis_max_batches,
+                batch_concurrency=settings.window_analysis_batch_concurrency,
             )
             if retry_run_id is not None:
                 result = await runner.retry_run(retry_run_id)
@@ -369,17 +381,24 @@ async def compare_ask_once(
     if (request_file is None) == (retry_request_id is None):
         raise ValueError("exactly one Ask comparison request input is required")
     settings = get_settings()
-    config = load_analysis_config(settings)
     async with httpx.AsyncClient(trust_env=False) as client:
         async with session_factory() as database:
+            if request_file is not None:
+                request_document = await asyncio.to_thread(request_file.read_text, "utf-8")
+                spec = AskRequestSpec.model_validate_json(request_document)
+                user_id = spec.user_id
+            else:
+                existing = await database.get(AskRequest, retry_request_id)
+                if existing is None:
+                    raise ValueError("Ask request not found")
+                user_id = existing.user_id
+            config = await analysis_config_for_user(database, user_id, settings)
             runner = AskComparisonRunner(
                 repository=AskComparisonRepository(database),
                 client=DeepSeekIntelligenceClient(client=client, config=config),
                 max_attempts=settings.ask_comparison_max_attempts,
             )
             if request_file is not None:
-                request_document = await asyncio.to_thread(request_file.read_text, "utf-8")
-                spec = AskRequestSpec.model_validate_json(request_document)
                 request = await runner.create_and_run(spec)
             else:
                 request = await runner.run(retry_request_id)  # type: ignore[arg-type]
@@ -441,9 +460,12 @@ async def run_ask_research_bridge_once(ask_id: UUID) -> None:
 
 async def run_ask_event_reconciliation_once(ask_id: UUID) -> None:
     settings = get_settings()
-    config = load_analysis_config(settings)
     async with httpx.AsyncClient(trust_env=False) as client:
         async with session_factory() as database:
+            request = await database.get(AskRequest, ask_id)
+            if request is None:
+                raise ValueError("Ask request not found")
+            config = await analysis_config_for_user(database, request.user_id, settings)
             request = await AskEventReconciliationRunner(
                 repository=AskEventReconciliationRepository(database),
                 client=DeepSeekIntelligenceClient(client=client, config=config),
@@ -460,9 +482,12 @@ async def run_ask_event_reconciliation_once(ask_id: UUID) -> None:
 
 async def run_ask_finalization_once(ask_id: UUID) -> None:
     settings = get_settings()
-    config = load_analysis_config(settings)
     async with httpx.AsyncClient(trust_env=False) as client:
         async with session_factory() as database:
+            request = await database.get(AskRequest, ask_id)
+            if request is None:
+                raise ValueError("Ask request not found")
+            config = await analysis_config_for_user(database, request.user_id, settings)
             request = await AskFinalizationRunner(
                 repository=AskFinalizationRepository(database),
                 client=DeepSeekIntelligenceClient(client=client, config=config),
@@ -560,13 +585,15 @@ async def run_backwrite_snapshot_once(snapshot_file: Path) -> None:
 
 async def personalize_user_once(user_id: UUID) -> None:
     settings = get_settings()
-    config = load_analysis_config(settings)
     async with httpx.AsyncClient(trust_env=False) as client:
         async with session_factory() as database:
+            config = await analysis_config_for_user(database, user_id, settings)
             runner = PersonalizationRunner(
                 PersonalizationRepository(database),
                 DeepSeekIntelligenceClient(client=client, config=config),
                 max_attempts=settings.personalization_max_attempts,
+                batch_size=settings.personalization_batch_size,
+                batch_concurrency=settings.personalization_batch_concurrency,
             )
             while True:
                 run = await runner.run_user(user_id)
@@ -604,9 +631,9 @@ async def process_personalization_queue_once() -> bool:
 
 async def generate_brief_once(user_id: UUID) -> None:
     settings = get_settings()
-    config = load_analysis_config(settings)
     async with httpx.AsyncClient(trust_env=False) as client:
         async with session_factory() as database:
+            config = await analysis_config_for_user(database, user_id, settings)
             runner = BriefRunner(
                 BriefRepository(database),
                 DeepSeekIntelligenceClient(client=client, config=config),
@@ -677,12 +704,36 @@ async def reconcile_window_artifacts_once() -> None:
             (
                 await database.execute(
                     select(PipelineArtifact)
-                    .where(PipelineArtifact.artifact_type == "window_analysis")
-                    .order_by(PipelineArtifact.created_at, PipelineArtifact.id)
+                    .join(PipelineRun, PipelineRun.id == PipelineArtifact.pipeline_run_id)
+                    .where(
+                        PipelineRun.status == PipelineRunStatus.SUCCEEDED.value,
+                        or_(
+                            and_(
+                                PipelineArtifact.artifact_type == "window_analysis",
+                                PipelineArtifact.schema_version == "window_analysis.v1",
+                            ),
+                            and_(
+                                PipelineArtifact.artifact_type == "window_analysis_batch",
+                                PipelineArtifact.schema_version
+                                == "window_analysis_batch.v2",
+                            ),
+                        ),
+                    )
+                    .order_by(
+                        PipelineRun.window_start,
+                        PipelineArtifact.artifact_key,
+                        PipelineArtifact.id,
+                    )
                 )
             ).scalars()
         )
     for window in windows:
+        if window.artifact_type == "window_analysis_batch":
+            payload = WindowAnalysisBatchArtifact.model_validate(window.payload).model_output
+        else:
+            payload = WindowAnalysisPayload.model_validate(window.payload)
+        if not payload.signal_analyses:
+            continue
         try:
             reconstruction = await _derived_artifact(window.id, "event_reconstruction")
         except MaintenanceError:
@@ -827,6 +878,7 @@ async def run(
     analyze_windows: bool = False,
     retry_window_run: UUID | None = None,
     replay_window_run: UUID | None = None,
+    reconcile_windows: bool = False,
     reconstruct_window_artifact: UUID | None = None,
     extract_claims_artifact: UUID | None = None,
     reconstruct_timeline_artifact: UUID | None = None,
@@ -842,7 +894,9 @@ async def run(
     process_ask_queue: bool = False,
     process_maintenance_queue: bool = False,
     process_personalization_queue: bool = False,
+    personalize_user: UUID | None = None,
     process_brief_queue: bool = False,
+    generate_brief_user: UUID | None = None,
     backwrite_snapshot_file: Path | None = None,
 ) -> None:
     settings = get_settings()
@@ -869,6 +923,8 @@ async def run(
                     retry_run_id=retry_window_run,
                     replay_run_id=replay_window_run,
                 )
+            if reconcile_windows:
+                await reconcile_window_artifacts_once()
             if reconstruct_window_artifact is not None:
                 await reconstruct_event_once(reconstruct_window_artifact)
             if extract_claims_artifact is not None:
@@ -902,11 +958,15 @@ async def run(
                     await process_personalization_queue_once()
                 except Exception:
                     logger.exception("Personalization queue stage failed")
+            if personalize_user is not None:
+                await personalize_user_once(personalize_user)
             if process_brief_queue:
                 try:
                     await process_brief_queue_once()
                 except Exception:
                     logger.exception("Brief queue stage failed")
+            if generate_brief_user is not None:
+                await generate_brief_once(generate_brief_user)
             if process_maintenance_queue:
                 try:
                     await process_maintenance_queue_once()
@@ -925,6 +985,7 @@ async def run(
                 or analyze_windows
                 or retry_window_run is not None
                 or replay_window_run is not None
+                or reconcile_windows
                 or reconstruct_window_artifact is not None
                 or extract_claims_artifact is not None
                 or reconstruct_timeline_artifact is not None
@@ -938,6 +999,8 @@ async def run(
                 or ask_event_reconciliation is not None
                 or ask_finalization is not None
                 or backwrite_snapshot_file is not None
+                or personalize_user is not None
+                or generate_brief_user is not None
             ):
                 return
             if ask_processed:
@@ -1001,6 +1064,11 @@ def parse_args() -> argparse.Namespace:
         type=UUID,
         metavar="RUN_ID",
         help="Replay one terminal Window Analysis run without recollection",
+    )
+    parser.add_argument(
+        "--reconcile-windows",
+        action="store_true",
+        help="Complete Event and fact reconstruction for successful Window Analysis batches",
     )
     parser.add_argument(
         "--reconstruct-window-artifact",
@@ -1092,9 +1160,21 @@ def parse_args() -> argparse.Namespace:
         help="Continuously process users awaiting Personalization refresh",
     )
     parser.add_argument(
+        "--personalize-user",
+        type=UUID,
+        metavar="USER_ID",
+        help="Run or retry Personalization for one ready user and exit",
+    )
+    parser.add_argument(
         "--process-brief-queue",
         action="store_true",
         help="Continuously generate Briefs for completed Personalization snapshots",
+    )
+    parser.add_argument(
+        "--generate-brief-user",
+        type=UUID,
+        metavar="USER_ID",
+        help="Run or retry Brief generation for one ready user and exit",
     )
     parser.add_argument(
         "--backwrite-snapshot-file",
@@ -1122,6 +1202,7 @@ def main() -> int:
                 analyze_windows=args.analyze_windows,
                 retry_window_run=args.retry_window_run,
                 replay_window_run=args.replay_window_run,
+                reconcile_windows=args.reconcile_windows,
                 reconstruct_window_artifact=args.reconstruct_window_artifact,
                 extract_claims_artifact=args.extract_claims_artifact,
                 reconstruct_timeline_artifact=args.reconstruct_timeline_artifact,
@@ -1137,7 +1218,9 @@ def main() -> int:
                 process_ask_queue=args.process_ask_queue,
                 process_maintenance_queue=args.process_maintenance_queue,
                 process_personalization_queue=args.process_personalization_queue,
+                personalize_user=args.personalize_user,
                 process_brief_queue=args.process_brief_queue,
+                generate_brief_user=args.generate_brief_user,
                 backwrite_snapshot_file=args.backwrite_snapshot_file,
             )
         )

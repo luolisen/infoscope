@@ -3,11 +3,13 @@ from uuid import uuid4
 
 import httpx
 
+from infoscope.analysis.ask_schemas import AskComparisonPayload
 from infoscope.analysis.config import AnalysisConfig
 from infoscope.analysis.intelligence_client import DeepSeekIntelligenceClient
 from infoscope.analysis.intelligence_schemas import (
     BaseAnalysisClaimInput,
     BaseAnalysisConflictInput,
+    BaseAnalysisPayload,
     BaseAnalysisTimelineInput,
     ClaimTimelineInput,
     ConflictClaimInput,
@@ -16,7 +18,9 @@ from infoscope.analysis.intelligence_schemas import (
     EventClaimInput,
     EventConflictInput,
     EventTimelineInput,
+    TimelineReconstructionPayload,
 )
+from infoscope.analysis.personalization_schemas import PersonalizationPayload
 from infoscope.analysis.schemas import AnalysisSignal
 
 
@@ -29,6 +33,29 @@ def _config() -> AnalysisConfig:
         max_retries=0,
         max_tokens=1000,
     )
+
+
+def test_personalization_repair_prompt_freezes_exact_decision_keys() -> None:
+    instruction = DeepSeekIntelligenceClient._repair_instruction(
+        "PERSONALIZATION_SCHEMA_INVALID",
+        payload_type=PersonalizationPayload,
+    )
+
+    assert instruction is not None
+    assert "why_it_matters" in instruction
+    assert "trailing colon" in instruction
+    assert "never omit a required key" in instruction
+
+
+def test_ask_comparison_repair_prompt_rejects_invented_citation_fields() -> None:
+    instruction = DeepSeekIntelligenceClient._repair_instruction(
+        "ANALYSIS_SCHEMA_INVALID",
+        payload_type=AskComparisonPayload,
+    )
+
+    assert instruction is not None
+    assert "timeline_entry_ids" in instruction
+    assert "Never output status, citations, cited_ids" in instruction
 
 
 async def test_intelligence_client_parses_claim_and_timeline_contracts() -> None:
@@ -241,6 +268,11 @@ async def test_intelligence_client_parses_claim_and_timeline_contracts() -> None
     assert timeline_response.payload.new_entries[0].claim_ids == [claim_id]
     assert conflict_response.payload.new_conflicts[0].claim_ids == [claim_id]
     assert base_response.payload.new_analyses[0].importance == "high"
+    assert all(
+        request["messages"][2]["content"]
+        == "Return exactly one valid json object and no prose."
+        for request in requests
+    )
     timeline_prompt = requests[1]["messages"][1]["content"]
     assert '"title":"Event"' in timeline_prompt
     assert '"text":"Text"' in timeline_prompt
@@ -257,4 +289,152 @@ async def test_intelligence_client_parses_claim_and_timeline_contracts() -> None
         "published_at": None,
         "sanitized_text": "Sanitized text",
         "signal_id": str(signal_id),
+    }
+
+
+async def test_intelligence_retry_disables_thinking_and_adds_truncation_repair() -> None:
+    event_id, signal_id = uuid4(), uuid4()
+    requests: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(json.loads(request.content))
+        if len(requests) == 1:
+            return httpx.Response(
+                200,
+                request=request,
+                json={
+                    "choices": [
+                        {"finish_reason": "length", "message": {"content": "{"}}
+                    ]
+                },
+            )
+        return httpx.Response(
+            200,
+            request=request,
+            json={
+                "model": "deepseek-v4-flash",
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {
+                            "content": json.dumps(
+                                {
+                                    "schema_version": "claim_extraction.v1",
+                                    "new_claims": [],
+                                    "existing_claim_updates": [],
+                                    "unused_signal_ids": [str(signal_id)],
+                                }
+                            )
+                        },
+                    }
+                ],
+                "usage": {},
+            },
+        )
+
+    config = AnalysisConfig(
+        api_base_url="https://api.deepseek.com",
+        model="deepseek-v4-flash",
+        api_keys=("first", "second"),
+        timeout_seconds=10,
+        max_retries=1,
+        max_tokens=16_384,
+        supports_deepseek_thinking=True,
+        provider="deepseek",
+    )
+    signal = AnalysisSignal(
+        signal_id=signal_id,
+        title="Evidence",
+        text="Evidence text.",
+        published_at=None,
+        source_type="web",
+        evidence_visibility="public",
+        public_provenance=None,
+    )
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as transport:
+        response = await DeepSeekIntelligenceClient(
+            client=transport, config=config
+        ).extract_claims(
+            events=[
+                EventClaimInput(
+                    event_id=event_id,
+                    title="Event",
+                    overview="Overview",
+                    signals=[signal],
+                )
+            ],
+            candidates=[],
+        )
+
+    assert response.payload.unused_signal_ids == [signal_id]
+    assert requests[0]["thinking"] == {"type": "disabled"}
+    assert requests[1]["thinking"] == {"type": "disabled"}
+    assert "previous response was truncated" not in requests[0]["messages"][1]["content"]
+    assert "previous response was truncated" in requests[1]["messages"][1]["content"]
+    assert requests[1]["messages"][1]["content"].count("Evidence text.") == 1
+
+
+def test_base_analysis_schema_repair_forbids_generated_entity_ids() -> None:
+    instruction = DeepSeekIntelligenceClient._repair_instruction(
+        "ANALYSIS_SCHEMA_INVALID", payload_type=BaseAnalysisPayload
+    )
+
+    assert instruction is not None
+    assert "exactly name and entity_type" in instruction
+    assert "never emit entity_id" in instruction
+
+
+def test_backend_generates_internal_decision_keys_and_drops_empty_timeline_entries() -> None:
+    normalized = DeepSeekIntelligenceClient._normalize_internal_decisions(
+        {
+            "new_entries": [
+                {"decision_key": "INVALID:VALUE", "claim_ids": []},
+                {"decision_key": "also invalid", "claim_ids": [str(uuid4())]},
+            ],
+            "existing_entry_updates": [
+                {"decision_key": "duplicate", "claim_ids": [str(uuid4())]}
+            ],
+            "unused_claim_ids": [],
+        },
+        payload_type=TimelineReconstructionPayload,
+    )
+
+    assert [item["decision_key"] for item in normalized["new_entries"]] == [
+        "timeline-0000"
+    ]
+    assert [item["decision_key"] for item in normalized["existing_entry_updates"]] == [
+        "timeline-0001"
+    ]
+
+
+def test_backend_normalizes_base_analysis_topics_and_entities() -> None:
+    normalized = DeepSeekIntelligenceClient._normalize_internal_decisions(
+        {
+            "new_analyses": [
+                {
+                    "decision_key": "ignored",
+                    "topics": [" AI ", "ai", *[f"topic-{index}" for index in range(20)]],
+                    "entities": [
+                        {
+                            "name": f" Entity {index} ",
+                            "entity_type": "organization",
+                            "entity_id": f"forbidden-{index}",
+                        }
+                        for index in range(40)
+                    ],
+                }
+            ],
+            "existing_analysis_updates": [],
+        },
+        payload_type=BaseAnalysisPayload,
+    )
+
+    decision = normalized["new_analyses"][0]
+    assert decision["decision_key"] == "base-0000"
+    assert len(decision["topics"]) == 12
+    assert decision["topics"][:2] == ["AI", "topic-0"]
+    assert len(decision["entities"]) == 32
+    assert decision["entities"][0] == {
+        "name": "Entity 0",
+        "entity_type": "organization",
     }

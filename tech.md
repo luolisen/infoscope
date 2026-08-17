@@ -424,6 +424,19 @@ FOCUS
 
 负责帐号、系统、界面和本地数据设置。
 
+模型来源属于系统设置。v1 使用用户级 `user_model_preferences`，Public API 为
+`GET/PUT /api/v1/settings/models`。浏览器只能看到固定 `source_id / model_id / label /
+available`；API Key、Base URL 与 AI Ping key group 永远只存在于 Backend 环境配置。
+
+用户选择用于 Personalization、Brief 与 Ask；共享事实层 Pipeline 和 Backwrite 使用部署级
+`ANALYSIS_*` 默认配置。模型目录固定为 Deepseek 官方（Pro/Flash）、GPT-5.5，以及
+AI Ping（DeepSeek V4 Flash 0731、Kimi K3、Qwen 3.8 Max）。
+
+Personalization runtime 将有序候选切成默认 10-Event 小批次、最多并发 2，并在 Backend
+按原顺序合并与完整覆盖校验后一次性持久化 immutable artifact。批次失败会取消同轮未完成
+请求；`ANALYSIS_REQUEST_REJECTED` 不进行 run-level 自动重试。用户模型输出上限由
+`USER_ANALYSIS_MAX_TOKENS` 单独限制，默认 16,384。
+
 ---
 
 # 六、来源与隐私
@@ -748,12 +761,52 @@ TG News 不直接生成 NOW、Event 或 Brief。
   Public API，也不供前端直接消费。
 - API、JSON Schema、Signal 覆盖或前置条件失败时停止后续窗口且不推进 checkpoint；
   本步骤不生成 Event / NOW / Brief，也不改写 Signal。
-- 超过 Signal 数量或输入字符上限的窗口在调用模型前以稳定错误码失败；在未冻结跨批聚合
-  Contract 前，不得静默截断或拆分逻辑窗口。
+- v1 对超过单次 Signal 数量或输入字符上限的窗口以稳定错误码失败；v2 仅按下述冻结合同
+  执行受限批次，仍不得静默截断或把逻辑窗口拆成互不关联的结果。
 - 同一窗口失败后必须复用原窗口和 lower cursor 创建递增 attempt；到达 `next_retry_at`
   后自动重试，也允许按 run UUID 立即 retry 或 replay terminal run，不重新采集 Raw。
 - 审计日志只记录 pipeline/run ID、窗口边界、attempt、计数、状态、稳定错误码与重试时间，
   禁止记录 Signal 正文、私密 provenance、Prompt、模型响应或 API Key。
+
+## Window Analysis Batched Execution v2（已冻结）
+
+- 逻辑窗口仍是 Raw `acquired_at` 的连续一小时 `[start, end)`；v2 只改变超大窗口的执行
+  方式，不改变窗口成员、watermark、checkpoint 或积压补偿语义。
+- Backend 按稳定 `(acquired_at, raw_id)` Raw 顺序及其 Signal 稳定顺序切分批次；每批同时
+  满足 `WINDOW_ANALYSIS_MAX_SIGNALS` 与 `WINDOW_ANALYSIS_MAX_INPUT_CHARS`，不得截断正文、
+  跳过 Signal 或调整模型可见顺序。
+- 默认每批最多 50 个 Signal，并以 `WINDOW_ANALYSIS_BATCH_CONCURRENCY=3` 有界并行；并行只
+  影响调用调度，artifact key、模型输入、持久化和下游消费顺序仍由 batch index 决定。
+- Window Analysis 是严格结构化抽取，固定关闭 provider thinking，避免推理 token 挤占 JSON
+  完整覆盖预算；每个 Signal 最多 4 个 category 与 3 个简洁 fact claim，Cluster 文本与关系
+  数量使用 Schema 固定上限，并使用 16384 的默认完整 JSON 输出预算。后续
+  Reconstruction/Claims 等推理阶段继续保留 thinking。
+- JSON/Schema/截断重试不得原样重复请求：Backend 仅把稳定失败类别转换为固定 repair
+  instruction，要求重新生成完整 JSON；不回传、记录或持久化上一轮模型正文，最终覆盖与
+  唯一性校验不得放宽。
+- 模型侧 `window_analysis_model.v2` 为每个 Signal 直接返回单值 `cluster_key | null`，Cluster
+  对象不重复输出成员数组；Backend 校验 Signal 全覆盖、key 完整对应和关系范围后，确定性
+  派生兼容下游的 cluster membership 与 unassigned 列表。
+- relationship 只是可选建议：少于两个不同 Signal 或引用非本 Cluster 成员的 relationship
+  在模型到 artifact 的转换边界被确定性丢弃，不得据此创建事实关系；Signal 全覆盖、单值
+  cluster assignment 与 cluster summary 完整对应仍严格失败。
+- 已通过 Schema、覆盖和隐私校验的 batch 可写入按 input hash 唯一的内部恢复 cache；cache
+  不是成功 artifact、不得被下游消费。Retry 复用 cache，仅在全部批次齐备时原子发布父窗口。
+- 一个 Signal 自身超过字符上限时以 `WINDOW_SIGNAL_INPUT_LIMIT_EXCEEDED` 失败；确定性批次
+  数超过 `WINDOW_ANALYSIS_MAX_BATCHES` 时以 `WINDOW_BATCH_LIMIT_EXCEEDED` 失败。
+- 每批独立生成严格覆盖本批全部 Signal 的 `window_analysis_batch.v2` artifact；artifact 保存
+  `batch_index / batch_count / window_input_hash / model_output`，并使用固定六位 batch key。
+- 全部批次成功后，所有 batch artifacts、唯一 `window_analysis.v2` manifest、父 run 成功状态
+  与 checkpoint 在同一数据库事务写入。任一模型、Schema、覆盖或持久化失败均不留下可供
+  下游消费的成功父窗口，也不推进 checkpoint。
+- Event Reconstruction 只消费成功父 run 的 batch artifacts，并按窗口、batch index 顺序运行；
+  后批次必须读取前批次已生成或更新的 Event candidates，以此完成跨批 Event 归并。v2
+  manifest 仅用于完整性与审计，不直接作为 Reconstruction 模型输入。
+- Retry / Replay 复用相同逻辑窗口和 lower cursor，并依据完整 `window_input_hash` 与 batch input
+  hash 保证边界稳定；不重新采集、不把失败批次静默标记为成功。
+- 每批继续执行 `private_sanitized` provenance 调用前阻断；日志只记录 run、窗口、batch index、
+  计数、状态和稳定错误码，不记录正文、Prompt、模型响应或凭据。
+- 不新增 Public API 或 Frontend Contract；NOW / Detail 仍只读取完整事实层结果。
 
 ## Event Reconstruction v1（已冻结）
 

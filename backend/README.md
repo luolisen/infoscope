@@ -155,15 +155,15 @@ uv run --project backend python -m infoscope.worker --replay-window-run RUN_ID
 ```
 
 The model receives normalized Signals only. Private Telegram provenance must
-already be absent and is rejected if it reaches this boundary. Validated JSON
-is persisted as an internal `window_analysis.v1` artifact before the pipeline
-checkpoint advances; it does not create Events, Signals, NOW data, or a Public
-API. API, schema, coverage, and prerequisite failures stop later windows and do
-not advance the checkpoint. Multiple local keys rotate across retries without
-being logged. `WINDOW_ANALYSIS_MAX_SIGNALS` and
-`WINDOW_ANALYSIS_MAX_INPUT_CHARS` reject oversized windows before any model
-request; splitting a logical window requires a separately frozen aggregation
-contract and is not performed implicitly.
+already be absent and is rejected if it reaches this boundary. Stable batches
+respect both `WINDOW_ANALYSIS_MAX_SIGNALS` and
+`WINDOW_ANALYSIS_MAX_INPUT_CHARS`; each produces a strict
+`window_analysis_batch.v2` artifact. All batches, the unique
+`window_analysis.v2` manifest, the successful parent run, and its checkpoint
+are committed together. A single oversized Signal or a window exceeding
+`WINDOW_ANALYSIS_MAX_BATCHES` fails closed. Event Reconstruction consumes only
+batch artifacts from successful parent runs, in batch order, so later batches
+can match Events created by earlier batches. This does not add a Public API.
 
 Normal window execution reuses the newest failed run for the same window once
 its `next_retry_at` is due, incrementing `attempt` without recollecting Raw.
@@ -171,6 +171,18 @@ Operators may retry a failed run immediately or replay any terminal run by UUID.
 Audit logs contain only pipeline/run identifiers, window boundaries, attempt,
 counts, status, stable error code, and retry time; Signal text and provenance
 are never logged.
+
+Optional user-selectable model sources are configured with `DRAGON_API_*` and
+`AIPING_API_*` variables in addition to the deployment-level `ANALYSIS_*`
+default. `GET/PUT /api/v1/settings/models` exposes only the fixed source/model
+identifiers and availability; credentials and endpoint URLs remain server-side.
+The user preference applies to Personalization, Brief, and Ask. Shared Event
+fact pipelines and Backwrite continue to use `ANALYSIS_*`.
+Personalization calls use ordered batches (`PERSONALIZATION_BATCH_SIZE`, default
+10) with bounded concurrency (`PERSONALIZATION_BATCH_CONCURRENCY`, default 2),
+then validate and persist one complete immutable snapshot. User-selected models
+use `USER_ANALYSIS_MAX_TOKENS` (default 16384) independently of the shared fact
+pipeline limit.
 
 Phase 4 Event Reconstruction consumes one successful `window_analysis.v1`
 artifact by opaque UUID:

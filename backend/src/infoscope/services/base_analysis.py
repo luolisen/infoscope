@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from typing import Protocol
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import SQLAlchemyError
 
 from infoscope.analysis.client import AnalysisError
@@ -20,6 +21,8 @@ from infoscope.analysis.intelligence_schemas import (
     ConflictEvidenceSignal,
     EventBaseAnalysisInput,
     ExistingBaseAnalysisCandidate,
+    ExistingBaseAnalysisUpdate,
+    NewBaseAnalysisDecision,
 )
 from infoscope.analysis.schemas import TokenUsage
 from infoscope.models import (
@@ -38,6 +41,7 @@ from infoscope.models import (
     Signal,
     TimelineClaim,
     TimelineEntry,
+    User,
 )
 from infoscope.services.claims_timeline import (
     IntelligenceError,
@@ -49,6 +53,7 @@ from infoscope.services.pipeline import PipelineRepository
 
 BASE_ANALYSIS_PIPELINE = "base_analysis"
 BASE_ANALYSIS_ARTIFACT = "base_analysis"
+logger = logging.getLogger("infoscope.pipeline.base_analysis")
 
 
 class BaseAnalysisClientProtocol(Protocol):
@@ -61,6 +66,13 @@ class BaseAnalysisClientProtocol(Protocol):
 
 
 class BaseAnalysisRepository(IntelligenceRepository):
+    async def request_personalization_refresh(self, requested_at: datetime) -> None:
+        await self.database.execute(
+            update(User)
+            .where(User.onboarding_completed.is_(True))
+            .values(personalization_update_requested_at=requested_at)
+        )
+
     async def event_ids_for_unconflicted_claims(self, claim_ids: set[UUID]) -> set[UUID]:
         if not claim_ids:
             return set()
@@ -410,6 +422,7 @@ class BaseAnalysisRunner(IntelligenceRunnerBase):
             event_ids = await self._source_event_ids(parsed)
             events, candidates = await self.repository.inputs(event_ids)
             response = await self._response(events, candidates)
+            response = self._normalize_decision_types(response, candidates)
             self._validate(response.payload, events, candidates)
             created, updated, attached, reused = await self.repository.persist(
                 run=run,
@@ -418,6 +431,8 @@ class BaseAnalysisRunner(IntelligenceRunnerBase):
                 response=response,
                 candidates={item.base_analysis_id: item for item in candidates},
             )
+            if not reused:
+                await self.repository.request_personalization_refresh(self.clock())
             await self.pipeline.complete_run(
                 run,
                 finished_at=self.clock(),
@@ -429,6 +444,58 @@ class BaseAnalysisRunner(IntelligenceRunnerBase):
         except (AnalysisError, IntelligenceError, SQLAlchemyError) as error:
             await self._fail(run, error)
             raise
+
+    @staticmethod
+    def _normalize_decision_types(
+        response: BaseAnalysisResponse,
+        candidates: list[ExistingBaseAnalysisCandidate],
+    ) -> BaseAnalysisResponse:
+        candidates_by_event = {candidate.event_id: candidate for candidate in candidates}
+        new_analyses: list[NewBaseAnalysisDecision] = []
+        updates: list[ExistingBaseAnalysisUpdate] = []
+        converted = 0
+        for decision in response.payload.new_analyses:
+            candidate = candidates_by_event.get(decision.event_id)
+            if candidate is None:
+                new_analyses.append(decision)
+            else:
+                converted += 1
+                updates.append(
+                    ExistingBaseAnalysisUpdate(
+                        **decision.model_dump(),
+                        existing_base_analysis_id=candidate.base_analysis_id,
+                    )
+                )
+        for decision in response.payload.existing_analysis_updates:
+            candidate = candidates_by_event.get(decision.event_id)
+            values = decision.model_dump(exclude={"existing_base_analysis_id"})
+            if candidate is None:
+                converted += 1
+                new_analyses.append(NewBaseAnalysisDecision(**values))
+            else:
+                if decision.existing_base_analysis_id != candidate.base_analysis_id:
+                    converted += 1
+                updates.append(
+                    ExistingBaseAnalysisUpdate(
+                        **values,
+                        existing_base_analysis_id=candidate.base_analysis_id,
+                    )
+                )
+        if converted:
+            logger.warning(
+                "pipeline base analysis decision types normalized converted=%d",
+                converted,
+            )
+        return response.model_copy(
+            update={
+                "payload": response.payload.model_copy(
+                    update={
+                        "new_analyses": new_analyses,
+                        "existing_analysis_updates": updates,
+                    }
+                )
+            }
+        )
 
     async def _source_event_ids(self, artifact: ConflictAnalysisArtifact) -> set[UUID]:
         decisions = [

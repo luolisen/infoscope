@@ -312,6 +312,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Model Settings */
+        get: operations["get_model_settings_api_v1_settings_models_get"];
+        /** Update Model Settings */
+        put: operations["update_model_settings_api_v1_settings_models_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -769,6 +787,51 @@ export interface components {
              * @enum {string}
              */
             status: "idle" | "running" | "failed";
+        };
+        /** ModelOption */
+        ModelOption: {
+            /** Available */
+            available: boolean;
+            /**
+             * Id
+             * @enum {string}
+             */
+            id: "deepseek-v4-flash" | "deepseek-v4-pro" | "gpt-5.5" | "DeepSeek-V4-Flash-0731" | "Kimi-K3" | "Qwen3.8-Max";
+            /** Label */
+            label: string;
+        };
+        /** ModelSelection */
+        ModelSelection: {
+            /**
+             * Model Id
+             * @enum {string}
+             */
+            model_id: "deepseek-v4-flash" | "deepseek-v4-pro" | "gpt-5.5" | "DeepSeek-V4-Flash-0731" | "Kimi-K3" | "Qwen3.8-Max";
+            /**
+             * Source Id
+             * @enum {string}
+             */
+            source_id: "deepseek_official" | "gpt_5_5" | "ai_ping";
+        };
+        /** ModelSettingsResponse */
+        ModelSettingsResponse: {
+            selection: components["schemas"]["ModelSelection"];
+            /** Sources */
+            sources: components["schemas"]["ModelSourceOption"][];
+        };
+        /** ModelSourceOption */
+        ModelSourceOption: {
+            /** Available */
+            available: boolean;
+            /**
+             * Id
+             * @enum {string}
+             */
+            id: "deepseek_official" | "gpt_5_5" | "ai_ping";
+            /** Label */
+            label: string;
+            /** Models */
+            models: components["schemas"]["ModelOption"][];
         };
         /** NowResponse */
         NowResponse: {
@@ -1889,6 +1952,117 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_model_settings_api_v1_settings_models_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                is_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelSettingsResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_model_settings_api_v1_settings_models_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                is_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModelSelection"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelSettingsResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };

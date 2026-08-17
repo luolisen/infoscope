@@ -36,10 +36,19 @@ class Settings(BaseSettings):
     analysis_api_keys: SecretStr | None = None
     analysis_timeout_seconds: float = Field(default=180, gt=0)
     analysis_max_retries: int = Field(default=3, ge=0, le=10)
-    analysis_max_tokens: int = Field(default=8192, gt=0, le=384000)
+    analysis_max_tokens: int = Field(default=16_384, gt=0, le=384000)
+    user_analysis_max_tokens: int = Field(default=16_384, gt=0, le=384000)
+    dragon_api_base_url: str | None = None
+    dragon_api_keys: SecretStr | None = None
+    dragon_model: str = "gpt-5.5"
+    aiping_api_base_url: str | None = None
+    aiping_api_keys_group_1: SecretStr | None = None
+    aiping_api_keys_group_2: SecretStr | None = None
     window_analysis_max_windows: int = Field(default=24, gt=0, le=168)
-    window_analysis_max_signals: int = Field(default=200, gt=0, le=5000)
+    window_analysis_max_signals: int = Field(default=50, gt=0, le=5000)
     window_analysis_max_input_chars: int = Field(default=100_000, gt=0, le=10_000_000)
+    window_analysis_max_batches: int = Field(default=64, gt=0, le=256)
+    window_analysis_batch_concurrency: int = Field(default=3, gt=0, le=8)
     event_reconstruction_candidate_limit: int = Field(default=100, gt=0, le=1000)
     research_openclaw_executable: str = "openclaw"
     research_agent_reach_executable: str = "agent-reach"
@@ -54,6 +63,8 @@ class Settings(BaseSettings):
     ask_finalization_max_attempts: int = Field(default=3, gt=0, le=10)
     backwrite_max_attempts: int = Field(default=3, gt=0, le=10)
     personalization_max_attempts: int = Field(default=3, gt=0, le=10)
+    personalization_batch_size: int = Field(default=10, gt=0, le=100)
+    personalization_batch_concurrency: int = Field(default=2, gt=0, le=8)
     brief_max_attempts: int = Field(default=3, gt=0, le=10)
 
     @property

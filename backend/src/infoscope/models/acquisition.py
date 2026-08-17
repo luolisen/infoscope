@@ -208,6 +208,7 @@ class PipelineArtifact(Base):
         UniqueConstraint(
             "pipeline_run_id",
             "artifact_type",
+            "artifact_key",
             name="uq_pipeline_artifacts_run_type",
         ),
         UniqueConstraint(
@@ -235,8 +236,33 @@ class PipelineArtifact(Base):
         ForeignKey("pipeline_artifacts.id", ondelete="RESTRICT"), nullable=True, index=True
     )
     artifact_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    artifact_key: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="default", server_default="default"
+    )
     schema_version: Mapped[str] = mapped_column(String(64), nullable=False)
     input_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    provider: Mapped[str] = mapped_column(String(64), nullable=False)
+    model: Mapped[str] = mapped_column(String(128), nullable=False)
+    token_usage: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class WindowAnalysisBatchCache(Base):
+    __tablename__ = "window_analysis_batch_cache"
+    __table_args__ = (
+        UniqueConstraint("input_hash", name="uq_window_analysis_batch_cache_input_hash"),
+        CheckConstraint(
+            "input_hash ~ '^[0-9a-f]{64}$'",
+            name="ck_window_analysis_batch_cache_input_hash",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    input_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    schema_version: Mapped[str] = mapped_column(String(64), nullable=False)
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     provider: Mapped[str] = mapped_column(String(64), nullable=False)
     model: Mapped[str] = mapped_column(String(128), nullable=False)
