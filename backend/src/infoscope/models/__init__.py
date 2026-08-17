@@ -45,6 +45,12 @@ from infoscope.models.intelligence import (
     TimelineClaim,
     TimelineEntry,
 )
+from infoscope.models.localization import (
+    EventLocalization,
+    EventLocalizationArtifact,
+    EventLocalizationBatch,
+    EventLocalizationRun,
+)
 from infoscope.models.maintenance import MaintenanceRun
 from infoscope.models.model_preferences import UserModelPreference
 from infoscope.models.personalization import (
@@ -96,6 +102,10 @@ __all__ = [
     "ConflictSignal",
     "EvidenceVisibility",
     "Event",
+    "EventLocalization",
+    "EventLocalizationArtifact",
+    "EventLocalizationBatch",
+    "EventLocalizationRun",
     "EventSignal",
     "EventSave",
     "MaintenanceRun",

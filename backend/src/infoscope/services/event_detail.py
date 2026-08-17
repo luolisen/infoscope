@@ -40,6 +40,7 @@ from infoscope.schemas.event_detail import (
     EvidencePlatform,
 )
 from infoscope.services.event_access import EventAccessPolicy
+from infoscope.services.event_localization import current_event_localizations
 
 
 class EventDetailService:
@@ -99,6 +100,8 @@ class EventDetailService:
                 )
             )
         )
+        localized = await current_event_localizations(self.database, [event])
+        display_title, display_overview = localized.get(event.id, (event.title, event.overview))
 
         claims = list(
             (
@@ -171,6 +174,8 @@ class EventDetailService:
         )
         return self._response(
             event=event,
+            display_title=display_title,
+            display_overview=display_overview,
             analysis=analysis,
             why_it_matters=personalized.why_it_matters,
             saved=saved,
@@ -193,6 +198,8 @@ class EventDetailService:
         self,
         *,
         event: Event,
+        display_title: str | None = None,
+        display_overview: str | None = None,
         analysis: BaseAnalysis,
         why_it_matters: str | None = None,
         saved: bool = False,
@@ -235,8 +242,8 @@ class EventDetailService:
             )
             return EventDetailResponse(
                 id=event.id,
-                title=event.title,
-                overview=event.overview,
+                title=display_title or event.title,
+                overview=display_overview or event.overview,
                 state=event.state,
                 display_time=self._utc(event.display_time),
                 updated_at=self._utc(event.updated_at),
