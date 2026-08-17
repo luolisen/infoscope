@@ -8,7 +8,7 @@ from typing import Protocol
 from uuid import UUID
 
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import inspect, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -421,10 +421,22 @@ class AskFinalizationRepository:
     async def persist_failure(
         self, prepared: PreparedFinalization, *, error_code: str, retryable: bool
     ) -> None:
+        finalization_identity = inspect(prepared.finalization).identity
+        run_identity = inspect(prepared.run).identity if prepared.run is not None else None
+        request_identity = inspect(prepared.request).identity
+        if (
+            finalization_identity is None
+            or run_identity is None
+            or request_identity is None
+        ):
+            raise AskFinalizationError("ASK_FINALIZATION_STATE_MISSING")
+        finalization_id = finalization_identity[0]
+        run_id = run_identity[0]
+        request_id = request_identity[0]
         await self.database.rollback()
-        finalization = await self.database.get(AskFinalization, prepared.finalization.id)
-        run = await self.database.get(AskFinalizationRun, prepared.run.id)
-        request = await self.database.get(AskRequest, prepared.request.id)
+        finalization = await self.database.get(AskFinalization, finalization_id)
+        run = await self.database.get(AskFinalizationRun, run_id)
+        request = await self.database.get(AskRequest, request_id)
         if finalization is None or run is None or request is None:
             raise AskFinalizationError("ASK_FINALIZATION_STATE_MISSING")
         finished = datetime.now(UTC)

@@ -927,13 +927,28 @@ Backend Internal `pipeline_artifacts`，再完成 run 与 checkpoint。API、Sch
 前置条件失败会停止后续窗口且不推进 checkpoint；本步骤不新增 Public API、前端 Contract、
 Event、NOW 或 Brief。
 
-超过 Signal 数量或输入字符上限的窗口必须在调用模型前以稳定错误码失败。在跨批聚合
-Contract 尚未共同冻结前，禁止静默截断输入或把一个逻辑窗口拆成互不关联的模型结果。
+v1 对超过单次 Signal 数量或输入字符上限的窗口以稳定错误码失败；v2 仅按下述冻结合同
+执行受限批次，仍禁止静默截断输入或把一个逻辑窗口拆成互不关联的模型结果。
 
 失败恢复复用同一窗口与 lower cursor，并创建递增 attempt；到达 `next_retry_at` 后自动
 重试，也可按 run UUID 立即 retry 或 replay terminal run，均不重新采集 Raw。审计日志
 仅包含 pipeline/run ID、窗口、attempt、计数、状态、稳定错误码和重试时间，不记录正文、
 私密 provenance、Prompt、模型响应或 API Key。
+
+### Window Analysis Batched Execution v2（已冻结）
+
+超大的一小时窗口不得再因总 Signal 数量超过单次模型上限而永久阻塞，也不得违反 v1 的
+完整覆盖和隐私边界。Backend 以稳定 Raw/Signal 顺序，在数量与字符双上限内确定性切分
+`window_analysis_batch.v2`。所有批次必须成功并在同一事务写入 batch artifacts、唯一 v2
+manifest、父 run 与 checkpoint；任一失败都不推进窗口。
+
+默认批次上限为 50 个 Signal，并允许最多 3 个有界并行模型调用；并行不得改变稳定 batch
+index、输出归属、持久化顺序或后续 Event Reconstruction 顺序。
+
+下游 Event Reconstruction 按 batch index 顺序消费成功父窗口的 batch artifacts。前批次形成
+的 Event 会成为后批次的 Existing Event candidates，因此跨批归并仍由严格模型输出与 Backend
+候选校验共同完成，而不是把一个窗口静默拆成互不关联的结果。单 Signal 超限、批次数超限、
+Schema/覆盖失败均使用稳定错误码 fail-closed。v2 不改变 Public API 或 Frontend Contract。
 
 ### Event Reconstruction v1（已冻结）
 
@@ -4005,6 +4020,31 @@ Glass 只用于：
 
 ---
 
+# 34.10 Model Settings v1（2026-08-17 冻结）
+
+SETTINGS 的“模型来源”是用户级系统偏好，不是 SCOPE/FOCUS：
+
+- `Deepseek官方` → `Pro` / `Flash`
+- `GPT-5.5` → `GPT-5.5`
+- `AI Ping` → `DeepSeek V4 Flash 0731` / `Kimi K3` / `Qwen 3.8 Max`
+
+Public API 固定为 `GET/PUT /api/v1/settings/models`。Frontend 只提交稳定的
+`source_id + model_id`，并完全使用 Generated Types。API 只返回固定目录、可用状态和当前
+选择，绝不返回 API Key、Base URL 或 key group。
+
+偏好只影响该用户的 Personalization、Brief 与 Ask 模型调用；共享的 Window Analysis、
+Event Reconstruction、Claims、Timeline、Conflicts、Base Analysis 与 Backwrite 继续使用
+部署级默认模型，避免单个用户改写所有用户共享的事实层。AI Ping 的 Kimi 与 Qwen 使用服务端
+隔离 key group。未配置的来源/模型必须显示不可用并 fail-closed，不能回退到其他模型。
+
+Personalization 对完整 canonical 100-Event snapshot 使用 Backend 固定顺序的内部小批次调用
+（默认每批 10 Events、并发 2），成功后仍合并为单一完整 `personalization.v1` artifact；任一
+批次失败即取消同轮未完成批次，不得留下部分 artifact。用户可选模型的单次输出上限固定为
+16,384 tokens，共享事实层的部署级上限独立配置。HTTP 400 request rejection 为不可重试，
+不得自动重复整轮请求。
+
+---
+
 # 35. 最高优先级红线
 
 1. **Event-first**：Event 是用户一级实体，Signal 是 Evidence / Observation。
@@ -4031,7 +4071,6 @@ Glass 只用于：
 
 以下不是冲突，而是下一阶段要基于真实代码 / 环境确定：
 
-- Analysis Model API 供应商与模型
 - Analysis Adapter SDK
 - TG News 当前源码输入输出
 - 精确 Database ER Model
@@ -4059,6 +4098,8 @@ Glass 只用于：
 - Research Integration v1：OpenClaw headless JSON envelope、Agent-Reach capability/doctor
   边界、严格事实快照、专用 Request/Run/Artifact/Source 表、`web_page / github_document`
   来源枚举、直接 HTTPS Fetcher、URL/SSRF/published_at/Raw 幂等与失败语义。
+- Model Settings v1：固定来源/模型目录、用户级适用范围、服务器端凭据隔离、不可用时
+  fail-closed，以及共享事实层继续使用部署级默认模型。
 
 未冻结前：
 

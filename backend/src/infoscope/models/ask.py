@@ -442,7 +442,9 @@ class AskFinalArtifact(Base):
     payload: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
     provider: Mapped[str | None] = mapped_column(String(64), nullable=True)
     model: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    token_usage: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    token_usage: Mapped[dict[str, object] | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

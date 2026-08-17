@@ -10,7 +10,12 @@ from infoscope.analysis.reconstruction_schemas import (
     EventReconstructionResponse,
     NewEventDecision,
 )
-from infoscope.analysis.schemas import SignalAnalysis, TokenUsage, WindowAnalysisPayload
+from infoscope.analysis.schemas import (
+    SignalAnalysis,
+    TokenUsage,
+    WindowAnalysisBatchArtifact,
+    WindowAnalysisPayload,
+)
 from infoscope.models import (
     EvidenceVisibility,
     PipelineArtifact,
@@ -225,6 +230,35 @@ async def test_reconstruction_persists_events_before_completing_run() -> None:
     assert result.events_created == 1
     assert result.signals_attached == 1
     assert client.calls == 1
+
+
+async def test_reconstruction_accepts_a_v2_window_batch_source() -> None:
+    artifact, source_run, signal = _source()
+    model_output = WindowAnalysisPayload.model_validate(artifact.payload)
+    artifact.artifact_type = "window_analysis_batch"
+    artifact.artifact_key = "000000"
+    artifact.schema_version = "window_analysis_batch.v2"
+    artifact.payload = WindowAnalysisBatchArtifact(
+        batch_index=0,
+        batch_count=1,
+        window_input_hash="d" * 64,
+        model_output=model_output,
+    ).model_dump(mode="json")
+    events = FakeEvents(artifact, source_run, signal)
+    pipeline = FakePipeline()
+    client = FakeClient(signal.id)
+    runner = EventReconstructionRunner(
+        events=events,  # type: ignore[arg-type]
+        pipeline=pipeline,  # type: ignore[arg-type]
+        client=client,
+        clock=lambda: datetime(2026, 8, 16, 10, tzinfo=UTC),
+    )
+
+    result = await runner.reconstruct(artifact.id)
+
+    assert result.events_created == 1
+    assert client.calls == 1
+    assert pipeline.events == ["start", "complete"]
 
 
 async def test_same_input_reuses_prior_artifact_without_model_call() -> None:

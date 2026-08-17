@@ -138,7 +138,7 @@ class IntelligenceRepository:
         ).scalar_one_or_none()
 
     async def claim_inputs(
-        self, event_ids: set[UUID]
+        self, event_ids: set[UUID], *, signal_ids: list[UUID] | None = None
     ) -> tuple[list[EventClaimInput], list[ExistingClaimCandidate]]:
         events = (
             list(
@@ -151,20 +151,31 @@ class IntelligenceRepository:
         )
         if {item.id for item in events} != event_ids:
             raise IntelligenceError("CLAIM_EVENT_MISSING")
+        signal_query = (
+            select(EventSignal.event_id, Signal)
+            .join(Signal, Signal.id == EventSignal.signal_id)
+            .where(EventSignal.event_id.in_(event_ids))
+        )
+        if signal_ids is not None:
+            signal_query = signal_query.where(EventSignal.signal_id.in_(signal_ids))
         rows = (
             (
-                await self.database.execute(
-                    select(EventSignal.event_id, Signal)
-                    .join(Signal, Signal.id == EventSignal.signal_id)
-                    .where(EventSignal.event_id.in_(event_ids))
-                )
+                await self.database.execute(signal_query)
             ).all()
             if event_ids
             else []
         )
         signals: dict[UUID, list[AnalysisSignal]] = {event_id: [] for event_id in event_ids}
-        for event_id, signal in rows:
-            signals[event_id].append(self._analysis_signal(signal))
+        if signal_ids is None:
+            for event_id, signal in rows:
+                signals[event_id].append(self._analysis_signal(signal))
+        else:
+            by_signal_id = {signal.id: (event_id, signal) for event_id, signal in rows}
+            if set(by_signal_id) != set(signal_ids):
+                raise IntelligenceError("CLAIM_INCREMENTAL_SIGNAL_MISSING")
+            for signal_id in signal_ids:
+                event_id, signal = by_signal_id[signal_id]
+                signals[event_id].append(self._analysis_signal(signal))
         claim_rows = (
             list(
                 (
@@ -1006,8 +1017,20 @@ class ClaimExtractionRunner(IntelligenceRunnerBase):
             except ValueError as error:
                 raise IntelligenceError("CLAIM_SOURCE_SCHEMA_INVALID") from error
             event_ids = {item.event_id for item in parsed.assignments}
-            events, candidates = await self.repository.claim_inputs(event_ids)
+            assigned_signal_ids = [
+                signal_id
+                for decision in [
+                    *parsed.model_output.new_events,
+                    *parsed.model_output.existing_event_updates,
+                ]
+                for signal_id in decision.signal_ids
+            ]
+            events, candidates = await self.repository.claim_inputs(
+                event_ids, signal_ids=assigned_signal_ids
+            )
             response = await self.client.extract_claims(events=events, candidates=candidates)
+            response = self._normalize_decisions(response, events, candidates)
+            response = self._normalize_coverage(response, events)
             self._validate(response.payload, events, candidates)
             created, updated, attached, reused = await self.repository.persist_claims(
                 run=run,
@@ -1033,6 +1056,117 @@ class ClaimExtractionRunner(IntelligenceRunnerBase):
             raise
 
     @staticmethod
+    def _normalize_decisions(
+        response: ClaimExtractionResponse,
+        events: list[EventClaimInput],
+        candidates: list[ExistingClaimCandidate],
+    ) -> ClaimExtractionResponse:
+        current_by_event = {
+            event.event_id: {signal.signal_id for signal in event.signals}
+            for event in events
+        }
+        candidates_by_id = {candidate.claim_id: candidate for candidate in candidates}
+        new_claims = []
+        dropped = filtered = 0
+        for decision in response.payload.new_claims:
+            current = current_by_event.get(decision.event_id)
+            if current is None:
+                new_claims.append(decision)
+                continue
+            evidence = [
+                signal_id
+                for signal_id in decision.evidence_signal_ids
+                if signal_id in current
+            ]
+            if not evidence:
+                dropped += 1
+                continue
+            if evidence != decision.evidence_signal_ids:
+                filtered += 1
+                decision = decision.model_copy(update={"evidence_signal_ids": evidence})
+            new_claims.append(decision)
+
+        updates = []
+        for decision in response.payload.existing_claim_updates:
+            candidate = candidates_by_id.get(decision.existing_claim_id)
+            current = current_by_event.get(decision.event_id)
+            if current is None:
+                updates.append(decision)
+                continue
+            if candidate is None or candidate.event_id != decision.event_id:
+                dropped += 1
+                continue
+            allowed = current | set(candidate.evidence_signal_ids)
+            evidence = [
+                signal_id
+                for signal_id in decision.evidence_signal_ids
+                if signal_id in allowed
+            ]
+            if not set(evidence) & current:
+                dropped += 1
+                continue
+            if evidence != decision.evidence_signal_ids:
+                filtered += 1
+                decision = decision.model_copy(update={"evidence_signal_ids": evidence})
+            updates.append(decision)
+
+        if dropped or filtered:
+            logger.warning(
+                "pipeline claim decisions normalized dropped=%d filtered=%d",
+                dropped,
+                filtered,
+            )
+        return response.model_copy(
+            update={
+                "payload": response.payload.model_copy(
+                    update={
+                        "new_claims": new_claims,
+                        "existing_claim_updates": updates,
+                    }
+                )
+            }
+        )
+
+    @staticmethod
+    def _normalize_coverage(
+        response: ClaimExtractionResponse, events: list[EventClaimInput]
+    ) -> ClaimExtractionResponse:
+        decisions = [
+            *response.payload.new_claims,
+            *response.payload.existing_claim_updates,
+        ]
+        supplied = {
+            signal.signal_id for event in events for signal in event.signals
+        }
+        used = {
+            value
+            for item in decisions
+            for value in item.evidence_signal_ids
+            if value in supplied
+        }
+        unused = [
+            signal.signal_id
+            for event in events
+            for signal in event.signals
+            if signal.signal_id not in used
+        ]
+        if unused != response.payload.unused_signal_ids:
+            logger.info(
+                "pipeline coverage normalized pipeline=%s supplied=%d used=%d unused=%d",
+                CLAIM_PIPELINE,
+                len(used) + len(unused),
+                len(used),
+                len(unused),
+            )
+        return response.model_copy(
+            update={
+                "payload": response.payload.model_copy(
+                    update={"unused_signal_ids": unused}
+                )
+            }
+        )
+
+    @staticmethod
     def _validate(
         payload: ClaimExtractionPayload,
         events: list[EventClaimInput],
@@ -1042,23 +1176,29 @@ class ClaimExtractionRunner(IntelligenceRunnerBase):
             item.event_id: {signal.signal_id for signal in item.signals} for item in events
         }
         expected = set().union(*event_signals.values()) if event_signals else set()
-        decisions = [*payload.new_claims, *payload.existing_claim_updates]
-        for item in decisions:
-            if (
-                item.event_id not in event_signals
-                or not set(item.evidence_signal_ids) <= event_signals[item.event_id]
+        for item in payload.new_claims:
+            if item.event_id not in event_signals or not set(item.evidence_signal_ids) <= (
+                event_signals[item.event_id]
             ):
                 raise IntelligenceError("CLAIM_EVIDENCE_INVALID")
-        if {value for item in decisions for value in item.evidence_signal_ids} | set(
-            payload.unused_signal_ids
-        ) != expected:
+        by_id = {item.claim_id: item for item in candidates}
+        for item in payload.existing_claim_updates:
+            candidate = by_id.get(item.existing_claim_id)
+            if candidate is None or candidate.event_id != item.event_id:
+                raise IntelligenceError("CLAIM_OUTSIDE_CANDIDATES")
+            allowed = event_signals.get(item.event_id, set()) | set(
+                candidate.evidence_signal_ids
+            )
+            if not set(item.evidence_signal_ids) <= allowed:
+                raise IntelligenceError("CLAIM_EVIDENCE_INVALID")
+        current_used = {
+            value
+            for item in [*payload.new_claims, *payload.existing_claim_updates]
+            for value in item.evidence_signal_ids
+            if value in expected
+        }
+        if current_used | set(payload.unused_signal_ids) != expected:
             raise IntelligenceError("CLAIM_SIGNAL_COVERAGE_INVALID")
-        by_id = {item.claim_id: item.event_id for item in candidates}
-        if any(
-            by_id.get(item.existing_claim_id) != item.event_id
-            for item in payload.existing_claim_updates
-        ):
-            raise IntelligenceError("CLAIM_OUTSIDE_CANDIDATES")
 
 
 class TimelineReconstructionRunner(IntelligenceRunnerBase):
@@ -1087,6 +1227,8 @@ class TimelineReconstructionRunner(IntelligenceRunnerBase):
             event_ids = {item.event_id for item in parsed.assignments}
             events, candidates = await self.repository.timeline_inputs(event_ids)
             response = await self.client.reconstruct_timeline(events=events, candidates=candidates)
+            response = self._normalize_decisions(response, events, candidates)
+            response = self._normalize_coverage(response, events)
             self._validate(response.payload, events, candidates)
             created, updated, attached, reused = await self.repository.persist_timeline(
                 run=run,
@@ -1106,6 +1248,97 @@ class TimelineReconstructionRunner(IntelligenceRunnerBase):
         except (AnalysisError, IntelligenceError, SQLAlchemyError) as error:
             await self._fail(run, error)
             raise
+
+    @staticmethod
+    def _normalize_decisions(
+        response: TimelineReconstructionResponse,
+        events: list[EventTimelineInput],
+        candidates: list[ExistingTimelineCandidate],
+    ) -> TimelineReconstructionResponse:
+        claims_by_event = {
+            event.event_id: {claim.claim_id for claim in event.claims}
+            for event in events
+        }
+        candidates_by_id = {
+            candidate.timeline_entry_id: candidate for candidate in candidates
+        }
+        new_entries = []
+        updates = []
+        dropped = filtered = 0
+        for decision in response.payload.new_entries:
+            allowed = claims_by_event.get(decision.event_id)
+            if allowed is None:
+                new_entries.append(decision)
+                continue
+            claim_ids = [claim_id for claim_id in decision.claim_ids if claim_id in allowed]
+            if not claim_ids:
+                dropped += 1
+                continue
+            if claim_ids != decision.claim_ids:
+                filtered += 1
+                decision = decision.model_copy(update={"claim_ids": claim_ids})
+            new_entries.append(decision)
+        for decision in response.payload.existing_entry_updates:
+            candidate = candidates_by_id.get(decision.existing_timeline_entry_id)
+            allowed = claims_by_event.get(decision.event_id)
+            if candidate is None or allowed is None or candidate.event_id != decision.event_id:
+                updates.append(decision)
+                continue
+            claim_ids = [claim_id for claim_id in decision.claim_ids if claim_id in allowed]
+            if not claim_ids:
+                dropped += 1
+                continue
+            if claim_ids != decision.claim_ids:
+                filtered += 1
+                decision = decision.model_copy(update={"claim_ids": claim_ids})
+            updates.append(decision)
+        if dropped or filtered:
+            logger.warning(
+                "pipeline timeline decisions normalized dropped=%d filtered=%d",
+                dropped,
+                filtered,
+            )
+        return response.model_copy(
+            update={
+                "payload": response.payload.model_copy(
+                    update={
+                        "new_entries": new_entries,
+                        "existing_entry_updates": updates,
+                    }
+                )
+            }
+        )
+
+    @staticmethod
+    def _normalize_coverage(
+        response: TimelineReconstructionResponse, events: list[EventTimelineInput]
+    ) -> TimelineReconstructionResponse:
+        decisions = [
+            *response.payload.new_entries,
+            *response.payload.existing_entry_updates,
+        ]
+        used = {value for item in decisions for value in item.claim_ids}
+        unused = [
+            claim.claim_id
+            for event in events
+            for claim in event.claims
+            if claim.claim_id not in used
+        ]
+        if unused != response.payload.unused_claim_ids:
+            logger.info(
+                "pipeline coverage normalized pipeline=%s supplied=%d used=%d unused=%d",
+                TIMELINE_PIPELINE,
+                len(used) + len(unused),
+                len(used),
+                len(unused),
+            )
+        return response.model_copy(
+            update={
+                "payload": response.payload.model_copy(
+                    update={"unused_claim_ids": unused}
+                )
+            }
+        )
 
     @staticmethod
     def _validate(
@@ -1166,6 +1399,8 @@ class ConflictAnalysisRunner(IntelligenceRunnerBase):
             event_ids.update(item.event_id for item in parsed.assignments)
             events, candidates = await self.repository.conflict_inputs(event_ids)
             response = await self.client.analyze_conflicts(events=events, candidates=candidates)
+            response = self._normalize_decisions(response, events, candidates)
+            response = self._normalize_coverage(response, events)
             self._validate(response.payload, events, candidates)
             candidate_map = {item.conflict_id: item for item in candidates}
             created, updated, attached, reused = await self.repository.persist_conflicts(
@@ -1186,6 +1421,134 @@ class ConflictAnalysisRunner(IntelligenceRunnerBase):
         except (AnalysisError, IntelligenceError, SQLAlchemyError) as error:
             await self._fail(run, error)
             raise
+
+    @staticmethod
+    def _normalize_decisions(
+        response: ConflictAnalysisResponse,
+        events: list[EventConflictInput],
+        candidates: list[ExistingConflictCandidate],
+    ) -> ConflictAnalysisResponse:
+        claims_by_event = {
+            event.event_id: {claim.claim_id for claim in event.claims}
+            for event in events
+        }
+        evidence_by_claim = {
+            claim.claim_id: {signal.signal_id for signal in claim.evidence_signals}
+            for event in events
+            for claim in event.claims
+        }
+        candidates_by_id = {candidate.conflict_id: candidate for candidate in candidates}
+
+        def normalized_relations(decision):
+            allowed_claims = claims_by_event.get(decision.event_id)
+            if allowed_claims is None:
+                return None
+            claim_ids = [
+                claim_id for claim_id in decision.claim_ids if claim_id in allowed_claims
+            ]
+            allowed_evidence = set().union(
+                *(evidence_by_claim[claim_id] for claim_id in claim_ids)
+            ) if claim_ids else set()
+            evidence_ids = [
+                signal_id
+                for signal_id in decision.evidence_signal_ids
+                if signal_id in allowed_evidence
+            ]
+            return claim_ids, evidence_ids
+
+        new_conflicts = []
+        updates = []
+        dropped = filtered = 0
+        for decision in response.payload.new_conflicts:
+            relations = normalized_relations(decision)
+            if relations is None:
+                new_conflicts.append(decision)
+                continue
+            claim_ids, evidence_ids = relations
+            if not claim_ids or (len(claim_ids) == 1 and not evidence_ids):
+                dropped += 1
+                continue
+            if (
+                claim_ids != decision.claim_ids
+                or evidence_ids != decision.evidence_signal_ids
+            ):
+                filtered += 1
+                decision = decision.model_copy(
+                    update={
+                        "claim_ids": claim_ids,
+                        "evidence_signal_ids": evidence_ids,
+                    }
+                )
+            new_conflicts.append(decision)
+        for decision in response.payload.existing_conflict_updates:
+            candidate = candidates_by_id.get(decision.existing_conflict_id)
+            relations = normalized_relations(decision)
+            if candidate is None or relations is None or candidate.event_id != decision.event_id:
+                updates.append(decision)
+                continue
+            claim_ids, evidence_ids = relations
+            if not claim_ids and not evidence_ids:
+                dropped += 1
+                continue
+            if (
+                claim_ids != decision.claim_ids
+                or evidence_ids != decision.evidence_signal_ids
+            ):
+                filtered += 1
+                decision = decision.model_copy(
+                    update={
+                        "claim_ids": claim_ids,
+                        "evidence_signal_ids": evidence_ids,
+                    }
+                )
+            updates.append(decision)
+        if dropped or filtered:
+            logger.warning(
+                "pipeline conflict decisions normalized dropped=%d filtered=%d",
+                dropped,
+                filtered,
+            )
+        return response.model_copy(
+            update={
+                "payload": response.payload.model_copy(
+                    update={
+                        "new_conflicts": new_conflicts,
+                        "existing_conflict_updates": updates,
+                    }
+                )
+            }
+        )
+
+    @staticmethod
+    def _normalize_coverage(
+        response: ConflictAnalysisResponse, events: list[EventConflictInput]
+    ) -> ConflictAnalysisResponse:
+        decisions = [
+            *response.payload.new_conflicts,
+            *response.payload.existing_conflict_updates,
+        ]
+        used = {value for item in decisions for value in item.claim_ids}
+        unconflicted = [
+            claim.claim_id
+            for event in events
+            for claim in event.claims
+            if claim.claim_id not in used
+        ]
+        if unconflicted != response.payload.unconflicted_claim_ids:
+            logger.info(
+                "pipeline coverage normalized pipeline=%s supplied=%d used=%d unconflicted=%d",
+                CONFLICT_PIPELINE,
+                len(used) + len(unconflicted),
+                len(used),
+                len(unconflicted),
+            )
+        return response.model_copy(
+            update={
+                "payload": response.payload.model_copy(
+                    update={"unconflicted_claim_ids": unconflicted}
+                )
+            }
+        )
 
     @staticmethod
     def _validate(

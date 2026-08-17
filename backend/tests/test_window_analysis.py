@@ -1,8 +1,14 @@
+import asyncio
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from uuid import uuid4
 
+import pytest
+
+from infoscope.analysis.client import AnalysisError
 from infoscope.analysis.schemas import (
     AnalysisResponse,
+    AnalysisSignal,
     SignalAnalysis,
     TokenUsage,
     WindowAnalysisPayload,
@@ -61,9 +67,9 @@ def _signal(
 
 
 class FakeAcquisition:
-    def __init__(self, raw: RawInformation, signal: Signal) -> None:
+    def __init__(self, raw: RawInformation, signal: Signal | list[Signal]) -> None:
         self.raw = raw
-        self.signal = signal
+        self.signals = signal if isinstance(signal, list) else [signal]
 
     async def earliest_raw_acquired_at(self):
         return datetime(2026, 8, 16, 9, tzinfo=UTC)
@@ -72,7 +78,7 @@ class FakeAcquisition:
         return [self.raw] if after is None else []
 
     async def list_signals_for_raw(self, raw_id):
-        return [self.signal]
+        return self.signals
 
 
 class FakePipeline:
@@ -80,6 +86,8 @@ class FakePipeline:
         self.events: list[str] = []
         self.failed_code: str | None = None
         self.previous = previous
+        self.batch_count: int | None = None
+        self.batch_cache: dict[str, object] = {}
 
     async def latest_successful_window_end(self, pipeline_name):
         return None
@@ -131,6 +139,33 @@ class FakePipeline:
     async def persist_artifact(self, **kwargs):
         self.events.append("artifact")
 
+    async def persist_window_bundle(
+        self, *, run, batches, manifest, finished_at, upper_cursor
+    ):
+        self.batch_count = len(batches)
+        self.events.extend(["artifact", "complete"])
+
+    async def cached_window_batches(self, input_hashes):
+        return {
+            input_hash: self.batch_cache[input_hash]
+            for input_hash in input_hashes
+            if input_hash in self.batch_cache
+        }
+
+    async def persist_window_batch_cache(self, writes):
+        for item in writes:
+            self.batch_cache[item.input_hash] = SimpleNamespace(
+                input_hash=item.input_hash,
+                schema_version=item.schema_version,
+                payload=item.payload,
+                provider=item.provider,
+                model=item.model,
+                token_usage=item.token_usage,
+            )
+
+    async def rollback(self):
+        return None
+
     async def complete_run(self, run, *, finished_at, upper_cursor):
         self.events.append("complete")
 
@@ -140,24 +175,40 @@ class FakePipeline:
 
 
 class FakeClient:
+    def __init__(self) -> None:
+        self.batch_sizes: list[int] = []
+
     async def analyze(self, *, window, signals):
-        signal_id = signals[0].signal_id
+        self.batch_sizes.append(len(signals))
         return AnalysisResponse(
             payload=WindowAnalysisPayload(
                 signal_analyses=[
                     SignalAnalysis(
-                        signal_id=signal_id,
+                        signal_id=signal.signal_id,
                         categories=["technology"],
                         fact_claims=["Evidence"],
                     )
+                    for signal in signals
                 ],
                 clusters=[],
-                unassigned_signal_ids=[signal_id],
+                unassigned_signal_ids=[signal.signal_id for signal in signals],
             ),
             provider="deepseek",
             model="deepseek-v4-flash",
             token_usage=TokenUsage(total_tokens=10),
         )
+
+
+class SelectiveFailClient(FakeClient):
+    def __init__(self, fail_signal_id) -> None:
+        super().__init__()
+        self.fail_signal_id = fail_signal_id
+
+    async def analyze(self, *, window, signals):
+        await asyncio.sleep(0)
+        if signals[0].signal_id == self.fail_signal_id:
+            raise AnalysisError("ANALYSIS_SCHEMA_INVALID")
+        return await super().analyze(window=window, signals=signals)
 
 
 async def test_window_artifact_is_persisted_before_checkpoint_completion() -> None:
@@ -225,7 +276,7 @@ async def test_private_signal_with_public_provenance_is_rejected_before_api() ->
     assert pipeline.failed_code == "WINDOW_PRIVATE_PROVENANCE_INVALID"
 
 
-async def test_oversized_window_is_rejected_before_api() -> None:
+async def test_single_signal_over_input_limit_is_rejected_before_api() -> None:
     raw = _raw()
     pipeline = FakePipeline()
     runner = WindowAnalysisRunner(
@@ -242,7 +293,89 @@ async def test_oversized_window_is_rejected_before_api() -> None:
 
     assert result.windows_failed == 1
     assert pipeline.events == ["start", "fail"]
-    assert pipeline.failed_code == "WINDOW_INPUT_LIMIT_EXCEEDED"
+    assert pipeline.failed_code == "WINDOW_SIGNAL_INPUT_LIMIT_EXCEEDED"
+
+
+async def test_oversized_window_is_partitioned_without_losing_signal_order() -> None:
+    raw = _raw()
+    pipeline = FakePipeline()
+    client = FakeClient()
+    signals = [_signal(raw) for _ in range(3)]
+    runner = WindowAnalysisRunner(
+        acquisition=FakeAcquisition(raw, signals),  # type: ignore[arg-type]
+        pipeline=pipeline,  # type: ignore[arg-type]
+        client=client,
+        clock=lambda: datetime(2026, 8, 16, 10, tzinfo=UTC),
+        max_signals=2,
+    )
+
+    result = await runner.run_available(
+        watermark=datetime(2026, 8, 16, 10, tzinfo=UTC)
+    )
+
+    assert result.windows_succeeded == 1
+    assert result.signals_analyzed == 3
+    assert client.batch_sizes == [2, 1]
+    assert pipeline.batch_count == 2
+    assert pipeline.events == ["start", "artifact", "complete"]
+
+
+async def test_successful_batches_are_cached_when_a_later_batch_fails() -> None:
+    raw = _raw()
+    stored_signals = [_signal(raw) for _ in range(4)]
+    signals = [
+        AnalysisSignal(
+            signal_id=signal.id,
+            title=signal.title,
+            text=signal.normalized_text,
+            published_at=signal.published_at,
+            source_type=signal.source_type,
+            evidence_visibility=signal.evidence_visibility,
+            public_provenance=signal.public_provenance,
+        )
+        for signal in stored_signals
+    ]
+    batches = [[signal] for signal in signals]
+    hashes = [f"{index:x}" * 64 for index in range(4)]
+    pipeline = FakePipeline()
+    failing = SelectiveFailClient(signals[3].signal_id)
+    runner = WindowAnalysisRunner(
+        acquisition=FakeAcquisition(raw, stored_signals),  # type: ignore[arg-type]
+        pipeline=pipeline,  # type: ignore[arg-type]
+        client=failing,
+        batch_concurrency=2,
+    )
+    window = type("Window", (), {
+        "start": datetime(2026, 8, 16, 9, tzinfo=UTC),
+        "end": datetime(2026, 8, 16, 10, tzinfo=UTC),
+    })()
+
+    with pytest.raises(AnalysisError):
+        await runner._analyze_batches(  # noqa: SLF001
+            window=window,
+            batches=batches,
+            batch_input_hashes=hashes,
+            window_input_hash="f" * 64,
+        )
+
+    assert set(pipeline.batch_cache) == set(hashes[:3])
+
+    retry_client = FakeClient()
+    retry_runner = WindowAnalysisRunner(
+        acquisition=FakeAcquisition(raw, stored_signals),  # type: ignore[arg-type]
+        pipeline=pipeline,  # type: ignore[arg-type]
+        client=retry_client,
+        batch_concurrency=2,
+    )
+    responses = await retry_runner._analyze_batches(  # noqa: SLF001
+        window=window,
+        batches=batches,
+        batch_input_hashes=hashes,
+        window_input_hash="f" * 64,
+    )
+
+    assert len(responses) == 4
+    assert retry_client.batch_sizes == [1]
 
 
 def _terminal_run(

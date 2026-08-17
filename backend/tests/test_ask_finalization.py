@@ -10,6 +10,7 @@ from infoscope.analysis.ask_schemas import (
     ask_finalization_input_hash,
 )
 from infoscope.analysis.schemas import TokenUsage
+from infoscope.models import AskFinalArtifact
 from infoscope.services.ask_finalization import (
     AskFinalizationError,
     AskFinalizationRepository,
@@ -76,6 +77,11 @@ def test_finalization_hash_changes_with_current_facts() -> None:
     changed = value.model_copy(deep=True)
     changed.events[0].overview = "A newer persisted fact"
     assert ask_finalization_input_hash(value) != ask_finalization_input_hash(changed)
+
+
+def test_direct_reuse_token_usage_binds_python_none_as_sql_null() -> None:
+    token_usage_type = AskFinalArtifact.__table__.c.token_usage.type
+    assert token_usage_type.none_as_null is True
 
 
 def test_finalization_rejects_unknown_references_and_changed_event_order() -> None:

@@ -56,11 +56,6 @@ class ClaimExtractionPayload(StrictModel):
         existing = [item.existing_claim_id for item in self.existing_claim_updates]
         if len(existing) != len(set(existing)):
             raise ValueError("an existing claim cannot be updated more than once")
-        if len(self.unused_signal_ids) != len(set(self.unused_signal_ids)):
-            raise ValueError("unused_signal_ids contains duplicates")
-        used = {value for item in decisions for value in item.evidence_signal_ids}
-        if used & set(self.unused_signal_ids):
-            raise ValueError("used and unused signals must be disjoint")
         return self
 
 
@@ -180,11 +175,6 @@ class TimelineReconstructionPayload(StrictModel):
         existing = [item.existing_timeline_entry_id for item in self.existing_entry_updates]
         if len(existing) != len(set(existing)):
             raise ValueError("a timeline entry cannot be updated more than once")
-        if len(self.unused_claim_ids) != len(set(self.unused_claim_ids)):
-            raise ValueError("unused_claim_ids contains duplicates")
-        used = {value for item in decisions for value in item.claim_ids}
-        if used & set(self.unused_claim_ids):
-            raise ValueError("used and unused claims must be disjoint")
         return self
 
 
@@ -319,11 +309,6 @@ class ConflictAnalysisPayload(StrictModel):
         existing = [item.existing_conflict_id for item in self.existing_conflict_updates]
         if len(existing) != len(set(existing)):
             raise ValueError("an existing conflict cannot be updated more than once")
-        if len(self.unconflicted_claim_ids) != len(set(self.unconflicted_claim_ids)):
-            raise ValueError("unconflicted_claim_ids contains duplicates")
-        used = {value for item in decisions for value in item.claim_ids}
-        if used & set(self.unconflicted_claim_ids):
-            raise ValueError("used and unconflicted claims must be disjoint")
         return self
 
 

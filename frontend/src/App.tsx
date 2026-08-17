@@ -8,10 +8,10 @@ import { AskPanel } from "./features/ask/AskPanel";
 import { BriefPage } from "./features/brief/BriefPage";
 import { ArchivePage } from "./features/archive/ArchivePage";
 import { EventDetail } from "./features/events/EventDetail";
-import { MaintenancePanel } from "./features/maintenance/MaintenancePanel";
 import { OnboardingPending } from "./features/auth/OnboardingPending";
 import { NowShell } from "./features/now/NowShell";
 import { SearchOverlay } from "./features/search/SearchOverlay";
+import { SettingsPage } from "./features/settings/SettingsPage";
 
 const primaryNavigation = ["NOW", "BRIEF", "ARCHIVE"];
 const settingsNavigation = ["SCOPE", "SETTINGS"];
@@ -106,7 +106,7 @@ function ReadyApp() {
       </aside>
 
       <div className="content-column">
-        {isSettings ? <MaintenancePanel /> : isScope ? <OnboardingPending editExisting onComplete={() => { window.location.hash = "#now"; }} /> : isBrief ? <BriefPage /> : isArchive ? <ArchivePage /> : eventId === undefined ? <NowShell onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} /> : <EventDetail eventId={eventId} onBack={() => { window.location.hash = ""; }} onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} />}
+        {isSettings ? <SettingsPage /> : isScope ? <OnboardingPending editExisting onComplete={() => { window.location.hash = "#now"; }} /> : isBrief ? <BriefPage /> : isArchive ? <ArchivePage /> : eventId === undefined ? <NowShell onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} /> : <EventDetail eventId={eventId} onBack={() => { window.location.hash = ""; }} onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} />}
         {!isSettings && !isScope && !isBrief && !isArchive && <AskPanel onClearSelection={() => setSelectedEvents([])} selectedEvents={selectedEvents} />}
       </div>
       <SearchOverlay onClose={() => setSearchOpen(false)} open={searchOpen} />

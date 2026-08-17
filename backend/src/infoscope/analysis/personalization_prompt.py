@@ -34,4 +34,7 @@ Output valid JSON only."""
 
 
 def build_personalization_prompt(value: PersonalizationInput) -> str:
-    return "Evaluate this canonical personalization input:\n" + canonical_json(value)
+    return (
+        "Evaluate this canonical personalization input and return one valid json object only:\n"
+        + canonical_json(value)
+    )

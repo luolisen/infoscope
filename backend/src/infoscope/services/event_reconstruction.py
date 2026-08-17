@@ -22,7 +22,11 @@ from infoscope.analysis.reconstruction_schemas import (
     EventReconstructionResponse,
     ExistingEventCandidate,
 )
-from infoscope.analysis.schemas import AnalysisSignal, WindowAnalysisPayload
+from infoscope.analysis.schemas import (
+    AnalysisSignal,
+    WindowAnalysisBatchArtifact,
+    WindowAnalysisPayload,
+)
 from infoscope.models import (
     Event,
     EventSignal,
@@ -397,10 +401,7 @@ class EventReconstructionRunner:
         source_artifact: PipelineArtifact,
         source_run: PipelineRun,
     ) -> EventReconstructionResult:
-        try:
-            window_analysis = WindowAnalysisPayload.model_validate(source_artifact.payload)
-        except ValueError as error:
-            raise EventReconstructionError("RECONSTRUCTION_SOURCE_SCHEMA_INVALID") from error
+        window_analysis = self._window_analysis_payload(source_artifact)
         await self.events.lock_source_artifact(source_artifact.id)
         prior = await self.events.prior_source_artifact(source_artifact.id)
         upper_cursor = self._cursor(
@@ -456,16 +457,31 @@ class EventReconstructionRunner:
 
     @staticmethod
     def _validate_source(artifact: PipelineArtifact, run: PipelineRun) -> None:
-        if (
-            artifact.artifact_type != SOURCE_ARTIFACT_TYPE
-            or artifact.schema_version != "window_analysis.v1"
-        ):
+        valid_source = (
+            artifact.artifact_type == SOURCE_ARTIFACT_TYPE
+            and artifact.schema_version == "window_analysis.v1"
+        ) or (
+            artifact.artifact_type == "window_analysis_batch"
+            and artifact.schema_version == "window_analysis_batch.v2"
+        )
+        if not valid_source:
             raise EventReconstructionError("RECONSTRUCTION_SOURCE_ARTIFACT_INVALID")
         if (
             run.pipeline_name != "window_analysis"
             or run.status != PipelineRunStatus.SUCCEEDED.value
         ):
             raise EventReconstructionError("RECONSTRUCTION_SOURCE_RUN_NOT_SUCCEEDED")
+
+    @staticmethod
+    def _window_analysis_payload(artifact: PipelineArtifact) -> WindowAnalysisPayload:
+        try:
+            if artifact.artifact_type == "window_analysis_batch":
+                return WindowAnalysisBatchArtifact.model_validate(
+                    artifact.payload
+                ).model_output
+            return WindowAnalysisPayload.model_validate(artifact.payload)
+        except ValueError as error:
+            raise EventReconstructionError("RECONSTRUCTION_SOURCE_SCHEMA_INVALID") from error
 
     @staticmethod
     def _analysis_signal(signal: Signal) -> AnalysisSignal:

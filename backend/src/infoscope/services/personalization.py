@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import logging
 import re
 import unicodedata
 from collections.abc import Callable
@@ -27,6 +29,7 @@ from infoscope.analysis.personalization_schemas import (
     canonical_bytes,
     canonical_hash,
 )
+from infoscope.analysis.schemas import TokenUsage
 from infoscope.models import (
     BaseAnalysis,
     Claim,
@@ -42,6 +45,7 @@ from infoscope.models import (
 from infoscope.schemas.onboarding import FocusId, InvestmentMarketId, ScopeId
 
 PERSONALIZATION_NAMESPACE = UUID("493b027d-8306-4a7e-a636-93bbf6cad936")
+logger = logging.getLogger("infoscope.personalization")
 
 SCOPE_TERMS: dict[ScopeId, tuple[str, ...]] = {
     ScopeId.AI: (
@@ -636,10 +640,18 @@ class PersonalizationRunner:
         client: PersonalizationClient,
         *,
         max_attempts: int,
+        batch_size: int = 10,
+        batch_concurrency: int = 2,
     ) -> None:
         self.repository = repository
         self.client = client
         self.max_attempts = max_attempts
+        if batch_size <= 0 or batch_size > MAX_EVENTS:
+            raise ValueError("batch_size must be between 1 and MAX_EVENTS")
+        if batch_concurrency <= 0:
+            raise ValueError("batch_concurrency must be positive")
+        self.batch_size = batch_size
+        self.batch_concurrency = batch_concurrency
 
     async def run_user(self, user_id: UUID) -> PersonalizationRun:
         value = await self.repository.input_snapshot(user_id)
@@ -652,19 +664,98 @@ class PersonalizationRunner:
         try:
             if len(canonical_bytes(value)) > MAX_CANONICAL_BYTES:
                 raise PersonalizationError("PERSONALIZATION_INPUT_LIMIT_EXCEEDED")
-            response = None if not value.events else await self.client.personalize(value)
+            response = await self._personalize(value)
             return await self.repository.persist_success(run_id, value, response)
-        except (AnalysisError, PersonalizationError, SQLAlchemyError) as error:
-            retryable = getattr(
-                error,
-                "retryable",
-                isinstance(error, (AnalysisError, SQLAlchemyError)),
+        except asyncio.CancelledError:
+            await self.repository.persist_failure(
+                run_id,
+                "PERSONALIZATION_INTERRUPTED",
+                retryable=True,
             )
+            raise
+        except (AnalysisError, PersonalizationError, SQLAlchemyError) as error:
+            retryable = self._retryable(error)
             return await self.repository.persist_failure(
                 run_id,
                 getattr(error, "error_code", "PERSONALIZATION_FAILED"),
                 retryable=retryable,
             )
+
+    async def _personalize(self, value: PersonalizationInput) -> PersonalizationResponse | None:
+        if not value.events:
+            return None
+        batches = [
+            value.model_copy(update={"events": value.events[index : index + self.batch_size]})
+            for index in range(0, len(value.events), self.batch_size)
+        ]
+        semaphore = asyncio.Semaphore(self.batch_concurrency)
+
+        async def run_batch(
+            batch_index: int,
+            batch: PersonalizationInput,
+        ) -> PersonalizationResponse:
+            async with semaphore:
+                try:
+                    return await self.client.personalize(batch)
+                except AnalysisError as error:
+                    logger.warning(
+                        "personalization batch failed batch_index=%d batch_count=%d "
+                        "event_count=%d error_code=%s",
+                        batch_index,
+                        len(batches),
+                        len(batch.events),
+                        error.error_code,
+                    )
+                    raise
+
+        tasks = [
+            asyncio.create_task(run_batch(index, batch))
+            for index, batch in enumerate(batches)
+        ]
+        try:
+            responses = await asyncio.gather(*tasks)
+        except BaseException:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            raise
+        providers = {response.provider for response in responses}
+        models = {response.model for response in responses}
+        if len(providers) != 1 or len(models) != 1:
+            raise PersonalizationError("PERSONALIZATION_MODEL_CHANGED", retryable=True)
+        return PersonalizationResponse(
+            payload=PersonalizationPayload(
+                decisions=[
+                    decision
+                    for response in responses
+                    for decision in response.payload.decisions
+                ]
+            ),
+            provider=responses[0].provider,
+            model=responses[0].model,
+            token_usage=TokenUsage(
+                prompt_tokens=sum(
+                    response.token_usage.prompt_tokens for response in responses
+                ),
+                completion_tokens=sum(
+                    response.token_usage.completion_tokens for response in responses
+                ),
+                total_tokens=sum(response.token_usage.total_tokens for response in responses),
+            ),
+        )
+
+    @staticmethod
+    def _retryable(error: AnalysisError | PersonalizationError | SQLAlchemyError) -> bool:
+        if isinstance(error, PersonalizationError):
+            return error.retryable
+        if isinstance(error, AnalysisError):
+            return error.error_code not in {
+                "ANALYSIS_REQUEST_REJECTED",
+                "PERSONALIZATION_INPUT_LIMIT_EXCEEDED",
+                "PERSONALIZATION_OUTPUT_LIMIT_EXCEEDED",
+            }
+        return True
 
 
 class PersonalizationVisibleEventSnapshotProvider:

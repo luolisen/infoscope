@@ -110,6 +110,52 @@ def test_base_analysis_validation_requires_exact_event_and_candidate_coverage() 
         BaseAnalysisRunner._validate(incomplete, events, [candidate])
 
 
+def test_base_analysis_decision_type_is_derived_from_backend_candidates() -> None:
+    new_event_id, existing_event_id, analysis_id = uuid4(), uuid4(), uuid4()
+    candidate = ExistingBaseAnalysisCandidate(
+        base_analysis_id=analysis_id,
+        event_id=existing_event_id,
+        summary="Old",
+        event_type="technology.release",
+        importance="medium",
+        topics=[],
+        entities=[],
+    )
+    response = BaseAnalysisResponse(
+        payload=BaseAnalysisPayload.model_validate(
+            {
+                "new_analyses": [
+                    _decision(existing_event_id, decision_key="wrong-new")
+                ],
+                "existing_analysis_updates": [
+                    _decision(
+                        new_event_id,
+                        decision_key="wrong-update",
+                        existing_base_analysis_id=uuid4(),
+                    )
+                ],
+            }
+        ),
+        provider="test",
+        model="test",
+        token_usage=TokenUsage(),
+    )
+
+    normalized = BaseAnalysisRunner._normalize_decision_types(response, [candidate])
+    BaseAnalysisRunner._validate(
+        normalized.payload,
+        [_event(new_event_id), _event(existing_event_id)],
+        [candidate],
+    )
+
+    assert [item.event_id for item in normalized.payload.new_analyses] == [new_event_id]
+    assert normalized.payload.existing_analysis_updates[0].event_id == existing_event_id
+    assert (
+        normalized.payload.existing_analysis_updates[0].existing_base_analysis_id
+        == analysis_id
+    )
+
+
 async def test_source_events_include_unconflicted_claims_without_assignments() -> None:
     claim_id, event_id, source_id = uuid4(), uuid4(), uuid4()
     artifact = ConflictAnalysisArtifact(

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
@@ -10,6 +11,7 @@ import httpx
 import pytest
 from pydantic import ValidationError
 
+from infoscope.analysis.client import AnalysisError
 from infoscope.analysis.config import AnalysisConfig
 from infoscope.analysis.intelligence_client import DeepSeekIntelligenceClient
 from infoscope.analysis.intelligence_schemas import BaseAnalysisEntity
@@ -20,8 +22,10 @@ from infoscope.analysis.personalization_schemas import (
     PersonalizationInput,
     PersonalizationPayload,
     PersonalizationProfile,
+    PersonalizationResponse,
     canonical_hash,
 )
+from infoscope.analysis.schemas import TokenUsage
 from infoscope.schemas.onboarding import FocusId, InvestmentMarketId, ScopeId
 from infoscope.services.personalization import (
     PersonalizationError,
@@ -174,6 +178,7 @@ async def test_intelligence_adapter_uses_strict_personalization_prompt_and_schem
         assert document["response_format"] == {"type": "json_object"}
         prompt = document["messages"][1]["content"]
         assert "personalization_input.v1" in prompt
+        assert "json" in prompt
         assert "evidence" not in prompt.casefold()
         return httpx.Response(
             200,
@@ -272,3 +277,175 @@ async def test_empty_prefilter_persists_noop_without_model_call() -> None:
     ).run_user(value.user_id)
 
     assert result.status == "completed"
+
+
+@pytest.mark.asyncio
+async def test_cancelled_attempt_is_persisted_as_retryable_failure() -> None:
+    value = PersonalizationInput(user_id=uuid4(), profile=_profile(), events=[_event()])
+    run = SimpleNamespace(
+        id=uuid4(),
+        status="pending",
+        attempt_count=0,
+        max_attempts=3,
+    )
+
+    class Repository:
+        async def input_snapshot(self, _user_id):
+            return value
+
+        async def create_or_reuse(self, _value, *, max_attempts):
+            assert max_attempts == 3
+            return run
+
+        async def start_attempt(self, _run_id):
+            run.status = "running"
+            return run
+
+        async def persist_failure(self, run_id, error_code, *, retryable):
+            assert run_id == run.id
+            assert error_code == "PERSONALIZATION_INTERRUPTED"
+            assert retryable is True
+            run.status = "pending"
+            return run
+
+    class CancelledModel:
+        async def personalize(self, _value):
+            raise asyncio.CancelledError
+
+    with pytest.raises(asyncio.CancelledError):
+        await PersonalizationRunner(  # type: ignore[arg-type]
+            Repository(),
+            CancelledModel(),
+            max_attempts=3,
+        ).run_user(value.user_id)
+
+    assert run.status == "pending"
+
+
+@pytest.mark.asyncio
+async def test_personalization_batches_and_combines_complete_ordered_output() -> None:
+    events = [
+        _event(display_time=datetime(2026, 8, 16, 10 - index, tzinfo=UTC))
+        for index in range(5)
+    ]
+    value = PersonalizationInput(user_id=uuid4(), profile=_profile(), events=events)
+    run = SimpleNamespace(id=uuid4(), status="pending", attempt_count=0, max_attempts=3)
+
+    class Repository:
+        async def input_snapshot(self, _user_id):
+            return value
+
+        async def create_or_reuse(self, _value, *, max_attempts):
+            return run
+
+        async def start_attempt(self, _run_id):
+            run.status = "running"
+            return run
+
+        async def persist_success(self, _run_id, original, response):
+            assert original == value
+            assert [item.event_id for item in response.payload.decisions] == [
+                item.event_id for item in events
+            ]
+            assert response.token_usage.total_tokens == 15
+            run.status = "completed"
+            return run
+
+    class BatchedModel:
+        calls: list[list] = []
+        active = 0
+        max_active = 0
+
+        async def personalize(self, batch):
+            self.calls.append([event.event_id for event in batch.events])
+            self.active += 1
+            self.max_active = max(self.max_active, self.active)
+            await asyncio.sleep(0.01)
+            self.active -= 1
+            return PersonalizationResponse(
+                payload=PersonalizationPayload(
+                    decisions=[
+                        PersonalizationDecision(
+                            event_id=event.event_id,
+                            relevant=False,
+                            priority="low",
+                            why_it_matters=None,
+                            personalized_angle=None,
+                            matched_scope_ids=[],
+                            matched_focus_ids=[],
+                            rationale="Not relevant to this profile.",
+                        )
+                        for event in batch.events
+                    ]
+                ),
+                provider="provider",
+                model="model",
+                token_usage=TokenUsage(prompt_tokens=2, completion_tokens=3, total_tokens=5),
+            )
+
+    client = BatchedModel()
+    result = await PersonalizationRunner(  # type: ignore[arg-type]
+        Repository(),
+        client,
+        max_attempts=3,
+        batch_size=2,
+        batch_concurrency=2,
+    ).run_user(value.user_id)
+
+    assert result.status == "completed"
+    assert [len(batch) for batch in client.calls] == [2, 2, 1]
+    assert client.max_active == 2
+
+
+@pytest.mark.asyncio
+async def test_request_rejection_is_terminal_and_cancels_sibling_batches() -> None:
+    events = [
+        _event(display_time=datetime(2026, 8, 16, 10 - index, tzinfo=UTC))
+        for index in range(2)
+    ]
+    value = PersonalizationInput(user_id=uuid4(), profile=_profile(), events=events)
+    run = SimpleNamespace(id=uuid4(), status="pending", attempt_count=0, max_attempts=3)
+
+    class Repository:
+        async def input_snapshot(self, _user_id):
+            return value
+
+        async def create_or_reuse(self, _value, *, max_attempts):
+            return run
+
+        async def start_attempt(self, _run_id):
+            run.status = "running"
+            return run
+
+        async def persist_failure(self, _run_id, error_code, *, retryable):
+            assert error_code == "ANALYSIS_REQUEST_REJECTED"
+            assert retryable is False
+            run.status = "failed"
+            return run
+
+    class RejectingModel:
+        calls = 0
+        sibling_cancelled = False
+
+        async def personalize(self, _batch):
+            self.calls += 1
+            if self.calls == 1:
+                await asyncio.sleep(0)
+                raise AnalysisError("ANALYSIS_REQUEST_REJECTED")
+            try:
+                await asyncio.sleep(60)
+            except asyncio.CancelledError:
+                self.sibling_cancelled = True
+                raise
+
+    client = RejectingModel()
+    result = await PersonalizationRunner(  # type: ignore[arg-type]
+        Repository(),
+        client,
+        max_attempts=3,
+        batch_size=1,
+        batch_concurrency=2,
+    ).run_user(value.user_id)
+
+    assert result.status == "failed"
+    assert client.sibling_cancelled is True
