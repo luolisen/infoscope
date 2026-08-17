@@ -1,0 +1,13 @@
+{
+  "schema": "infoscope.display.events.v1",
+  "revision": "01K2M0J4C6SFYF62W5RK4C9KZE",
+  "generated_at": "2026-08-17T20:00:00+08:00",
+  "events": [
+    {
+      "id": "f93acbb8-0000-4000-8000-000000000001",
+      "title": "OpenAI 发布新模型",
+      "state": "developing",
+      "display_time": "2026-08-17T19:50:00+08:00"
+    }
+  ]
+}

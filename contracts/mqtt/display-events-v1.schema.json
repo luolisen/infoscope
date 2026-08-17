@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/SCOUT-Infoscope/infoscope/contracts/mqtt/display-events-v1.schema.json",
+  "title": "Infoscope display events v1",
+  "description": "A retained, device-scoped snapshot consumed by an Infoscope display terminal.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "revision", "generated_at", "events"],
+  "properties": {
+    "schema": {"const": "infoscope.display.events.v1"},
+    "revision": {"type": "string", "minLength": 1, "maxLength": 128},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "events": {
+      "type": "array",
+      "maxItems": 12,
+      "items": {"$ref": "#/$defs/event"}
+    }
+  },
+  "$defs": {
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "state", "display_time"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "title": {"type": "string", "minLength": 1, "maxLength": 120},
+        "state": {"type": "string", "minLength": 1, "maxLength": 64},
+        "display_time": {"type": "string", "format": "date-time"}
+      }
+    }
+  }
+}
