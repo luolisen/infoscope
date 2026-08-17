@@ -36,7 +36,7 @@ F1  Demo Runtime Readiness
 ↓
 F2  Phase 6 前端与全流程验收
 ↓
-F3  最终 UI / UX 改造（问题 1–7）
+F3  最终 UI / UX 改造（问题 1–8）
 ↓
 F4  Final Demo Freeze
 ```
@@ -175,7 +175,7 @@ Maintenance
 
 ## 5. F3 — 最终 UI / UX 问题清单
 
-本节对应 Alan 新提出的问题 1–7，排在运行时与 Phase 6 基础验收之后实施。
+本节对应 Alan 新提出的问题 1–8，排在运行时与 Phase 6 基础验收之后实施。
 
 ### 问题 1 — Search 入口与关闭按钮不明显
 
@@ -390,6 +390,26 @@ Flash / Pro / Kimi / Qwen ...
 - 页面与列表取消位移/stagger，只保留即时 opacity 或完全无动画。
 - 功能与焦点顺序不得依赖动画。
 
+### 问题 8 — 已注册用户修改 SCOPE 的生效提示
+
+首次注册后的 Onboarding SCOPE 不显示额外提示；用户完成注册与 Onboarding 后，从 `SCOPE` 页面编辑现有关注范围时，在标题：
+
+> 哪些内容进入你的视野？
+
+正下方显示红色小字：
+
+> 更改将在下次Event更新时生效
+
+实现规则：
+
+- 判断依据必须是 Backend/路由已经明确的“编辑现有 SCOPE”状态，例如当前 `editExisting` 语义；不得使用 localStorage、页面访问次数、是否已有选项或数组长度猜测。
+- 仅在已完成首次 Onboarding 的编辑流程显示；注册后的首次设置不显示。
+- 文案位置固定在主标题下、选项说明或表单上方，不随选择变化反复出现/消失。
+- 使用设计系统中的语义警示红色、小型 Meta 字号；颜色克制但对比度满足可访问性要求。
+- 不能只靠红色传达含义；文本必须始终完整可读，并使用适当的说明语义供读屏读取。
+- 严格使用上述文案，不显示内部任务、队列、Personalization 或 Maintenance 状态。
+- Event 更新完成并重新生成用户快照后的实际行为必须与提示一致；如果 Backend 当前会立即生效或采用其他调度语义，先修正 Contract/实现，不能仅修改前端文案。
+
 ---
 
 ## 6. API 与数据边界
@@ -453,7 +473,7 @@ git diff --check
 2. Health 真实反映 Worker。
 3. Demo 数据可重复准备。
 4. 登录 → NOW → Event → Ask → 必要时 Research → Event 更新可完成。
-5. Brief、Archive、Search、Save、SCOPE、SETTINGS 可正常使用。
+5. Brief、Archive、Search、Save、SCOPE、SETTINGS 可正常使用；已注册用户编辑 SCOPE 时显示正确的下次 Event 更新生效提示。
 6. Maintenance 至少一轮完整成功。
 7. UI 主要文案中文化，英文内容有明确语义来源。
 8. Search、按钮、模型设置和 Ask 页面达到本文件视觉要求。
