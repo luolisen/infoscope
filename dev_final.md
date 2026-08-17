@@ -1,8 +1,8 @@
 # Infoscope 最终开发收口 / dev_final.md
 
-> 状态：待 Alan 确认后冻结  
-> 日期：2026-08-18  
-> 适用仓库：`SCOUT-Infoscope/infoscope`  
+> 状态：待 Alan 确认后冻结
+> 日期：2026-08-18
+> 适用仓库：`SCOUT-Infoscope/infoscope`
 > 目的：在 Lingjiu 转入 `infoscope-display` 硬件开发后，收口 Infoscope 应用端 Demo、前端体验与最终验收。
 
 ---
