@@ -43,6 +43,7 @@ from infoscope.models import (
     User,
 )
 from infoscope.schemas.onboarding import FocusId, InvestmentMarketId, ScopeId
+from infoscope.services.event_localization import current_event_localizations
 
 PERSONALIZATION_NAMESPACE = UUID("493b027d-8306-4a7e-a636-93bbf6cad936")
 logger = logging.getLogger("infoscope.personalization")
@@ -270,13 +271,22 @@ class PersonalizationRepository:
         if lock:
             query = query.with_for_update(of=(Event, BaseAnalysis))
         rows = (await self.database.execute(query)).all()
+        localized = await current_event_localizations(
+            self.database,
+            [event for event, _analysis in rows],
+            lock=lock,
+        )
         candidates: list[PersonalizationEventInput] = []
         for event, analysis in rows:
+            display_title, display_overview = localized.get(
+                event.id,
+                (event.title, event.overview),
+            )
             try:
                 item = PersonalizationEventInput(
                     event_id=event.id,
-                    title=event.title,
-                    overview=event.overview,
+                    title=display_title,
+                    overview=display_overview,
                     state=event.state,
                     display_time=event.display_time,
                     updated_at=event.updated_at,
