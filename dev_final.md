@@ -141,6 +141,58 @@ Window Analysis
 - Demo 用户、Profile、Personalization、Brief 必须可重复准备。
 - 不把真实账户密码、API Key、Telegram 身份或私密 provenance 写入仓库。
 
+### 3.7 历史 Event 中文展示投影
+
+历史 Event 汉化与 F1/F2 其他开发并发推进，不等待全部 UI 工作结束。
+
+固定模型与调度：
+
+- 渠道：AI Ping。
+- 模型：`DeepSeek-V4-Flash-0731`。
+- Key group：现有 AI Ping group 1，由 Backend 配置读取，不写入任务、日志或 artifact 正文。
+- 默认每批 10 个 Event，并发 2；可配置但 v1 最大并发不得超过 3。
+- 每 5 分钟读取持久化 run/batch 状态并报告进度；不得靠扫描日志或模型正文判断完成。
+- 任务可与代码开发并行，但不能与同一 Event 的事实层写事务互相覆盖。
+
+数据安全前置：
+
+- 第一次写入任何汉化数据前，必须生成完整 PostgreSQL custom-format dump。
+- 备份必须包含 Raw Information、Signals、Events、Claims、Timeline、Conflicts、Base Analysis、Pipeline artifacts/runs、Research、Ask、Personalization、Brief、用户关系和迁移版本。
+- 备份目录权限为 `0700`，dump/manifest 为 `0600`；保存 SHA-256、文件大小、Alembic revision 与关键表行数。
+- 使用 `pg_restore -l` 验证归档结构；恢复演练只能进入独立空数据库，不得覆盖 live database。
+- 备份与 manifest 都属于本机私密数据，不进入 GitHub、Forgejo、普通日志或 Demo 包。
+
+事实边界：
+
+- 不直接覆盖 `events.title`、`events.overview`、Base Analysis、Claim、Timeline、Conflict、Evidence 或历史 PersonalizedEvent/Brief snapshot。
+- 新增独立、可审计的 `zh-CN` Event localization projection；Public API 只在 localization 与当前 Event 输入 hash 一致时使用。
+- Event 更新导致输入 hash 变化时，旧 localization 立即视为 stale，Public API 回退原文，后台重新排队。
+- 历史 Personalization 与 Brief 保持 immutable；汉化完成后为 ready users 生成新的 Personalization/Brief snapshot，不改写旧 artifact。
+
+最小模型输入：
+
+- `event_id`。
+- 当前 `title`。
+- 当前 `overview`。
+- 为避免语义漂移所需的最小状态/时间上下文。
+- 不发送 Raw、Signal/Evidence 正文、provenance、collector metadata、用户 Profile、账户数据或内部 Prompt 历史。
+
+严格模型输出：
+
+- 每个输入 Event 恰好返回一个相同 `event_id` 的中文 `title` 与 `overview`。
+- 不允许新增、删除、合并 Event，不允许改变数字、时间、状态、专有名词、URL 或事实含义。
+- Backend 校验 ID 完整覆盖、唯一性、长度、输入 hash 与中文内容要求；任一失败则整批不持久化。
+- 已是合格中文的文本允许保持原文，不为了“改写感”强制润色。
+- 模型返回后重新锁定/复核 Event 输入；变化时以稳定错误码丢弃旧输出并重新排队。
+
+持久化与恢复：
+
+- 使用独立 localization run、batch、artifact/projection，不伪造 PipelineRun、PersonalizationRun 或 Event 更新。
+- run 保存 provider/model、input hash、batch count、completed/failed counts、稳定错误码、token usage 和时间；不保存凭据或普通日志中的正文。
+- batch 按稳定 Event ID 顺序构建；成功批次按 input hash 幂等复用，失败批次可单独重试。
+- 进程重启后从持久化状态继续；不得重新调用已成功且输入未变化的批次。
+- 489 个历史 Event 完成后生成覆盖报告，并触发新的用户级 Personalization/Brief，而不是直接修改历史页面快照。
+
 ---
 
 ## 4. F2 — Lingjiu 剩余应用职责转交
@@ -230,7 +282,7 @@ Maintenance
 | ARCHIVE 页面 | 侧边导航固定 ARCHIVE；页面标题和说明使用中文 |
 | SCOPE 页面 | 侧边导航固定 SCOPE；页面标题、问题和提示使用中文 |
 | SETTINGS 页面 | 侧边导航固定 SETTINGS；设置项、状态和说明使用中文 |
-| Event title/overview | 新事实层优先生成中文，专有名词保留；是否重建既有 489 Events 需单独确认成本 |
+| Event title/overview | 新事实层优先生成中文；既有 489 Events 使用 AI Ping `DeepSeek-V4-Flash-0731` 有界并发生成独立 `zh-CN` 展示投影，不覆盖事实层 |
 | Ask answer | 跟随中文 UI，默认中文；用户明确用其他语言提问时可跟随问题语言 |
 
 侧边导航的英文大写名称属于产品信息架构与 Editorial metadata，不得改成中文、双语或英文下方附中文小字。
@@ -432,6 +484,8 @@ Flash / Pro / Kimi / Qwen ...
 feat/integration-mqtt-contract          # PR #45，Lingjiu 修复，Alan 审查
 fix/demo-runtime-readiness              # API/Worker/Health/startup
 fix/maintenance-e2e                     # Maintenance 全链与 Research capability
+feat/event-localization-contract        # zh-CN projection、run/batch 与 Public DTO Contract
+feat/worker-event-localization          # AI Ping 并发汉化、续跑与进度检查
 fix/frontend-demo-freeze                # 原 Lingjiu Phase 6 剩余项
 feat/frontend-ask-workspace-contract    # Ask history Public API Contract
 feat/frontend-ask-workspace             # Ask 一级页面与 Event picker
@@ -479,9 +533,10 @@ git diff --check
 5. Brief、Archive、Search、Save、SCOPE、SETTINGS 可正常使用；已注册用户编辑 SCOPE 时显示正确的下次 Event 更新生效提示。
 6. Maintenance 至少一轮完整成功。
 7. UI 主要文案中文化，英文内容有明确语义来源。
-8. Search、按钮、模型设置和 Ask 页面达到本文件视觉要求。
-9. 动画克制、可降级、不阻塞交互。
-10. 不泄露 Raw、私密 provenance、凭据、内部 Prompt 或模型响应正文。
+8. 历史 Event localization 使用独立投影完成或显示可审计进度，不改写事实层与旧快照。
+9. Search、按钮、模型设置和 Ask 页面达到本文件视觉要求。
+10. 动画克制、可降级、不阻塞交互。
+11. 不泄露 Raw、私密 provenance、凭据、内部 Prompt 或模型响应正文。
 
 ---
 
