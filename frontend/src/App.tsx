@@ -1,7 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import { fetchHealth } from "./api/health";
 import { fetchSession, sessionQueryKey } from "./api/session";
 import { AuthScreen } from "./features/auth/AuthScreen";
 import { AskWorkspace } from "./features/ask/AskWorkspace";
@@ -43,7 +42,6 @@ export function App() {
 }
 
 function ReadyApp() {
-  const healthQuery = useQuery({ queryKey: ["health"], queryFn: fetchHealth });
   const [locationHash, setLocationHash] = useState(() => window.location.hash);
   const [selectedEvents, setSelectedEvents] = useState<SelectedEvent[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -119,7 +117,6 @@ function ReadyApp() {
     <div className="app-shell">
       <header className="topbar">
         <a className="wordmark" href="/" aria-label="Infoscope home">IS</a>
-        <span className="meta">{healthQuery.isSuccess ? "SYSTEM / ONLINE" : "SYSTEM / CHECKING"}</span>
         <button className="search-trigger" onClick={() => setSearchOpen(true)} ref={searchTriggerRef} type="button" aria-label="搜索，快捷键 Command K">
           <SearchIcon className="action-icon" />
           <span>搜索</span>

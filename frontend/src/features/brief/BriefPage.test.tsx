@@ -59,6 +59,7 @@ describe("BriefPage", () => {
     renderBrief();
 
     expect(await screen.findByText("Second summary")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "当前视野一览" })).toBeInTheDocument();
     const titles = screen.getAllByRole("link").map((link) => link.textContent);
     expect(titles).toEqual(["Second from Backend", "First from Backend"]);
     expect(screen.getByRole("link", { name: "Second from Backend" })).toHaveAttribute("href", "#event/event-2");

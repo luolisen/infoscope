@@ -22,7 +22,7 @@ export function BriefPage() {
   return (
     <main className="main-content brief-page" id="brief">
       <p className="editorial-label">BRIEF</p>
-      <header className="brief-header"><h1>当前视野，一览。</h1><p>生成于 {formatUtcDateTime(generatedAt)}</p></header>
+      <header className="brief-header"><h1>当前视野一览</h1><p>生成于 {formatUtcDateTime(generatedAt)}</p></header>
     <section aria-label="最新 Brief" className="brief-list">
         {items.map((item) => (
           <article className="brief-item" key={item.event_id}>

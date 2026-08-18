@@ -28,7 +28,7 @@ export function AskWorkspace({ selectedEvents, onClearSelection }: AskWorkspaceP
       </> : <section className="ask-history-detail" aria-labelledby="ask-workspace-heading">
         <div className="ask-history-detail__meta">
           <p className="editorial-label">历史提问</p>
-          <button className="secondary-action" onClick={() => setHistoryItem(null)} type="button">新建提问</button>
+          <button className="ask-new-question" onClick={() => setHistoryItem(null)} type="button"><span aria-hidden="true" className="ask-new-question__mark">＋</span><span>新增提问</span></button>
         </div>
         <h1 id="ask-workspace-heading">{historyItem.question}</h1>
         <p className="ask-history-detail__context">涉及 {historyItem.event_ids.length} 个 Event · {historyItem.status === "completed" ? "已完成" : historyItem.status === "failed" ? "失败" : "处理中"}</p>
