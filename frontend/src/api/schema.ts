@@ -38,6 +38,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ask/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Ask History */
+        get: operations["get_ask_history_api_v1_ask_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ask/{ask_id}": {
         parameters: {
             query?: never;
@@ -410,6 +427,48 @@ export interface components {
              * @enum {string}
              */
             status: "failed";
+        };
+        /**
+         * AskHistoryItem
+         * @description Owner-only, public summary of one independent Ask round.
+         *
+         *     This deliberately excludes prompts, model metadata, artifact IDs and
+         *     evidence/provenance.  ``answer`` is the already-public Ask answer and is
+         *     present only after a completed round.
+         */
+        AskHistoryItem: {
+            /** Answer */
+            answer?: string | null;
+            /**
+             * Ask Id
+             * Format: uuid
+             */
+            ask_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Event Ids */
+            event_ids: string[];
+            /** Finished At */
+            finished_at?: string | null;
+            /** Question */
+            question: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "running" | "completed" | "failed";
+            /** Updated Event Ids */
+            updated_event_ids?: string[];
+        };
+        /** AskHistoryResponse */
+        AskHistoryResponse: {
+            /** Items */
+            items: components["schemas"]["AskHistoryItem"][];
+            /** Next Cursor */
+            next_cursor: string | null;
         };
         /** AskPendingResponse */
         AskPendingResponse: {
@@ -1068,6 +1127,58 @@ export interface operations {
             };
             /** @description Conflict */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_ask_history_api_v1_ask_history_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                is_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AskHistoryResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

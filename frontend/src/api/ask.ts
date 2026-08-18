@@ -1,6 +1,7 @@
 import { apiClient } from "./client";
 
 export const askQueryKey = (askId: string) => ["ask", askId] as const;
+export const askHistoryQueryKey = ["ask", "history"] as const;
 
 export async function createAsk(eventIds: string[], question: string) {
   const { data, error } = await apiClient.POST("/api/v1/ask", {
@@ -23,5 +24,13 @@ export async function fetchAsk(askId: string) {
     throw new Error("Ask status is unavailable.");
   }
 
+  return data;
+}
+
+export async function fetchAskHistory(limit = 20, cursor?: string) {
+  const { data, error } = await apiClient.GET("/api/v1/ask/history", {
+    params: { query: { limit, cursor } },
+  });
+  if (error) throw error;
   return data;
 }

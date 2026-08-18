@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import base64
+import binascii
+import json
+from datetime import datetime
 from typing import Annotated
 from uuid import UUID, uuid4
 
@@ -12,12 +16,14 @@ from infoscope.analysis.ask_schemas import AskFinalAnswerPayload, AskRequestSpec
 from infoscope.config import Settings, get_settings
 from infoscope.db import get_session
 from infoscope.errors import ApiError
-from infoscope.models import AskFinalArtifact, AskRequest, User
+from infoscope.models import AskFinalArtifact, AskRequest, AskRequestEvent, User
 from infoscope.schemas.ask import (
     AskAcceptedResponse,
     AskCompletedResponse,
     AskCreateRequest,
     AskFailedResponse,
+    AskHistoryItem,
+    AskHistoryResponse,
     AskPendingResponse,
     AskResult,
     AskRunningResponse,
@@ -156,6 +162,112 @@ class AskService:
                 updated_event_ids=payload.updated_event_ids,
             ),
         )
+
+    async def history(
+        self,
+        user: User,
+        *,
+        limit: int,
+        cursor: str | None,
+    ) -> AskHistoryResponse:
+        """Return the owner's independent Ask rounds in stable keyset order.
+
+        The cursor is intentionally opaque to the frontend.  It binds the
+        endpoint kind and the last ``(created_at, ask_id)`` tuple, so a cursor
+        cannot be reused against another Ask endpoint or silently switch
+        ordering semantics.
+        """
+        after = self._decode_history_cursor(cursor) if cursor is not None else None
+        query = select(AskRequest).where(AskRequest.user_id == user.id)
+        if after is not None:
+            created_at, ask_id = after
+            query = query.where(
+                (AskRequest.created_at < created_at)
+                | ((AskRequest.created_at == created_at) & (AskRequest.id > ask_id))
+            )
+        rows = (
+            await self.database.execute(
+                query.order_by(AskRequest.created_at.desc(), AskRequest.id).limit(limit + 1)
+            )
+        ).scalars().all()
+        page = rows[:limit]
+        items: list[AskHistoryItem] = []
+        for request in page:
+            event_rows = (
+                await self.database.execute(
+                    select(AskRequestEvent.event_id)
+                    .where(AskRequestEvent.ask_request_id == request.id)
+                    .order_by(AskRequestEvent.position)
+                )
+            ).scalars().all()
+            answer: str | None = None
+            updated_event_ids: list[UUID] = []
+            if request.status == "completed":
+                artifact = (
+                    await self.database.execute(
+                        select(AskFinalArtifact).where(
+                            AskFinalArtifact.ask_request_id == request.id
+                        )
+                    )
+                ).scalar_one_or_none()
+                if artifact is not None:
+                    try:
+                        payload = AskFinalAnswerPayload.model_validate(artifact.payload)
+                    except ValidationError:
+                        payload = None
+                    if payload is not None:
+                        answer = payload.answer
+                        updated_event_ids = payload.updated_event_ids
+            items.append(
+                AskHistoryItem(
+                    ask_id=request.id,
+                    status=request.status,
+                    question=request.question,
+                    event_ids=list(event_rows),
+                    created_at=request.created_at,
+                    finished_at=request.finished_at,
+                    answer=answer,
+                    updated_event_ids=updated_event_ids,
+                )
+            )
+        has_more = len(rows) > limit
+        next_cursor = None
+        if has_more and page:
+            last = page[-1]
+            next_cursor = self._encode_history_cursor(last.created_at, last.id)
+        return AskHistoryResponse(items=items, next_cursor=next_cursor)
+
+    @staticmethod
+    def _encode_history_cursor(created_at: datetime, ask_id: UUID) -> str:
+        document = {
+            "v": 1,
+            "kind": "ask_history",
+            "created_at": created_at.isoformat(),
+            "ask_id": str(ask_id),
+        }
+        payload = json.dumps(document, sort_keys=True, separators=(",", ":")).encode()
+        return base64.urlsafe_b64encode(payload).decode().rstrip("=")
+
+    @staticmethod
+    def _decode_history_cursor(cursor: str) -> tuple[datetime, UUID]:
+        expected = {"v", "kind", "created_at", "ask_id"}
+        try:
+            padding = "=" * (-len(cursor) % 4)
+            document = json.loads(base64.urlsafe_b64decode(cursor + padding))
+            if not isinstance(document, dict) or set(document) != expected:
+                raise ValueError
+            if document["v"] != 1 or document["kind"] != "ask_history":
+                raise ValueError
+            timestamp = datetime.fromisoformat(document["created_at"])
+            if timestamp.tzinfo is None or timestamp.utcoffset() is None:
+                raise ValueError
+            return timestamp, UUID(document["ask_id"])
+        except (ValueError, TypeError, KeyError, binascii.Error, json.JSONDecodeError) as error:
+            raise ApiError(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                code="ASK_HISTORY_CURSOR_INVALID",
+                message="The Ask history cursor is invalid.",
+            ) from error
 
 
 def get_ask_service(

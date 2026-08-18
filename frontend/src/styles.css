@@ -127,6 +127,19 @@ kbd { border: 1px solid #bac2c3; border-radius: .2rem; padding: .1rem .35rem; co
 .page-transition { animation: page-enter 220ms ease-out; min-height: 100%; }
 .ask-send-button { align-items: center; display: inline-flex; gap: .55rem; justify-content: center; min-width: 8.5rem; opacity: 1; transition: opacity 180ms ease, transform 180ms ease; }
 .ask-send-button span:first-child { font-size: 1.2rem; line-height: 1; }
+.ask-history { background: color-mix(in srgb, #f5f6f5 82%, transparent); border: 1px solid rgb(130 144 146 / 60%); border-radius: 1.1rem; box-shadow: 0 .8rem 2.5rem rgb(23 32 34 / 12%); max-height: min(70vh, 38rem); overflow: hidden; position: fixed; right: clamp(1rem, 3vw, 3rem); top: 6rem; transition: width 180ms ease, background 180ms ease; width: 3.25rem; z-index: 4; }
+.ask-history--expanded { width: min(22rem, calc(100vw - 2rem)); }
+.ask-history__toolbar { align-items: center; display: flex; gap: .45rem; min-height: 3.25rem; padding: .35rem; }
+.ask-history__toolbar .icon-button { flex: 0 0 2.45rem; height: 2.45rem; width: 2.45rem; }
+.ask-history__toggle span { font-size: 1.5rem; line-height: 1; }
+.ask-history__title { color: #526062; flex: 1; font-size: .72rem; font-weight: 750; letter-spacing: .08em; }
+.ask-history__pin { font-size: .8rem; }
+.ask-history__body { border-top: 1px solid #bac2c3; max-height: calc(min(70vh, 38rem) - 3.5rem); overflow-y: auto; padding: 0 .9rem; }
+.ask-history__item { border-bottom: 1px solid #bac2c3; padding: .9rem 0; }
+.ask-history__item:last-child { border-bottom: 0; }
+.ask-history__question { font-weight: 650; line-height: 1.4; margin: .4rem 0; }
+.ask-history__answer { color: #526062; font-size: .86rem; line-height: 1.45; margin: .45rem 0 0; max-height: 4.2rem; overflow: hidden; }
+.ask-history__empty { color: #667375; font-size: .85rem; line-height: 1.5; padding: .8rem 0; }
 .ask-event-option { animation: ask-option-enter 220ms ease-out both; }
 .ask-event-option:nth-of-type(3) { animation-delay: 30ms; }.ask-event-option:nth-of-type(4) { animation-delay: 60ms; }.ask-event-option:nth-of-type(5) { animation-delay: 90ms; }.ask-event-option:nth-of-type(6) { animation-delay: 120ms; }
 @keyframes page-enter { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
@@ -140,4 +153,5 @@ kbd { border: 1px solid #bac2c3; border-radius: .2rem; padding: .1rem .35rem; co
   .analysis-meta { border-left: 0; border-top: 1px solid #bac2c3; margin-top: 1.5rem; padding: 1.25rem 0 0; }
   .timeline-list li { grid-template-columns: 1fr; gap: .5rem; }
   .model-settings-form { grid-template-columns: 1fr; }
+  .ask-history { right: .75rem; top: 5rem; }
 }

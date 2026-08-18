@@ -1,5 +1,7 @@
+from datetime import UTC, datetime
 from uuid import uuid4
 
+import pytest
 from httpx import ASGITransport, AsyncClient
 
 from infoscope.api.app import app
@@ -9,6 +11,8 @@ from infoscope.schemas.ask import (
     AskAcceptedResponse,
     AskCompletedResponse,
     AskFailedResponse,
+    AskHistoryItem,
+    AskHistoryResponse,
     AskResult,
 )
 from infoscope.schemas.common import ErrorDetail
@@ -49,6 +53,22 @@ class _Service:
             ),
         )
 
+    async def history(self, user, *, limit, cursor):
+        assert (limit, cursor) == (20, None)
+        return AskHistoryResponse(
+            items=[
+                AskHistoryItem(
+                    ask_id=self.ask_id,
+                    status="completed",
+                    question="What changed?",
+                    event_ids=[uuid4()],
+                    created_at=datetime(2026, 1, 1, tzinfo=UTC),
+                    answer="Grounded answer",
+                )
+            ],
+            next_cursor="opaque-history",
+        )
+
 
 async def test_ask_post_is_accepted_and_get_returns_strict_completed_dto() -> None:
     service = _Service()
@@ -62,6 +82,7 @@ async def test_ask_post_is_accepted_and_get_returns_strict_completed_dto() -> No
                 json={"event_ids": [str(event_id)], "question": "  What changed?  "},
             )
             completed = await client.get(f"/api/v1/ask/{service.ask_id}")
+            history = await client.get("/api/v1/ask/history")
     finally:
         app.dependency_overrides.clear()
 
@@ -71,6 +92,9 @@ async def test_ask_post_is_accepted_and_get_returns_strict_completed_dto() -> No
     assert completed.json()["status"] == "completed"
     assert completed.json()["result"]["answer"] == "Grounded answer"
     assert completed.json()["error"] is None
+    assert history.status_code == 200
+    assert history.json()["items"][0]["question"] == "What changed?"
+    assert history.json()["next_cursor"] == "opaque-history"
 
 
 def test_failed_public_dto_contains_only_generic_error() -> None:
@@ -94,3 +118,14 @@ def test_failed_public_dto_contains_only_generic_error() -> None:
             "request_id": "poll-request-id",
         },
     }
+
+
+def test_ask_history_cursor_is_opaque_and_strictly_validated() -> None:
+    from infoscope.services.ask_api import AskService
+
+    created_at = datetime(2026, 1, 1, tzinfo=UTC)
+    cursor = AskService._encode_history_cursor(created_at, uuid4())
+    decoded = AskService._decode_history_cursor(cursor)
+    assert decoded[0] == created_at
+    with pytest.raises(Exception, match="Ask history cursor is invalid"):
+        AskService._decode_history_cursor("not-a-cursor")

@@ -1,11 +1,16 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, Query, Request, status
 
 from infoscope.api.dependencies import get_ready_user
 from infoscope.models import User
-from infoscope.schemas.ask import AskAcceptedResponse, AskCreateRequest, AskStatusResponse
+from infoscope.schemas.ask import (
+    AskAcceptedResponse,
+    AskCreateRequest,
+    AskHistoryResponse,
+    AskStatusResponse,
+)
 from infoscope.schemas.common import ErrorResponse
 from infoscope.services.ask_api import AskService, get_ask_service
 
@@ -30,6 +35,24 @@ async def create_ask(
     service: Annotated[AskService, Depends(get_ask_service)],
 ) -> AskAcceptedResponse:
     return await service.create(user, value)
+
+
+@router.get(
+    "/ask/history",
+    response_model=AskHistoryResponse,
+    responses={
+        401: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        422: {"model": ErrorResponse},
+    },
+)
+async def get_ask_history(
+    user: Annotated[User, Depends(get_ready_user)],
+    service: Annotated[AskService, Depends(get_ask_service)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    cursor: Annotated[str | None, Query(max_length=4096)] = None,
+) -> AskHistoryResponse:
+    return await service.history(user, limit=limit, cursor=cursor)
 
 
 @router.get(
