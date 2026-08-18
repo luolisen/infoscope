@@ -33,6 +33,7 @@ export function EventDetail({ eventId, onAsk = () => undefined, onBack, selected
   }
 
   const event = detail.data;
+  const selected = selectedEvents.some((selectedEvent) => selectedEvent.id === event.id);
   const claimsById = new Map(event.claims.map((claim) => [claim.id, claim]));
   const evidenceById = new Map(event.evidence.map((evidence) => [evidence.id, evidence]));
 
@@ -44,9 +45,11 @@ export function EventDetail({ eventId, onAsk = () => undefined, onBack, selected
         <h1>{event.title}</h1>
         <p className="detail-overview">{event.overview}</p>
         <p className="event-meta">更新于 {formatUtcDateTime(event.updated_at)} · 展示时间 {formatUtcDateTime(event.display_time)}</p>
-        <button className="detail-ask-button" onClick={() => { if (!selectedEvents.some((selected) => selected.id === event.id)) onToggleEventSelection({ id: event.id, title: event.title }); onAsk(); }} type="button">询问这个事件</button>
-        <button className="text-button detail-select" disabled={!selectedEvents.some((selected) => selected.id === event.id) && selectedEvents.length === 8} onClick={() => onToggleEventSelection({ id: event.id, title: event.title })} type="button">{selectedEvents.some((selected) => selected.id === event.id) ? "从询问选择中移除" : "加入询问选择"}</button>
-        <SaveButton eventId={event.id} saved={event.saved} />
+        <div className="detail-actions">
+          <button className="detail-ask-button" onClick={() => { if (!selected) onToggleEventSelection({ id: event.id, title: event.title }); onAsk(); }} type="button">询问这个事件</button>
+          <button aria-pressed={selected} className="detail-select-button" disabled={!selected && selectedEvents.length === 8} onClick={() => onToggleEventSelection({ id: event.id, title: event.title })} type="button">{selected ? "从询问选择中移除" : "加入询问选择"}</button>
+          <SaveButton eventId={event.id} saved={event.saved} />
+        </div>
       </header>
 
       <section className="detail-section detail-analysis" aria-labelledby="analysis-heading">

@@ -82,6 +82,10 @@ function ReadyApp() {
     return () => window.removeEventListener("resize", updateIndicator);
   }, [activePrimary, activeSecondary]);
 
+  useLayoutEffect(() => {
+    window.scrollTo({ behavior: "auto", left: 0, top: 0 });
+  }, [locationHash]);
+
   const closeSearch = () => {
     setSearchOpen(false);
     requestAnimationFrame(() => searchTriggerRef.current?.focus());

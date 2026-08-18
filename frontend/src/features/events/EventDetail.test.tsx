@@ -57,6 +57,8 @@ describe("EventDetail", () => {
     expect(screen.getByText("telegram / 私密·已脱敏")).toBeInTheDocument();
     expect(screen.getByText("web / 公开")).toBeInTheDocument();
     expect(screen.queryByText(/telegram\.me|invite|username/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "加入询问选择" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "加入询问选择" })).toHaveClass("detail-select-button");
   });
 
   it("renders loading, error, and empty relation states", async () => {
