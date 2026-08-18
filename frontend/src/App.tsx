@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { fetchHealth } from "./api/health";
@@ -45,12 +45,37 @@ function ReadyApp() {
   const [locationHash, setLocationHash] = useState(() => window.location.hash);
   const [selectedEvents, setSelectedEvents] = useState<SelectedEvent[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
+  const searchTriggerRef = useRef<HTMLButtonElement>(null);
+  const navigationRef = useRef<HTMLElement>(null);
+  const navigationLinks = useRef<Record<string, HTMLAnchorElement | null>>({});
+  const [activeIndicator, setActiveIndicator] = useState({ top: 0, height: 0, visible: false });
   const eventId = locationHash.match(/^#event\/([^/]+)$/)?.[1];
   const isSettings = locationHash === "#settings";
   const isScope = locationHash === "#scope";
   const isBrief = locationHash === "#brief";
   const isArchive = locationHash === "#archive";
   const isAsk = locationHash === "#ask";
+  const activePrimary = isAsk ? "ASK" : isBrief ? "BRIEF" : isArchive ? "ARCHIVE" : "NOW";
+  const activeSecondary = isSettings ? "SETTINGS" : isScope ? "SCOPE" : null;
+
+  useLayoutEffect(() => {
+    const updateIndicator = () => {
+      const active = navigationLinks.current[activeSecondary ?? activePrimary];
+      const nav = navigationRef.current;
+      if (!active || !nav) return;
+      const navRect = nav.getBoundingClientRect();
+      const linkRect = active.getBoundingClientRect();
+      setActiveIndicator({ top: linkRect.top - navRect.top, height: linkRect.height, visible: true });
+    };
+    updateIndicator();
+    window.addEventListener("resize", updateIndicator);
+    return () => window.removeEventListener("resize", updateIndicator);
+  }, [activePrimary, activeSecondary]);
+
+  const closeSearch = () => {
+    setSearchOpen(false);
+    requestAnimationFrame(() => searchTriggerRef.current?.focus());
+  };
 
   const toggleEventSelection = (eventToToggle: SelectedEvent) => {
     setSelectedEvents((events) => {
@@ -81,18 +106,19 @@ function ReadyApp() {
       <header className="topbar">
         <a className="wordmark" href="/" aria-label="Infoscope home">IS</a>
         <span className="meta">{healthQuery.isSuccess ? "SYSTEM / ONLINE" : "SYSTEM / CHECKING"}</span>
-        <button className="search-trigger" onClick={() => setSearchOpen(true)} type="button" aria-label="Search, shortcut Command K">
+        <button className="search-trigger" onClick={() => setSearchOpen(true)} ref={searchTriggerRef} type="button" aria-label="Search, shortcut Command K">
           <span>Search</span>
           <kbd>⌘K</kbd>
         </button>
       </header>
 
       <aside className="sidebar" aria-label="Primary navigation">
-        <nav>
+        <nav ref={navigationRef}>
+          <span aria-hidden="true" className="navigation-indicator" style={{ height: activeIndicator.height, opacity: activeIndicator.visible ? 1 : 0, transform: `translateY(${activeIndicator.top}px)` }} />
           <ul className="navigation-list">
             {primaryNavigation.map((item) => (
               <li key={item}>
-                <a aria-current={(item === "NOW" && !isSettings && !isScope && !isAsk && !isBrief && !isArchive) || (item === "ASK" && isAsk) || (item === "BRIEF" && isBrief) || (item === "ARCHIVE" && isArchive) ? "page" : undefined} href={`#${item.toLowerCase()}`}>
+                <a aria-current={item === activePrimary && activeSecondary === null ? "page" : undefined} href={`#${item.toLowerCase()}`} ref={(node) => { navigationLinks.current[item] = node; }}>
                   {item}
                 </a>
               </li>
@@ -100,7 +126,7 @@ function ReadyApp() {
           </ul>
           <ul className="navigation-list navigation-list--secondary">
             {settingsNavigation.map((item) => (
-              <li key={item}><a aria-current={(item === "SETTINGS" && isSettings) || (item === "SCOPE" && isScope) ? "page" : undefined} href={`#${item.toLowerCase()}`}>{item}</a></li>
+              <li key={item}><a aria-current={item === activeSecondary ? "page" : undefined} href={`#${item.toLowerCase()}`} ref={(node) => { navigationLinks.current[item] = node; }}>{item}</a></li>
             ))}
           </ul>
         </nav>
@@ -111,7 +137,7 @@ function ReadyApp() {
           {isSettings ? <SettingsPage /> : isScope ? <OnboardingPending editExisting onComplete={() => { window.location.hash = "#now"; }} /> : isAsk ? <AskWorkspace onClearSelection={() => setSelectedEvents([])} onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} /> : isBrief ? <BriefPage /> : isArchive ? <ArchivePage /> : eventId === undefined ? <NowShell onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} /> : <EventDetail eventId={eventId} onAsk={() => { window.location.hash = "#ask"; }} onBack={() => { window.location.hash = ""; }} onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} />}
         </div>
       </div>
-      <SearchOverlay onClose={() => setSearchOpen(false)} open={searchOpen} />
+      <SearchOverlay onClose={closeSearch} open={searchOpen} />
     </div>
   );
 }
