@@ -378,6 +378,60 @@ async def test_successful_batches_are_cached_when_a_later_batch_fails() -> None:
     assert retry_client.batch_sizes == [1]
 
 
+async def test_batch_worker_refills_capacity_before_slowest_request_finishes() -> None:
+    raw = _raw()
+    stored_signals = [_signal(raw) for _ in range(3)]
+    signals = [
+        AnalysisSignal(
+            signal_id=signal.id,
+            title=signal.title,
+            text=signal.normalized_text,
+            published_at=signal.published_at,
+            source_type=signal.source_type,
+            evidence_visibility=signal.evidence_visibility,
+            public_provenance=signal.public_provenance,
+        )
+        for signal in stored_signals
+    ]
+    slow_started = asyncio.Event()
+    release_slow = asyncio.Event()
+    third_started = asyncio.Event()
+
+    class StreamingClient(FakeClient):
+        async def analyze(self, *, window, signals):
+            if signals[0].signal_id == stored_signals[0].id:
+                slow_started.set()
+                await release_slow.wait()
+            if signals[0].signal_id == stored_signals[2].id:
+                third_started.set()
+            return await super().analyze(window=window, signals=signals)
+
+    runner = WindowAnalysisRunner(
+        acquisition=FakeAcquisition(raw, stored_signals),  # type: ignore[arg-type]
+        pipeline=FakePipeline(),  # type: ignore[arg-type]
+        client=StreamingClient(),
+        batch_concurrency=2,
+    )
+    window = type("Window", (), {
+        "start": datetime(2026, 8, 16, 9, tzinfo=UTC),
+        "end": datetime(2026, 8, 16, 10, tzinfo=UTC),
+    })()
+    task = asyncio.create_task(
+        runner._analyze_batches(  # noqa: SLF001
+            window=window,
+            batches=[[signal] for signal in signals],
+            batch_input_hashes=[f"{index:x}" * 64 for index in range(3)],
+            window_input_hash="f" * 64,
+        )
+    )
+
+    await slow_started.wait()
+    await asyncio.wait_for(third_started.wait(), timeout=1)
+    release_slow.set()
+
+    assert len(await task) == 3
+
+
 def _terminal_run(
     *,
     status: PipelineRunStatus,

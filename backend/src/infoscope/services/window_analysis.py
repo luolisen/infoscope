@@ -544,27 +544,42 @@ class WindowAnalysisRunner:
                 )
             await self.pipeline.persist_window_batch_cache(cache_writes)
 
-        for offset in range(0, len(missing), self.batch_concurrency):
-            indexes = missing[offset : offset + self.batch_concurrency]
-            tasks = [
-                asyncio.create_task(analyze_one(index, batches[index])) for index in indexes
-            ]
-            try:
-                completed = list(await asyncio.gather(*tasks))
-            except BaseException:
-                for task in tasks:
-                    if not task.done():
-                        task.cancel()
-                await asyncio.gather(*tasks, return_exceptions=True)
-                successful_indexes: list[int] = []
-                successful_responses: list[AnalysisResponse] = []
-                for index, task in zip(indexes, tasks, strict=True):
-                    if not task.cancelled() and task.exception() is None:
-                        successful_indexes.append(index)
-                        successful_responses.append(task.result())
-                await cache_completed(successful_indexes, successful_responses)
-                raise
-            await cache_completed(indexes, completed)
+        missing_iterator = iter(missing)
+        cache_lock = asyncio.Lock()
+        failures: list[Exception] = []
+
+        async def analyze_worker() -> None:
+            while not failures:
+                try:
+                    index = next(missing_iterator)
+                except StopIteration:
+                    return
+                try:
+                    response = await analyze_one(index, batches[index])
+                    # AsyncSession cannot be used concurrently. Serialize each completed cache
+                    # write while allowing the remaining model requests to stay in flight.
+                    async with cache_lock:
+                        await cache_completed([index], [response])
+                except asyncio.CancelledError:
+                    raise
+                except Exception as error:
+                    failures.append(error)
+                    return
+
+        workers = [
+            asyncio.create_task(analyze_worker())
+            for _ in range(min(self.batch_concurrency, len(missing)))
+        ]
+        try:
+            await asyncio.gather(*workers)
+        except BaseException:
+            for worker in workers:
+                if not worker.done():
+                    worker.cancel()
+            await asyncio.gather(*workers, return_exceptions=True)
+            raise
+        if failures:
+            raise failures[0]
         if any(response is None for response in responses):
             raise WindowAnalysisError("WINDOW_BATCH_RESPONSE_MISSING")
         return [response for response in responses if response is not None]
