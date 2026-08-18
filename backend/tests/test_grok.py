@@ -4,7 +4,7 @@ from uuid import uuid4
 import pytest
 
 from infoscope.integrations.research.client import ResearchRuntimeError
-from infoscope.integrations.research.grok import GrokBuildResearchClient
+from infoscope.integrations.research.grok import GrokBuildConfig, GrokBuildResearchClient
 from infoscope.integrations.research.schemas import ResearchRequestPayload
 
 
@@ -58,7 +58,8 @@ def test_grok_stream_requires_completed_x_search_and_parses_public_candidate() -
         json.dumps({"type": "text", "data": json.dumps(document)}),
         json.dumps({"type": "usage", "usage": {"input": 10, "output": 8, "total": 18}}),
     ]).encode()
-    response = GrokBuildResearchClient._parse_stream(stream, payload)
+    client = GrokBuildResearchClient(GrokBuildConfig(executable="grok", model="grok-4.6"))
+    response = client._parse_stream(stream, payload)
     assert response.provider == "grok-build"
     assert response.payload.candidates[0].source_url.startswith("https://x.com/")
 
@@ -67,4 +68,6 @@ def test_grok_stream_fails_closed_without_x_tool() -> None:
     payload = _payload()
     stream = json.dumps({"type": "text", "data": "{}"}).encode()
     with pytest.raises(ResearchRuntimeError, match="GROK_SEARCH_TOOL_NOT_USED"):
-        GrokBuildResearchClient._parse_stream(stream, payload)
+        GrokBuildResearchClient(
+            GrokBuildConfig(executable="grok", model="grok-4.6")
+        )._parse_stream(stream, payload)

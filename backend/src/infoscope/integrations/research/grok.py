@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -99,8 +100,9 @@ class GrokBuildResearchClient:
             + json.dumps(document, ensure_ascii=False, separators=(",", ":"))
         )
 
-    @staticmethod
-    def _parse_stream(stdout: bytes, payload: ResearchRequestPayload) -> ResearchDiscoveryResponse:
+    def _parse_stream(
+        self, stdout: bytes, payload: ResearchRequestPayload
+    ) -> ResearchDiscoveryResponse:
         tool_used = False
         texts: list[str] = []
         usage_document: dict[str, int] = {}
@@ -132,12 +134,14 @@ class GrokBuildResearchClient:
         if discovery.request_id != payload.request_id:
             raise ResearchRuntimeError("RESEARCH_DISCOVERY_REQUEST_MISMATCH")
         for candidate in discovery.candidates:
-            if candidate.source_kind.value != "web_page" or not candidate.source_url.startswith("https://x.com/"):
+            if candidate.source_kind.value != "web_page" or re.fullmatch(
+                r"https://x\.com/[A-Za-z0-9_]{1,15}/status/[0-9]+", candidate.source_url
+            ) is None:
                 raise ResearchRuntimeError("GROK_SOURCE_URL_INVALID")
         return ResearchDiscoveryResponse(
             payload=discovery,
             provider="grok-build",
-            model="grok-build",
+            model=self.config.model,
             usage=usage,
         )
 
