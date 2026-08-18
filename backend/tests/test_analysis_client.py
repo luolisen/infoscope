@@ -37,10 +37,19 @@ def _payload(signal_id) -> dict:
 
 
 def _config(
-    *, keys: tuple[str, ...] = ("first", "second"), supports_thinking: bool = True
+    *,
+    keys: tuple[str, ...] = ("first", "second"),
+    supports_thinking: bool = True,
+    max_retries: int = 1,
 ) -> AnalysisConfig:
     return AnalysisConfig(
-        "https://api.example.com", "model", keys, 10, 1, 1024, supports_thinking
+        "https://api.example.com",
+        "model",
+        keys,
+        10,
+        max_retries,
+        1024,
+        supports_thinking,
     )
 
 
@@ -95,6 +104,41 @@ async def test_client_rotates_keys_on_retry_and_parses_json_output() -> None:
     assert thinking_modes == ["disabled", "disabled"]
     assert result.payload.unassigned_signal_ids == [signal.signal_id]
     assert result.token_usage.total_tokens == 15
+
+
+async def test_client_tries_full_key_allowlist_when_retry_budget_is_zero() -> None:
+    signal = _signal()
+    authorizations: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        authorizations.append(request.headers["Authorization"])
+        if len(authorizations) < 3:
+            return httpx.Response(502, json={"error": {"message": "temporary"}})
+        return httpx.Response(
+            200,
+            json={
+                "model": "deepseek-v4-flash",
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {"content": json.dumps(_payload(signal.signal_id))},
+                    }
+                ],
+                "usage": {},
+            },
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as transport:
+        result = await DeepSeekAnalysisClient(
+            client=transport,
+            config=_config(keys=("first", "second", "third"), max_retries=0),
+        ).analyze(
+            window=LogicalWindow.starting_at(datetime(2026, 8, 16, 9, tzinfo=UTC)),
+            signals=[signal],
+        )
+
+    assert result.payload.unassigned_signal_ids == [signal.signal_id]
+    assert authorizations == ["Bearer first", "Bearer second", "Bearer third"]
 
 
 async def test_schema_retry_adds_fixed_repair_instruction_without_old_output() -> None:

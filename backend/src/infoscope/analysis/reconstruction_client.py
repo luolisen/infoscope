@@ -23,6 +23,10 @@ from infoscope.analysis.reconstruction_schemas import (
     ExistingEventCandidate,
     NewEventModelDecision,
 )
+from infoscope.analysis.request_transport import (
+    TransientRequestFailure,
+    post_with_key_failover,
+)
 from infoscope.analysis.schemas import AnalysisSignal, TokenUsage, WindowAnalysisPayload
 
 logger = logging.getLogger("infoscope.analysis.event_reconstruction")
@@ -72,18 +76,9 @@ class DeepSeekEventReconstructionClient:
                 }
                 if self.config.supports_deepseek_thinking:
                     request_payload["thinking"] = {"type": "disabled"}
-                response = await self.client.post(
-                    f"{self.config.api_base_url}/chat/completions",
-                    headers={"Authorization": f"Bearer {key}"},
-                    json=request_payload,
-                    timeout=self.config.timeout_seconds,
-                )
-                last_error = self._response_error(response)
-                if last_error:
-                    if attempt < self.config.max_retries and self._retryable(response.status_code):
-                        await asyncio.sleep(min(2**attempt, 8))
-                        continue
-                    raise AnalysisError(last_error)
+                response = await self._post(request_payload, first_key=key)
+                if not response.is_success:
+                    raise AnalysisError("ANALYSIS_REQUEST_REJECTED")
                 return self._parse_response(
                     response.json(),
                     signal_ids=[signal.signal_id for signal in signals],
@@ -106,6 +101,33 @@ class DeepSeekEventReconstructionClient:
                     raise
                 await asyncio.sleep(min(2**attempt, 8))
         raise AnalysisError(last_error)
+
+    async def _post(
+        self, request_payload: dict[str, Any], *, first_key: str
+    ) -> httpx.Response:
+        used_first = False
+
+        async def next_key() -> str:
+            nonlocal used_first
+            if not used_first:
+                used_first = True
+                return first_key
+            return await self._next_key()
+
+        try:
+            return await post_with_key_failover(
+                client=self.client,
+                config=self.config,
+                next_key=next_key,
+                payload=request_payload,
+            )
+        except TransientRequestFailure as error:
+            codes = {
+                "request": "ANALYSIS_REQUEST_FAILED",
+                "rate_limited": "ANALYSIS_RATE_LIMITED",
+                "upstream_unavailable": "ANALYSIS_UPSTREAM_UNAVAILABLE",
+            }
+            raise AnalysisError(codes[error.kind]) from error
 
     @staticmethod
     def _repair_instruction(error_code: str) -> str | None:
@@ -136,20 +158,6 @@ class DeepSeekEventReconstructionClient:
         if error_code in {"ANALYSIS_EMPTY_RESPONSE", "ANALYSIS_INVALID_JSON"}:
             return "Return one complete, valid JSON object only, with no prose or code fences."
         return None
-
-    @staticmethod
-    def _retryable(status_code: int) -> bool:
-        return status_code == 429 or status_code >= 500
-
-    @staticmethod
-    def _response_error(response: httpx.Response) -> str:
-        if response.status_code == 429:
-            return "ANALYSIS_RATE_LIMITED"
-        if response.status_code >= 500:
-            return "ANALYSIS_UPSTREAM_UNAVAILABLE"
-        if not response.is_success:
-            return "ANALYSIS_REQUEST_REJECTED"
-        return ""
 
     def _parse_response(
         self,

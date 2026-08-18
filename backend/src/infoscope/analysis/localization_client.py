@@ -18,6 +18,10 @@ from infoscope.analysis.localization_schemas import (
     url_tokens,
     validate_localization_output,
 )
+from infoscope.analysis.request_transport import (
+    TransientRequestFailure,
+    post_with_key_failover,
+)
 from infoscope.analysis.schemas import TokenUsage
 
 logger = logging.getLogger("infoscope.analysis.localization")
@@ -181,38 +185,29 @@ class EventLocalizationClient:
         raise AnalysisError(last_error)
 
     async def _post(self, prompt: str) -> httpx.Response:
-        """Try every configured key before declaring a transient upstream failure."""
-        attempts = max(self.config.max_retries + 1, len(self.config.api_keys))
-        last_error = "EVENT_LOCALIZATION_REQUEST_FAILED"
-        for attempt in range(attempts):
-            try:
-                response = await self.client.post(
-                    f"{self.config.api_base_url}/chat/completions",
-                    headers={"Authorization": f"Bearer {await self._next_key()}"},
-                    json={
-                        "model": self.config.model,
-                        "messages": [
-                            {"role": "system", "content": SYSTEM_PROMPT},
-                            {"role": "user", "content": prompt},
-                        ],
-                        "response_format": {"type": "json_object"},
-                        "max_tokens": self.config.max_tokens,
-                        "temperature": 0,
-                    },
-                    timeout=self.config.timeout_seconds,
-                )
-            except httpx.HTTPError:
-                last_error = "EVENT_LOCALIZATION_REQUEST_FAILED"
-            else:
-                if response.status_code == 429:
-                    last_error = "EVENT_LOCALIZATION_RATE_LIMITED"
-                elif response.status_code >= 500:
-                    last_error = "EVENT_LOCALIZATION_UPSTREAM_UNAVAILABLE"
-                else:
-                    return response
-            if attempt < attempts - 1:
-                await asyncio.sleep(min(2**attempt, 8))
-        raise AnalysisError(last_error)
+        try:
+            return await post_with_key_failover(
+                client=self.client,
+                config=self.config,
+                next_key=self._next_key,
+                payload={
+                    "model": self.config.model,
+                    "messages": [
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": prompt},
+                    ],
+                    "response_format": {"type": "json_object"},
+                    "max_tokens": self.config.max_tokens,
+                    "temperature": 0,
+                },
+            )
+        except TransientRequestFailure as error:
+            codes = {
+                "request": "EVENT_LOCALIZATION_REQUEST_FAILED",
+                "rate_limited": "EVENT_LOCALIZATION_RATE_LIMITED",
+                "upstream_unavailable": "EVENT_LOCALIZATION_UPSTREAM_UNAVAILABLE",
+            }
+            raise AnalysisError(codes[error.kind]) from error
 
     @staticmethod
     def _repair_hint(
