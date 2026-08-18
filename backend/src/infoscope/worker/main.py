@@ -532,7 +532,10 @@ async def run_backwrite_spec_once(
 ) -> None:
     settings = get_settings()
     async with session_factory() as database:
-        cycle, _inserted = await BackwriteRepository(database).create_or_reuse_cycle(
+        cycle, _inserted = await BackwriteRepository(
+            database,
+            stale_after=timedelta(seconds=settings.maintenance_stale_after_seconds),
+        ).create_or_reuse_cycle(
             spec,
             provider=provider,
             max_attempts=settings.backwrite_max_attempts,
@@ -568,7 +571,10 @@ async def run_backwrite_spec_once(
                         state_dir=settings.resolved_research_openclaw_state_dir,
                     ),
                 )
-                repository = BackwriteRepository(database)
+                repository = BackwriteRepository(
+                    database,
+                    stale_after=timedelta(seconds=settings.maintenance_stale_after_seconds),
+                )
                 cycle = await BackwriteRunner(
                     repository=repository,
                     research_repository=research_repository,
