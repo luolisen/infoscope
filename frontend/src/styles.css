@@ -124,6 +124,13 @@ kbd { border: 1px solid #bac2c3; border-radius: .2rem; padding: .1rem .35rem; co
 
 .save-button { margin-top: 0; }
 .save-button--saved { background: #20666a; color: #f5f6f5; }
+.page-transition { animation: page-enter 220ms ease-out; min-height: 100%; }
+.ask-send-button { align-items: center; display: inline-flex; gap: .55rem; justify-content: center; min-width: 8.5rem; opacity: 1; transition: opacity 180ms ease, transform 180ms ease; }
+.ask-send-button span:first-child { font-size: 1.2rem; line-height: 1; }
+.ask-event-option { animation: ask-option-enter 220ms ease-out both; }
+.ask-event-option:nth-of-type(3) { animation-delay: 30ms; }.ask-event-option:nth-of-type(4) { animation-delay: 60ms; }.ask-event-option:nth-of-type(5) { animation-delay: 90ms; }.ask-event-option:nth-of-type(6) { animation-delay: 120ms; }
+@keyframes page-enter { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes ask-option-enter { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 
 @media (max-width: 640px) {
   .auth-preview__body { grid-template-columns: 1fr; }

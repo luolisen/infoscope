@@ -76,7 +76,7 @@ export function AskPanel({ selectedEvents, onClearSelection, workspace = false }
       <form className="ask-form" onSubmit={submit}>
         <label htmlFor="ask-question">你的问题</label>
         <textarea disabled={askId !== null} id="ask-question" maxLength={2000} onChange={(event) => setQuestion(event.target.value)} placeholder="你想了解什么？" required value={question} />
-        <button className="auth-submit" disabled={create.isPending || askId !== null || question.trim().length === 0 || selectedEvents.length === 0} type="submit">{create.isPending ? "正在准备…" : isActive ? "处理中" : "发送问题"}</button>
+        {(question.trim().length > 0 || create.isPending || isActive) && <button aria-label={isActive ? "处理中" : "发送问题"} className="auth-submit ask-send-button" disabled={create.isPending || askId !== null || question.trim().length === 0 || selectedEvents.length === 0} type="submit"><span aria-hidden="true">↑</span><span>{create.isPending ? "正在准备…" : isActive ? "处理中" : "发送问题"}</span></button>}
       </form>
       {create.isError && <p className="auth-error" role="alert">无法开始 Ask，请稍后重试。</p>}
       {isActive && <p className="ask-progress" role="status">正在整理相关信息…</p>}

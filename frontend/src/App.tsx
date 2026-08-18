@@ -107,7 +107,9 @@ function ReadyApp() {
       </aside>
 
       <div className="content-column">
-        {isSettings ? <SettingsPage /> : isScope ? <OnboardingPending editExisting onComplete={() => { window.location.hash = "#now"; }} /> : isAsk ? <AskWorkspace onClearSelection={() => setSelectedEvents([])} onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} /> : isBrief ? <BriefPage /> : isArchive ? <ArchivePage /> : eventId === undefined ? <NowShell onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} /> : <EventDetail eventId={eventId} onAsk={() => { window.location.hash = "#ask"; }} onBack={() => { window.location.hash = ""; }} onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} />}
+        <div className="page-transition" key={locationHash}>
+          {isSettings ? <SettingsPage /> : isScope ? <OnboardingPending editExisting onComplete={() => { window.location.hash = "#now"; }} /> : isAsk ? <AskWorkspace onClearSelection={() => setSelectedEvents([])} onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} /> : isBrief ? <BriefPage /> : isArchive ? <ArchivePage /> : eventId === undefined ? <NowShell onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} /> : <EventDetail eventId={eventId} onAsk={() => { window.location.hash = "#ask"; }} onBack={() => { window.location.hash = ""; }} onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} />}
+        </div>
       </div>
       <SearchOverlay onClose={() => setSearchOpen(false)} open={searchOpen} />
     </div>
