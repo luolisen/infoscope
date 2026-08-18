@@ -8,9 +8,22 @@
 
 - 7 个 NewsNow 热榜源；
 - 10 个 RSS / Atom Feed；
-- 8 个公开 Telegram 频道。
+- Telegram 标题严格等于 `News` 的文件夹中，显式包含且未排除的全部群组和频道。
 
 Hacker News 继续使用现有 `https://hnrss.org/frontpage`，不同时接入 `https://news.ycombinator.com/rss`，避免重复采集。
+
+本次另有 8 个公开频道准备加入 `News` 文件夹：
+
+- NewsTrade.AI：`https://t.me/NewsTradeAI`
+- FinancialJuice：`https://t.me/financialjuice`
+- Wu Blockchain News：`https://t.me/wublockchainenglish`
+- 吴说区块链：`https://t.me/wublock`
+- Watcher Guru：`https://t.me/WatcherGuru`
+- Yummy：`https://t.me/GodlyNews1`
+- GitHub Trends：`https://t.me/githubtrending`
+- Tree News：`https://t.me/TreeNewsFeed`
+
+这 8 个频道只是本次文件夹新增项，不构成 TG News 的完整来源清单。后续采集范围始终由 `News` 文件夹的实时 include / exclude 结果决定。
 
 ## 后续支持来源
 

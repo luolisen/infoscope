@@ -41,6 +41,12 @@ Feed 采集使用 GUID 或 canonical URL 作为幂等依据。字符编码声明
 
 ## Telegram
 
+Telegram 信息源集合由本机 Telegram 中标题严格等于 `News` 的文件夹决定。该文件夹显式包含且未排除的全部群组和频道，共同构成完整的 TG News 信息源；来源范围不固定为某几个人工写入的频道名称。
+
+采集使用 Telegram 用户账号 MTProto API，只读取 `News` 文件夹中的群组和频道，不读取私聊或 Bot。公开来源可以公开列示；邀请制或私密来源同样可以参与采集，但其名称、username、invite link 和内部 ID 不对外披露。
+
+以下是可以公开列示的频道：
+
 | 频道 | 地址 | 主要范围 |
 | --- | --- | --- |
 | NewsTrade.AI | `https://t.me/NewsTradeAI` | X 市场新闻聚合与来源线索 |
@@ -52,7 +58,7 @@ Feed 采集使用 GUID 或 canonical URL 作为幂等依据。字符编码声明
 | GitHub Trends | `https://t.me/githubtrending` | GitHub Trending 与开源项目 |
 | Tree News | `https://t.me/TreeNewsFeed` | 加密与宏观市场短讯 |
 
-公开 Telegram 消息保留频道、公开 username、消息 URL 和平台消息 ID。镜像消息若无法追溯到原始 X URL 或原始公告，只作为 discovery 使用。
+公开 Telegram 消息保留频道、公开 username、消息 URL 和平台消息 ID。私密 Telegram 内容在进入 Signal 前移除来源身份。镜像消息若无法追溯到原始 X URL 或原始公告，只作为 discovery 使用。
 
 ## AI 官方与研究
 
