@@ -12,9 +12,9 @@
 
 Hacker News 继续使用现有 `https://hnrss.org/frontpage`，不同时接入 `https://news.ycombinator.com/rss`，避免重复采集。
 
-### News 文件夹当前快照
+### News 文件夹 API 快照
 
-2026-08-19 通过 Telegram MTProto API 只读解析，`News` 文件夹当前包含 17 个公开群组 / 频道：
+2026-08-19 完成本次文件夹更新后，通过 Telegram MTProto API 复核：`News` 文件夹共包含 24 个群组 / 频道，其中 23 个具有公开 username，1 个没有公开 username。私密来源身份不得进入 Git，因此此处只列出公开来源：
 
 1. CoinMarketCap Announcements：`@CoinMarketCapAnnouncements`
 2. Breaking Alert 全球快报：`@GlobalFinance_ZH`
@@ -33,20 +33,27 @@ Hacker News 继续使用现有 `https://hnrss.org/frontpage`，不同时接入 `
 15. Binance Announcements：`@binance_announcements`
 16. 经济信息联播：`@eco_cn`
 17. PANews 编辑部 Web3 资讯严选：`@PANewsSelected`
+18. NewsTrade.AI：`@NewsTradeAI`
+19. FinancialJuice：`@FinancialJuice`
+20. Wu Blockchain News：`@wublockchainenglish`
+21. Watcher Guru：`@WatcherGuru`
+22. GitHub Trends：`@githubtrending`
+23. Tree News：`@TreeNewsFeed`
 
-### 本次文件夹新增项
+另有 1 个私密来源参与采集，其标题、username、invite link、peer ID 和历史公开别名均不写入本文件。
 
-批准的 8 个公开频道中，`@wublock` 已存在于 `News` 文件夹，因此实际只需新增以下 7 个：
+### 本次文件夹更新结果
+
+批准列表中的 `@wublock` 已存在，无需重复加入；其余 7 个目标均已加入并追加到 `News` 文件夹。其中 6 个保持公开：
 
 - NewsTrade.AI：`https://t.me/NewsTradeAI`
 - FinancialJuice：`https://t.me/financialjuice`
 - Wu Blockchain News：`https://t.me/wublockchainenglish`
 - Watcher Guru：`https://t.me/WatcherGuru`
-- Yummy：`https://t.me/GodlyNews1`
 - GitHub Trends：`https://t.me/githubtrending`
 - Tree News：`https://t.me/TreeNewsFeed`
 
-批准的频道列表不构成 TG News 的完整来源清单。后续采集范围始终由 `News` 文件夹的实时 include / exclude 结果决定。
+另 1 个目标加入后由 Telegram API 返回 `username=null`，因此按 `private_sanitized` 来源处理且不在 Git 中记录身份。批准的频道列表不构成 TG News 的完整来源清单；采集范围始终由 `News` 文件夹的实时 include / exclude 结果决定。
 
 ## 后续支持来源
 

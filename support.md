@@ -70,7 +70,6 @@ Telegram 信息源集合由本机 Telegram 中标题严格等于 `News` 的文�
 | FinancialJuice | `https://t.me/financialjuice` | 宏观、美股与实时市场快讯 |
 | Wu Blockchain News | `https://t.me/wublockchainenglish` | 亚洲加密市场英文资讯 |
 | Watcher Guru | `https://t.me/WatcherGuru` | 加密、宏观与美股快讯 |
-| Yummy | `https://t.me/GodlyNews1` | 中文 AI、科技与数码资讯 |
 | GitHub Trends | `https://t.me/githubtrending` | GitHub Trending 与开源项目 |
 | Tree News | `https://t.me/TreeNewsFeed` | 加密与宏观市场短讯 |
 
