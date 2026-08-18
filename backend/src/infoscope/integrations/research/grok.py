@@ -106,7 +106,11 @@ class GrokBuildResearchClient:
         tool_used = False
         texts: list[str] = []
         usage_document: dict[str, int] = {}
-        for line in stdout.decode("utf-8", errors="strict").splitlines():
+        try:
+            lines = stdout.decode("utf-8", errors="strict").splitlines()
+        except UnicodeDecodeError as error:
+            raise ResearchRuntimeError("RESEARCH_RUNTIME_PROTOCOL_INVALID") from error
+        for line in lines:
             try:
                 event = json.loads(line)
             except json.JSONDecodeError:
@@ -133,6 +137,8 @@ class GrokBuildResearchClient:
             raise ResearchRuntimeError("RESEARCH_DISCOVERY_SCHEMA_INVALID") from error
         if discovery.request_id != payload.request_id:
             raise ResearchRuntimeError("RESEARCH_DISCOVERY_REQUEST_MISMATCH")
+        if len(discovery.candidates) > 4:
+            raise ResearchRuntimeError("GROK_OUTPUT_LIMIT_EXCEEDED")
         for candidate in discovery.candidates:
             if candidate.source_kind.value != "web_page" or re.fullmatch(
                 r"https://x\.com/[A-Za-z0-9_]{1,15}/status/[0-9]+", candidate.source_url
