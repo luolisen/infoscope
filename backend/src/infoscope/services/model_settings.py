@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Annotated
-from urllib.parse import urlparse
 from uuid import UUID
 
 from fastapi import Depends, status
@@ -59,7 +58,7 @@ _DEFINITIONS_BY_SELECTION = {
 }
 SHARED_FACT_MODEL_SELECTION = ModelSelection(
     source_id="ai_ping",
-    model_id="DeepSeek-V4-Flash-0731",
+    model_id="DeepSeek-V4-Pro",
 )
 
 
@@ -84,11 +83,16 @@ def _credentials(
         return settings.analysis_api_base_url, settings.analysis_api_keys, "deepseek"
     if definition.source_id == "gpt_5_5":
         return settings.dragon_api_base_url, settings.dragon_api_keys, "dragon"
-    keys = (
-        settings.aiping_api_keys_group_1
-        if definition.key_group == 1
-        else settings.aiping_api_keys_group_2
+    configured_groups = tuple(
+        value.get_secret_value().strip()
+        for value in (
+            settings.aiping_api_keys_group_1,
+            settings.aiping_api_keys_group_2,
+            settings.aiping_api_keys_group_3,
+        )
+        if value is not None and value.get_secret_value().strip()
     )
+    keys = SecretStr(",".join(configured_groups)) if configured_groups else None
     return settings.aiping_api_base_url, keys, "ai_ping"
 
 
@@ -131,16 +135,8 @@ def shared_fact_analysis_config(settings: Settings) -> AnalysisConfig:
 
 
 def default_model_selection(settings: Settings) -> ModelSelection:
-    hostname = urlparse(settings.analysis_api_base_url).hostname or ""
-    if hostname.endswith("deepseek.com") and (
-        "deepseek_official",
-        settings.analysis_model,
-    ) in _DEFINITIONS_BY_SELECTION:
-        return ModelSelection(
-            source_id="deepseek_official",
-            model_id=settings.analysis_model,  # type: ignore[arg-type]
-        )
-    return ModelSelection(source_id="deepseek_official", model_id="deepseek-v4-flash")
+    del settings
+    return ModelSelection(source_id="ai_ping", model_id="DeepSeek-V4-Pro")
 
 
 async def selected_model_for_user(

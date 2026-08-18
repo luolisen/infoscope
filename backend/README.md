@@ -184,8 +184,12 @@ Optional user-selectable model sources are configured with `DRAGON_API_*` and
 `AIPING_API_*` variables in addition to the deployment-level `ANALYSIS_*`
 default. `GET/PUT /api/v1/settings/models` exposes only the fixed source/model
 identifiers and availability; credentials and endpoint URLs remain server-side.
+AI Ping uses a single-selected-model architecture: whichever AI Ping model is
+active combines server-side key groups 1, 2, and 3. This increases same-model
+concurrency without exposing or persisting credentials.
 The user preference applies to Personalization, Brief, and Ask. Shared Event
-fact pipelines and Backwrite continue to use `ANALYSIS_*`.
+fact pipelines, Backwrite, and users without a saved preference default to
+`AI Ping / DeepSeek-V4-Pro`.
 Operators may apply one process-local full-cycle override with both
 `ANALYSIS_RUN_SOURCE_ID` and `ANALYSIS_RUN_MODEL_ID`. The override applies to
 shared fact stages, localization, Personalization, and Brief without changing

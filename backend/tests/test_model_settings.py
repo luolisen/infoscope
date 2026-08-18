@@ -32,6 +32,7 @@ def _settings() -> Settings:
         aiping_api_base_url="https://aiping.example.com/api/v1",
         aiping_api_keys_group_1=SecretStr("aiping-one"),
         aiping_api_keys_group_2=SecretStr("aiping-two"),
+        aiping_api_keys_group_3=SecretStr("aiping-three,aiping-four"),
         analysis_max_tokens=16_384,
         user_analysis_max_tokens=1_024,
     )
@@ -66,14 +67,20 @@ def test_fixed_catalog_maps_each_model_to_isolated_server_credentials() -> None:
     )
 
     assert (gpt.provider, gpt.api_keys) == ("dragon", ("dragon-one",))
-    assert (kimi.provider, kimi.api_keys) == ("ai_ping", ("aiping-one",))
-    assert (qwen.provider, qwen.api_keys) == ("ai_ping", ("aiping-two",))
+    pooled_aiping_keys = (
+        "aiping-one",
+        "aiping-two",
+        "aiping-three",
+        "aiping-four",
+    )
+    assert (kimi.provider, kimi.api_keys) == ("ai_ping", pooled_aiping_keys)
+    assert (qwen.provider, qwen.api_keys) == ("ai_ping", pooled_aiping_keys)
     assert "dragon-one" not in repr(gpt)
 
     shared = shared_fact_analysis_config(settings)
     assert shared.provider == "ai_ping"
-    assert shared.model == "DeepSeek-V4-Flash-0731"
-    assert shared.api_keys == ("aiping-one",)
+    assert shared.model == "DeepSeek-V4-Pro"
+    assert shared.api_keys == pooled_aiping_keys
     assert shared.max_tokens == 16_384
     assert gpt.max_tokens == 1_024
 
@@ -87,7 +94,12 @@ def test_fixed_catalog_maps_each_model_to_isolated_server_credentials() -> None:
     )
     assert run_override.provider == "ai_ping"
     assert run_override.model == "DeepSeek-V4-Pro"
-    assert run_override.api_keys == ("aiping-one",)
+    assert run_override.api_keys == (
+        "aiping-one",
+        "aiping-two",
+        "aiping-three",
+        "aiping-four",
+    )
 
 
 def test_invalid_source_model_pair_is_rejected() -> None:
@@ -116,7 +128,12 @@ async def test_run_override_applies_to_user_analysis_without_reading_preference(
 
     assert config.provider == "ai_ping"
     assert config.model == "DeepSeek-V4-Pro"
-    assert config.api_keys == ("aiping-one",)
+    assert config.api_keys == (
+        "aiping-one",
+        "aiping-two",
+        "aiping-three",
+        "aiping-four",
+    )
 
 
 def test_incomplete_run_override_fails_closed() -> None:
