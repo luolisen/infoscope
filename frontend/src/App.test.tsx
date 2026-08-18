@@ -74,6 +74,8 @@ describe("App", () => {
 
     expect(await screen.findByRole("heading", { name: "此刻，什么值得关注。" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "NOW" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByText("当前视图暂无事件 · 最新窗口暂无新增信息。"))
+      .toBeInTheDocument();
     expect(await screen.findByText(/暂时没有需要关注的内容/)).toBeInTheDocument();
   });
 

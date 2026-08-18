@@ -22,9 +22,13 @@ a { color: inherit; }
   display: flex;
   align-items: center;
   justify-content: space-between;
+  background: #e9ecec;
   border-bottom: 1px solid #bac2c3;
   min-width: 0;
   padding: 0 1.5rem;
+  position: sticky;
+  top: 0;
+  z-index: 20;
 }
 
 .wordmark { font-size: 1.25rem; font-weight: 800; letter-spacing: -0.08em; text-decoration: none; }
@@ -32,7 +36,7 @@ a { color: inherit; }
 .action-icon { display: block; height: 1.15rem; width: 1.15rem; }
 kbd { border: 1px solid #bac2c3; border-radius: .2rem; padding: .1rem .35rem; color: #526062; font-size: .72rem; }
 
-.sidebar { border-right: 1px solid #bac2c3; display: flex; flex-direction: column; max-height: calc(100vh - 4.25rem); min-width: 0; overflow: hidden; padding: 1.5rem; }
+.sidebar { align-self: start; border-right: 1px solid #bac2c3; display: flex; flex-direction: column; height: calc(100vh - 4.25rem); min-width: 0; overflow: hidden; padding: 1.5rem; position: sticky; top: 4.25rem; }
 .content-column { min-width: 0; }
 .sidebar nav { position: relative; }
 .navigation-indicator { background: #7b8586; pointer-events: none; position: absolute; transition: opacity 180ms ease, top 220ms ease, left 220ms ease, height 180ms ease, width 180ms ease; }
@@ -54,7 +58,7 @@ kbd { border: 1px solid #bac2c3; border-radius: .2rem; padding: .1rem .35rem; co
 @media (max-width: 640px) {
   .app-shell { grid-template-columns: 1fr; grid-template-rows: 4rem auto 1fr; }
   .topbar { padding: 0 1rem; }
-  .sidebar { border-bottom: 1px solid #bac2c3; border-right: 0; padding: .5rem 1rem; }
+  .sidebar { border-bottom: 1px solid #bac2c3; border-right: 0; height: auto; padding: .5rem 1rem; position: static; }
   .sidebar nav { display: flex; gap: 1rem; overflow-x: auto; }
   .navigation-list { display: flex; gap: 1rem; white-space: nowrap; }
   .navigation-list--secondary { border-left: 1px solid #bac2c3; border-top: 0; margin: 0; padding: 0 0 0 1rem; }

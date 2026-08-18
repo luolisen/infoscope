@@ -109,59 +109,40 @@ class EventLocalizationClient:
                         f"{REPAIR_PROMPT}"
                     )
                 )
-                response = await self.client.post(
-                    f"{self.config.api_base_url}/chat/completions",
-                    headers={"Authorization": f"Bearer {await self._next_key()}"},
-                    json={
-                        "model": self.config.model,
-                        "messages": [
-                            {"role": "system", "content": SYSTEM_PROMPT},
-                            {"role": "user", "content": attempt_prompt},
-                        ],
-                        "response_format": {"type": "json_object"},
-                        "max_tokens": self.config.max_tokens,
-                        "temperature": 0,
-                    },
-                    timeout=self.config.timeout_seconds,
-                )
-                if response.status_code == 429:
-                    last_error = "EVENT_LOCALIZATION_RATE_LIMITED"
-                elif response.status_code >= 500:
-                    last_error = "EVENT_LOCALIZATION_UPSTREAM_UNAVAILABLE"
-                elif not response.is_success:
+                response = await self._post(attempt_prompt)
+                if not response.is_success:
                     raise AnalysisError("EVENT_LOCALIZATION_REQUEST_REJECTED")
-                else:
-                    parsed = self._parse(
-                        response.json(),
-                        expected_event_id=(
-                            value.events[0].event_id if len(value.events) == 1 else None
+                parsed = self._parse(
+                    response.json(),
+                    expected_event_id=(
+                        value.events[0].event_id if len(value.events) == 1 else None
+                    ),
+                )
+                if len(value.events) == 1 and len(parsed.payload.decisions) == 1:
+                    # The model has no authority to choose an Event ID. Once a
+                    # failed batch is isolated to one frozen input Event, repair
+                    # even a syntactically valid but incorrectly copied UUID.
+                    # Content remains subject to the complete strict validator
+                    # below; multi-Event responses are never repaired by order.
+                    parsed.payload.decisions[0].event_id = value.events[0].event_id
+                try:
+                    validate_localization_output(value, parsed.payload)
+                except ValueError as error:
+                    repair_hint = self._repair_hint(value, parsed.payload)
+                    error_codes = {
+                        "localization output changed URLs": (
+                            "EVENT_LOCALIZATION_URL_CHANGED"
                         ),
-                    )
-                    if len(value.events) == 1 and len(parsed.payload.decisions) == 1:
-                        # The model has no authority to choose an Event ID. Once a
-                        # failed batch is isolated to one frozen input Event, repair
-                        # even a syntactically valid but incorrectly copied UUID.
-                        # Content remains subject to the complete strict validator
-                        # below; multi-Event responses are never repaired by order.
-                        parsed.payload.decisions[0].event_id = value.events[0].event_id
-                    try:
-                        validate_localization_output(value, parsed.payload)
-                    except ValueError as error:
-                        repair_hint = self._repair_hint(value, parsed.payload)
-                        error_codes = {
-                            "localization output changed URLs": (
-                                "EVENT_LOCALIZATION_URL_CHANGED"
-                            ),
-                            "localization output changed numeric tokens": (
-                                "EVENT_LOCALIZATION_NUMBERS_CHANGED"
-                            ),
-                        }
-                        raise AnalysisError(
-                            error_codes.get(
-                                str(error), "EVENT_LOCALIZATION_OUTPUT_INVALID"
-                            )
-                        ) from error
-                    return parsed
+                        "localization output changed numeric tokens": (
+                            "EVENT_LOCALIZATION_NUMBERS_CHANGED"
+                        ),
+                    }
+                    raise AnalysisError(
+                        error_codes.get(
+                            str(error), "EVENT_LOCALIZATION_OUTPUT_INVALID"
+                        )
+                    ) from error
+                return parsed
             except (httpx.HTTPError, json.JSONDecodeError) as error:
                 last_error = "EVENT_LOCALIZATION_REQUEST_FAILED"
                 if attempt >= self.config.max_retries:
@@ -197,6 +178,40 @@ class EventLocalizationClient:
                     total_tokens=total_tokens,
                 ),
             )
+        raise AnalysisError(last_error)
+
+    async def _post(self, prompt: str) -> httpx.Response:
+        """Try every configured key before declaring a transient upstream failure."""
+        attempts = max(self.config.max_retries + 1, len(self.config.api_keys))
+        last_error = "EVENT_LOCALIZATION_REQUEST_FAILED"
+        for attempt in range(attempts):
+            try:
+                response = await self.client.post(
+                    f"{self.config.api_base_url}/chat/completions",
+                    headers={"Authorization": f"Bearer {await self._next_key()}"},
+                    json={
+                        "model": self.config.model,
+                        "messages": [
+                            {"role": "system", "content": SYSTEM_PROMPT},
+                            {"role": "user", "content": prompt},
+                        ],
+                        "response_format": {"type": "json_object"},
+                        "max_tokens": self.config.max_tokens,
+                        "temperature": 0,
+                    },
+                    timeout=self.config.timeout_seconds,
+                )
+            except httpx.HTTPError:
+                last_error = "EVENT_LOCALIZATION_REQUEST_FAILED"
+            else:
+                if response.status_code == 429:
+                    last_error = "EVENT_LOCALIZATION_RATE_LIMITED"
+                elif response.status_code >= 500:
+                    last_error = "EVENT_LOCALIZATION_UPSTREAM_UNAVAILABLE"
+                else:
+                    return response
+            if attempt < attempts - 1:
+                await asyncio.sleep(min(2**attempt, 8))
         raise AnalysisError(last_error)
 
     @staticmethod
