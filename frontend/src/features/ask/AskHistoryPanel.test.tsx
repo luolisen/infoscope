@@ -19,11 +19,11 @@ afterEach(() => {
 it("uses the Backend opaque cursor to load more owner history", async () => {
   vi.mocked(fetchAskHistory)
     .mockResolvedValueOnce({
-      items: [{ ask_id: "ask-1", status: "completed", question: "第一问", event_ids: [], created_at: "2026-08-18T00:00:00Z", finished_at: null, thinking_seconds: 12, answer: "回答一", updated_event_ids: [] }],
+      items: [{ ask_id: "ask-1", status: "completed", question: "第一问", event_ids: [], created_at: "2026-08-18T00:00:00Z", finished_at: null, thinking_seconds: 12, process_stages: ["comparing", "finalizing"], answer: "回答一", updated_event_ids: [] }],
       next_cursor: "opaque-next",
     })
     .mockResolvedValueOnce({
-      items: [{ ask_id: "ask-2", status: "failed", question: "第二问", event_ids: [], created_at: "2026-08-17T00:00:00Z", finished_at: null, thinking_seconds: 8, answer: null, updated_event_ids: [] }],
+      items: [{ ask_id: "ask-2", status: "failed", question: "第二问", event_ids: [], created_at: "2026-08-17T00:00:00Z", finished_at: null, thinking_seconds: 8, process_stages: ["comparing"], answer: null, updated_event_ids: [] }],
       next_cursor: null,
     });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });

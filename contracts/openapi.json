@@ -188,6 +188,21 @@
             ],
             "title": "Finished At"
           },
+          "process_stages": {
+            "items": {
+              "enum": [
+                "comparing",
+                "researching",
+                "reconciling",
+                "finalizing"
+              ],
+              "type": "string"
+            },
+            "maxItems": 4,
+            "minItems": 1,
+            "title": "Process Stages",
+            "type": "array"
+          },
           "question": {
             "title": "Question",
             "type": "string"
@@ -222,7 +237,8 @@
           "status",
           "question",
           "event_ids",
-          "created_at"
+          "created_at",
+          "process_stages"
         ],
         "title": "AskHistoryItem",
         "type": "object"
@@ -303,10 +319,26 @@
             ],
             "title": "Stage",
             "type": "string"
+          },
+          "stages": {
+            "items": {
+              "enum": [
+                "comparing",
+                "researching",
+                "reconciling",
+                "finalizing"
+              ],
+              "type": "string"
+            },
+            "maxItems": 4,
+            "minItems": 1,
+            "title": "Stages",
+            "type": "array"
           }
         },
         "required": [
           "stage",
+          "stages",
           "elapsed_seconds"
         ],
         "title": "AskProgress",

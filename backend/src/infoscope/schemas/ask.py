@@ -45,8 +45,12 @@ class AskResult(BaseModel):
     updated_event_ids: list[UUID]
 
 
+AskProgressStage = Literal["comparing", "researching", "reconciling", "finalizing"]
+
+
 class AskProgress(BaseModel):
-    stage: Literal["comparing", "researching", "reconciling", "finalizing"]
+    stage: AskProgressStage
+    stages: list[AskProgressStage] = Field(min_length=1, max_length=4)
     elapsed_seconds: int = Field(ge=0)
 
 
@@ -97,6 +101,7 @@ class AskHistoryItem(BaseModel):
     created_at: datetime
     finished_at: datetime | None = None
     thinking_seconds: int = Field(default=0, ge=0)
+    process_stages: list[AskProgressStage] = Field(min_length=1, max_length=4)
     answer: str | None = None
     updated_event_ids: list[UUID] = Field(default_factory=list)
 

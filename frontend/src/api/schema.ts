@@ -460,6 +460,8 @@ export interface components {
             event_ids: string[];
             /** Finished At */
             finished_at?: string | null;
+            /** Process Stages */
+            process_stages: ("comparing" | "researching" | "reconciling" | "finalizing")[];
             /** Question */
             question: string;
             /**
@@ -509,6 +511,8 @@ export interface components {
              * @enum {string}
              */
             stage: "comparing" | "researching" | "reconciling" | "finalizing";
+            /** Stages */
+            stages: ("comparing" | "researching" | "reconciling" | "finalizing")[];
         };
         /** AskResult */
         AskResult: {

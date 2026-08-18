@@ -36,7 +36,7 @@ describe("AskPanel", () => {
 
   it("does not show progress before submission and locks the submitted Ask while polling", async () => {
     vi.mocked(createAsk).mockResolvedValue({ ask_id: "ask-1", status: "pending" });
-    vi.mocked(fetchAsk).mockResolvedValue({ ask_id: "ask-1", status: "pending", progress: { stage: "comparing", elapsed_seconds: 4 }, result: null, error: null });
+    vi.mocked(fetchAsk).mockResolvedValue({ ask_id: "ask-1", status: "pending", progress: { stage: "comparing", stages: ["comparing"], elapsed_seconds: 4 }, result: null, error: null });
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
     render(<QueryClientProvider client={queryClient}><AskPanel onClearSelection={() => undefined} selectedEvents={[{ id: "event-1", title: "Frozen event title" }]} /></QueryClientProvider>);
@@ -45,7 +45,7 @@ describe("AskPanel", () => {
     fireEvent.change(screen.getByLabelText("你的问题"), { target: { value: "What changed?" } });
     fireEvent.click(screen.getByRole("button", { name: "发送问题" }));
 
-    expect(await screen.findByText(/正在比较 Event 数据库/)).toBeInTheDocument();
+    expect((await screen.findAllByText(/正在比较 Event 数据库/)).length).toBeGreaterThan(0);
     expect(screen.getByText("4 秒")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "处理中" })).toBeDisabled();
     expect(screen.getByText(/Frozen event title/)).toBeInTheDocument();
@@ -70,7 +70,7 @@ describe("AskPanel", () => {
     vi.mocked(fetchAsk).mockResolvedValue({
       ask_id: "ask-1",
       status: "completed",
-      progress: { stage: "finalizing", elapsed_seconds: 18 },
+      progress: { stage: "finalizing", stages: ["comparing", "finalizing"], elapsed_seconds: 18 },
       error: null,
       result: { answer: "Current answer", event_ids: ["event-1"], claim_ids: [], timeline_ids: [], conflict_ids: [], evidence_ids: [], updated_event_ids: ["event-1"] },
     });
@@ -94,7 +94,7 @@ describe("AskPanel", () => {
   it("keeps the terminal exchange while the composer accepts another Ask", async () => {
     vi.mocked(createAsk).mockResolvedValue({ ask_id: "ask-1", status: "pending" });
     vi.mocked(fetchAsk).mockResolvedValue({
-      ask_id: "ask-1", status: "completed", progress: { stage: "finalizing", elapsed_seconds: 9 }, error: null,
+      ask_id: "ask-1", status: "completed", progress: { stage: "finalizing", stages: ["comparing", "finalizing"], elapsed_seconds: 9 }, error: null,
       result: { answer: "Current answer", event_ids: ["event-1"], claim_ids: [], timeline_ids: [], conflict_ids: [], evidence_ids: [], updated_event_ids: [] },
     });
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -113,7 +113,7 @@ describe("AskPanel", () => {
 
   it("automatically loads history for the selected Event as a conversation", async () => {
     vi.mocked(fetchAskHistory).mockResolvedValue({
-      items: [{ ask_id: "history-1", status: "completed", question: "历史问题", event_ids: ["event-1"], created_at: "2026-08-18T00:00:00Z", finished_at: "2026-08-18T00:00:12Z", thinking_seconds: 12, answer: "历史回答", updated_event_ids: [] }],
+      items: [{ ask_id: "history-1", status: "completed", question: "历史问题", event_ids: ["event-1"], created_at: "2026-08-18T00:00:00Z", finished_at: "2026-08-18T00:00:12Z", thinking_seconds: 12, process_stages: ["comparing", "finalizing"], answer: "历史回答", updated_event_ids: [] }],
       next_cursor: null,
     });
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });

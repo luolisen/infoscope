@@ -44,7 +44,11 @@ class _Service:
         return AskCompletedResponse(
             ask_id=ask_id,
             status="completed",
-            progress=AskProgress(stage="finalizing", elapsed_seconds=12),
+            progress=AskProgress(
+                stage="finalizing",
+                stages=["comparing", "finalizing"],
+                elapsed_seconds=12,
+            ),
             result=AskResult(
                 answer="Grounded answer",
                 event_ids=[uuid4()],
@@ -66,6 +70,7 @@ class _Service:
                     question="What changed?",
                     event_ids=[uuid4()],
                     created_at=datetime(2026, 1, 1, tzinfo=UTC),
+                    process_stages=["comparing", "finalizing"],
                     answer="Grounded answer",
                 )
             ],
@@ -105,7 +110,7 @@ def test_failed_public_dto_contains_only_generic_error() -> None:
     response = AskFailedResponse(
         ask_id=ask_id,
         status="failed",
-        progress=AskProgress(stage="comparing", elapsed_seconds=8),
+        progress=AskProgress(stage="comparing", stages=["comparing"], elapsed_seconds=8),
         error=ErrorDetail(
             code="ASK_FAILED",
             message="Ask processing failed.",
@@ -115,7 +120,11 @@ def test_failed_public_dto_contains_only_generic_error() -> None:
     assert response.model_dump(mode="json") == {
         "ask_id": str(ask_id),
         "status": "failed",
-        "progress": {"stage": "comparing", "elapsed_seconds": 8},
+        "progress": {
+            "stage": "comparing",
+            "stages": ["comparing"],
+            "elapsed_seconds": 8,
+        },
         "result": None,
         "error": {
             "code": "ASK_FAILED",
@@ -133,9 +142,10 @@ def test_public_progress_maps_internal_stage_and_elapsed_time() -> None:
         finished_at=started + timedelta(seconds=17.9),
     )
 
-    progress = AskService._progress(request)
+    progress = AskService._progress(request, researched=False)
 
     assert progress.stage == "reconciling"
+    assert progress.stages == ["comparing", "researching", "reconciling"]
     assert progress.elapsed_seconds == 17
 
 

@@ -24,18 +24,25 @@ const stageLabels: Record<AskProgress["stage"], string> = {
   finalizing: "正在组织回答",
 };
 
+const completedStageLabels: Record<AskProgress["stage"], string> = {
+  comparing: "已比较 Event 数据库",
+  researching: "已获取并规范化补充信息",
+  reconciling: "已复核 Event 事实",
+  finalizing: "已组织回答",
+};
+
 function ThinkingTrace({ active, progress }: { active: boolean; progress: AskProgress }) {
   if (active) {
-    return <div className="ask-thinking" role="status"><span className="ask-thinking__pulse" aria-hidden="true" /><div><strong>{stageLabels[progress.stage]}</strong><span>{progress.elapsed_seconds} 秒</span></div></div>;
+    return <div className="ask-thinking" role="status"><span className="ask-thinking__pulse" aria-hidden="true" /><div><strong>{stageLabels[progress.stage]}</strong><span>{progress.elapsed_seconds} 秒</span><ol>{progress.stages.map((stage) => <li key={stage}>{stage === progress.stage ? stageLabels[stage] : completedStageLabels[stage]}</li>)}</ol></div></div>;
   }
-  return <details className="ask-thinking ask-thinking--complete"><summary>已思考 {progress.elapsed_seconds} 秒</summary><p>该轮已完成可审计的 ASK 处理阶段；模型私有推理不会展示。</p></details>;
+  return <details className="ask-thinking ask-thinking--complete"><summary>已思考 {progress.elapsed_seconds} 秒</summary><ol>{progress.stages.map((stage) => <li key={stage}>{completedStageLabels[stage]}</li>)}</ol></details>;
 }
 
 function HistoricalExchange({ item }: { item: AskHistoryItem }) {
   return <div className="ask-exchange">
     <div className="ask-message ask-message--user"><p>{item.question}</p></div>
     <div className="ask-message ask-message--assistant">
-      <details className="ask-thinking ask-thinking--complete"><summary>已思考 {item.thinking_seconds ?? 0} 秒</summary><p>该轮已完成可审计的 ASK 处理阶段。</p></details>
+      <details className="ask-thinking ask-thinking--complete"><summary>已思考 {item.thinking_seconds ?? 0} 秒</summary><ol>{item.process_stages.map((stage) => <li key={stage}>{completedStageLabels[stage]}</li>)}</ol></details>
       {item.answer ? <p className="ask-message__answer">{item.answer}</p> : <p className="ask-message__error">{item.status === "failed" ? "该轮提问未能完成。" : "该轮仍在处理中。"}</p>}
     </div>
   </div>;
