@@ -11,6 +11,7 @@ from uuid import UUID
 from pydantic import ValidationError
 from sqlalchemy import func, select, text, update
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from infoscope.analysis.client import AnalysisError
@@ -264,7 +265,13 @@ class EventLocalizationRepository:
         try:
             validate_localization_output(current, response.payload)
         except ValueError as error:
-            raise EventLocalizationError("EVENT_LOCALIZATION_OUTPUT_INVALID") from error
+            error_codes = {
+                "localization output changed URLs": "EVENT_LOCALIZATION_URL_CHANGED",
+                "localization output changed numeric tokens": "EVENT_LOCALIZATION_NUMBERS_CHANGED",
+            }
+            raise EventLocalizationError(
+                error_codes.get(str(error), "EVENT_LOCALIZATION_OUTPUT_INVALID")
+            ) from error
         artifact = (
             await self.database.get(EventLocalizationArtifact, reusable_artifact_id)
             if reusable_artifact_id is not None
@@ -464,14 +471,43 @@ class EventLocalizationRunner:
                     token_usage=artifact.token_usage,
                 )
                 artifact_id = artifact.id
-            async with self.factory() as database:
-                await EventLocalizationRepository(database).persist_success(
-                    batch_id,
-                    value,
-                    response,
-                    reusable_artifact_id=artifact_id,
-                )
+            await self._persist_success_with_retry(
+                batch_id,
+                value,
+                response,
+                reusable_artifact_id=artifact_id,
+            )
         except (AnalysisError, EventLocalizationError, ValidationError, ValueError) as error:
             error_code = getattr(error, "error_code", "EVENT_LOCALIZATION_OUTPUT_INVALID")
             async with self.factory() as database:
                 await EventLocalizationRepository(database).fail_batch(batch_id, error_code)
+
+    async def _persist_success_with_retry(
+        self,
+        batch_id: UUID,
+        value: EventLocalizationInput,
+        response: EventLocalizationResponse,
+        *,
+        reusable_artifact_id: UUID | None,
+    ) -> None:
+        for attempt in range(3):
+            try:
+                async with self.factory() as database:
+                    await EventLocalizationRepository(database).persist_success(
+                        batch_id,
+                        value,
+                        response,
+                        reusable_artifact_id=reusable_artifact_id,
+                    )
+                return
+            except DBAPIError as error:
+                sqlstate = getattr(error.orig, "sqlstate", None) or getattr(
+                    getattr(error.orig, "__cause__", None), "sqlstate", None
+                )
+                if sqlstate != "40001":
+                    raise
+                if attempt == 2:
+                    raise EventLocalizationError(
+                        "EVENT_LOCALIZATION_SERIALIZATION_RETRY_EXHAUSTED"
+                    ) from error
+                await asyncio.sleep(0)

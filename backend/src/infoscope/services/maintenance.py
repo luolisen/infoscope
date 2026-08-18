@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
-from typing import Annotated
+from typing import Annotated, Protocol
 from uuid import UUID, uuid4
 
 from fastapi import Depends, status
@@ -40,9 +41,11 @@ class MaintenanceRepository:
         database: AsyncSession,
         *,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        stale_after: timedelta = timedelta(minutes=15),
     ) -> None:
         self.database = database
         self.clock = clock
+        self.stale_after = stale_after
 
     async def create(self, user_id: UUID) -> MaintenanceRun:
         run_id = uuid4()
@@ -103,6 +106,7 @@ class MaintenanceRepository:
         ).scalar_one_or_none()
 
     async def claim_next(self) -> MaintenanceRun | None:
+        await self.recover_stale_running()
         run = (
             await self.database.execute(
                 select(MaintenanceRun)
@@ -119,6 +123,30 @@ class MaintenanceRepository:
         run.started_at = self.clock()
         await self.database.commit()
         return run
+
+    async def recover_stale_running(self) -> list[MaintenanceRun]:
+        stale = list(
+            (
+                await self.database.execute(
+                    select(MaintenanceRun)
+                    .where(
+                        MaintenanceRun.status == "running",
+                        MaintenanceRun.updated_at < self.clock() - self.stale_after,
+                    )
+                    .order_by(MaintenanceRun.created_at, MaintenanceRun.id)
+                    .with_for_update(skip_locked=True)
+                )
+            ).scalars()
+        )
+        for run in stale:
+            run.status = "failed"
+            run.phase = None
+            run.active_slot = None
+            run.error_code = "MAINTENANCE_WORKER_LOST"
+            run.finished_at = self.clock()
+        if stale:
+            await self.database.commit()
+        return stale
 
     async def set_phase(self, run_id: UUID, phase: str) -> MaintenanceRun:
         if phase not in MAINTENANCE_PHASES:
@@ -167,21 +195,33 @@ class MaintenanceRepository:
 MaintenancePhaseExecutor = Callable[[MaintenanceRun], Awaitable[None]]
 
 
+class MaintenanceHeartbeat(Protocol):
+    async def __call__(self, run_id: UUID, stop: asyncio.Event) -> None: ...
+
+
 class MaintenanceRunner:
     def __init__(
         self,
         repository: MaintenanceRepository,
         executors: dict[str, MaintenancePhaseExecutor],
+        heartbeat: MaintenanceHeartbeat | None = None,
     ) -> None:
         if tuple(executors) != MAINTENANCE_PHASES:
             raise ValueError("maintenance executors must follow the frozen phase order")
         self.repository = repository
         self.executors = executors
+        self.heartbeat = heartbeat
 
     async def run_next(self) -> MaintenanceRun | None:
         run = await self.repository.claim_next()
         if run is None:
             return None
+        heartbeat_stop = asyncio.Event()
+        heartbeat_task = (
+            asyncio.create_task(self.heartbeat(run.id, heartbeat_stop))
+            if self.heartbeat is not None
+            else None
+        )
         try:
             for phase, execute in self.executors.items():
                 if run.phase != phase:
@@ -191,6 +231,10 @@ class MaintenanceRunner:
         except Exception as error:
             error_code = getattr(error, "error_code", "MAINTENANCE_FAILED")
             return await self.repository.fail(run.id, error_code)
+        finally:
+            heartbeat_stop.set()
+            if heartbeat_task is not None:
+                await heartbeat_task
 
 
 class MaintenanceService:

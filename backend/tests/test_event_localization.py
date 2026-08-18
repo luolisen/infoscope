@@ -43,7 +43,7 @@ def test_localization_output_preserves_exact_ids_urls_and_numbers() -> None:
             EventLocalizationDecision(
                 event_id=item.id,
                 title="NVIDIA 向 Example AI 投资 $10 billion",
-                overview="该协议于 2026-08-18 开始。详见 https://example.com/a.",
+                overview="该协议于 2026-08-18 开始。详见 https://example.com/a。",
             )
             for item in events
         ]
@@ -116,12 +116,17 @@ async def test_projection_is_used_only_for_current_event_input_hash() -> None:
 async def test_localization_client_uses_ai_ping_compatible_json_contract() -> None:
     event = _event()
     value = EventLocalizationInput(events=[event_localization_item(event)])
+    calls = 0
 
     async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
         document = json.loads(request.content)
         assert document["response_format"] == {"type": "json_object"}
         assert "json" in document["messages"][1]["content"].casefold()
         assert request.headers["authorization"] == "Bearer local-test-key"
+        if calls == 2:
+            assert "EVENT_LOCALIZATION_NUMBERS_CHANGED" in document["messages"][1]["content"]
         return httpx.Response(
             200,
             json={
@@ -136,7 +141,10 @@ async def test_localization_client_uses_ai_ping_compatible_json_contract() -> No
                                     "decisions": [
                                         {
                                             "event_id": str(event.id),
-                                            "title": "NVIDIA 向 Example AI 投资 $10 billion",
+                                            "title": (
+                                                "NVIDIA 向 Example AI 投资 "
+                                                f"${11 if calls == 1 else 10} billion"
+                                            ),
                                             "overview": (
                                                 "该协议于 2026-08-18 开始。"
                                                 "详见 https://example.com/a."
@@ -164,6 +172,64 @@ async def test_localization_client_uses_ai_ping_compatible_json_contract() -> No
                 model="DeepSeek-V4-Flash-0731",
                 api_keys=("local-test-key",),
                 timeout_seconds=10,
+                max_retries=1,
+                max_tokens=4096,
+                provider="ai_ping",
+            ),
+        ).localize(value)
+
+    validate_localization_output(value, response.payload)
+    assert calls == 2
+    assert response.provider == "ai_ping"
+
+
+async def test_localization_client_splits_batch_after_strict_repairs_are_exhausted() -> None:
+    events = sorted([_event(), _event()], key=lambda item: item.id)
+    value = EventLocalizationInput(events=[event_localization_item(item) for item in events])
+    calls = 0
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        prompt = json.loads(request.content)["messages"][1]["content"]
+        included = [item for item in events if str(item.id) in prompt]
+        if len(included) == 2:
+            content = {"schema_version": "event_localization.v1", "findings": []}
+        else:
+            content = {
+                "schema_version": "event_localization.v1",
+                "decisions": [
+                    {
+                        "event_id": "bad-singleton-id",
+                        "title": "NVIDIA 向 Example AI 投资 $10 billion",
+                        "overview": (
+                            "该协议于 2026-08-18 开始。详见 https://example.com/a."
+                        ),
+                    }
+                ],
+            }
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {"finish_reason": "stop", "message": {"content": json.dumps(content)}}
+                ],
+                "usage": {
+                    "prompt_tokens": 1,
+                    "completion_tokens": 1,
+                    "total_tokens": 2,
+                },
+            },
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        response = await EventLocalizationClient(
+            client=client,
+            config=AnalysisConfig(
+                api_base_url="https://aiping.example.com/api/v1",
+                model="DeepSeek-V4-Flash-0731",
+                api_keys=("local-test-key",),
+                timeout_seconds=10,
                 max_retries=0,
                 max_tokens=4096,
                 provider="ai_ping",
@@ -171,4 +237,5 @@ async def test_localization_client_uses_ai_ping_compatible_json_contract() -> No
         ).localize(value)
 
     validate_localization_output(value, response.payload)
-    assert response.provider == "ai_ping"
+    assert calls == 3
+    assert response.token_usage.total_tokens == 4

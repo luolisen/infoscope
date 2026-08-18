@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Protocol
 from uuid import UUID, uuid4
@@ -18,6 +19,7 @@ from infoscope.analysis.ask_schemas import (
     ask_input_hash,
 )
 from infoscope.analysis.client import AnalysisError
+from infoscope.integrations.research.client import ResearchRuntimeError
 from infoscope.models import (
     AskComparisonArtifact,
     AskRequest,
@@ -183,6 +185,7 @@ class AskComparisonRepository:
         run_id: UUID,
         input_snapshot: AskComparisonInput,
         response: AskComparisonResponse,
+        research_available: bool = True,
     ) -> AskRequest:
         request = await self.database.get(AskRequest, request_id)
         run = await self.database.get(AskRun, run_id)
@@ -206,9 +209,12 @@ class AskComparisonRepository:
         run.error_code = None
         request.error_code = None
         if response.payload.decision == "research_required":
-            request.status = "pending"
+            request.status = "pending" if research_available else "failed"
             request.stage = "awaiting_research"
-            request.finished_at = None
+            request.error_code = (
+                None if research_available else "ASK_RESEARCH_CAPABILITY_UNAVAILABLE"
+            )
+            request.finished_at = None if research_available else finished
         else:
             request.status = "pending"
             request.stage = "finalizing"
@@ -240,10 +246,12 @@ class AskComparisonRunner:
         repository: AskComparisonRepository,
         client: AskComparisonClient,
         max_attempts: int,
+        research_capability_check: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
         self.repository = repository
         self.client = client
         self.max_attempts = max_attempts
+        self.research_capability_check = research_capability_check
 
     async def create_and_run(self, spec: AskRequestSpec) -> AskRequest:
         ask_id = uuid4()
@@ -281,11 +289,21 @@ class AskComparisonRunner:
                 raise AskComparisonError("ASK_INPUT_CHANGED")
             response = await self.client.compare_ask(input_snapshot)
             self._validate_output(response.payload, input_snapshot)
+            research_available = True
+            if (
+                response.payload.decision == "research_required"
+                and self.research_capability_check is not None
+            ):
+                try:
+                    await self.research_capability_check()
+                except ResearchRuntimeError:
+                    research_available = False
             return await self.repository.persist_success(
                 request_id=request.id,
                 run_id=run.id,
                 input_snapshot=input_snapshot,
                 response=response,
+                research_available=research_available,
             )
         except (AnalysisError, AskComparisonError, SQLAlchemyError) as error:
             error_code = getattr(error, "error_code", "ASK_PERSISTENCE_FAILED")
@@ -329,12 +347,17 @@ class AskComparisonRunner:
             (payload.evidence_signal_ids, evidence_events),
         )
         if any(
-            any(mapping.get(item) not in selected for item in ids)
-            for ids, mapping in references
+            any(mapping.get(item) not in selected for item in ids) for ids, mapping in references
         ):
             raise AskComparisonError("ASK_OUTPUT_REFERENCE_INVALID")
         for missing in payload.missing_facts:
-            if not set(missing.event_ids) <= selected or [
-                item for item in input_snapshot.selected_event_ids if item in set(missing.event_ids)
-            ] != missing.event_ids:
+            if (
+                not set(missing.event_ids) <= selected
+                or [
+                    item
+                    for item in input_snapshot.selected_event_ids
+                    if item in set(missing.event_ids)
+                ]
+                != missing.event_ids
+            ):
                 raise AskComparisonError("ASK_OUTPUT_MISSING_FACT_EVENT_INVALID")

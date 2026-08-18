@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Protocol
@@ -82,6 +83,8 @@ from infoscope.services.claims_timeline import (
 )
 from infoscope.services.normalization import DeterministicNormalizer, NormalizationError
 from infoscope.services.research import ResearchError, ResearchRepository, ResearchRunner
+
+logger = logging.getLogger("infoscope.backwrite")
 
 BACKWRITE_RESEARCH_NAMESPACE = UUID("23df92fd-9cd3-4bdd-8d98-0db4f79be76a")
 BACKWRITE_RESEARCH_QUESTION = (
@@ -1224,6 +1227,27 @@ class BackwriteRunner:
                 error_code=getattr(error, "error_code", "BACKWRITE_FAILED"),
                 retryable=getattr(error, "retryable", isinstance(error, AnalysisError)),
             )
+        except Exception as error:
+            # Keep an unexpected item failure auditable and prevent a worker crash from
+            # leaving the item/cycle permanently active. The item remains retryable until
+            # its frozen max_attempts is reached.
+            logger.exception(
+                "unexpected backwrite item failure item_id=%s error_type=%s",
+                prepared.item.id,
+                type(error).__name__,
+            )
+            try:
+                await self.repository.persist_failure(
+                    prepared,
+                    error_code="BACKWRITE_FAILED",
+                    retryable=True,
+                )
+            except Exception:
+                logger.exception(
+                    "backwrite failure audit persistence failed item_id=%s",
+                    prepared.item.id,
+                )
+                raise
 
     async def _normalize_sources(
         self, sources: list[ResearchSource]

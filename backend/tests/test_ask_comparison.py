@@ -15,6 +15,7 @@ from infoscope.analysis.ask_schemas import (
     ask_input_hash,
 )
 from infoscope.analysis.schemas import TokenUsage
+from infoscope.integrations.research.client import ResearchRuntimeError
 from infoscope.services.ask_comparison import AskComparisonError, AskComparisonRunner
 
 
@@ -168,8 +169,11 @@ class _Repository:
     async def persist_success(self, *, input_snapshot, response, **kwargs):
         self.artifacts.append((deepcopy(input_snapshot), deepcopy(response.payload)))
         if response.payload.decision == "research_required":
-            self.request.status = "pending"
+            available = kwargs.get("research_available", True)
+            self.request.status = "pending" if available else "failed"
             self.request.stage = "awaiting_research"
+            if not available:
+                self.request.error_code = "ASK_RESEARCH_CAPABILITY_UNAVAILABLE"
         else:
             self.request.status = "pending"
             self.request.stage = "finalizing"
@@ -193,6 +197,27 @@ async def test_research_required_waits_without_a_second_model_call() -> None:
     repeated = await runner.run(value.ask_id)
     assert repeated is request
     assert client.calls == 1
+
+
+async def test_research_required_fails_before_bridge_when_capability_is_unavailable() -> None:
+    value = _input()
+    repository = _Repository(value)
+
+    async def unavailable() -> None:
+        raise ResearchRuntimeError("RESEARCH_CAPABILITY_UNAVAILABLE")
+
+    runner = AskComparisonRunner(
+        repository=repository,
+        client=_Client("research_required"),
+        max_attempts=3,
+        research_capability_check=unavailable,
+    )
+
+    request = await runner.run(value.ask_id, input_snapshot=value)
+
+    assert (request.status, request.stage) == ("failed", "awaiting_research")
+    assert request.error_code == "ASK_RESEARCH_CAPABILITY_UNAVAILABLE"
+    assert len(repository.artifacts) == 1
 
 
 async def test_changed_snapshot_fails_before_model_and_creates_no_artifact() -> None:

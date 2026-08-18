@@ -18,3 +18,5 @@ def test_demo_script_guards_worker_liveness_and_pid_reuse() -> None:
     assert 'api: unmanaged process on port %s' in script
     assert 'uvicorn infoscope.api.app:app' in script
     assert 'python -m infoscope.worker' in script
+    assert '--check-research-capability' in script
+    assert 'Research capability unavailable; direct Ask remains available.' in script

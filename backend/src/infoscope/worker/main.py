@@ -4,29 +4,31 @@ import argparse
 import asyncio
 import logging
 import signal
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID, uuid4, uuid5
 from uuid import UUID as UUIDType
 
 import httpx
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select, update
 
-from infoscope.analysis import (
-    DeepSeekAnalysisClient,
-    DeepSeekEventReconstructionClient,
-    DeepSeekIntelligenceClient,
-    load_analysis_config,
-)
 from infoscope.analysis.ask_schemas import AskRequestSpec
 from infoscope.analysis.backwrite_schemas import BackwriteSnapshotSpec
+from infoscope.analysis.client import DeepSeekAnalysisClient
+from infoscope.analysis.config import load_analysis_config
+from infoscope.analysis.intelligence_client import DeepSeekIntelligenceClient
 from infoscope.analysis.localization_client import EventLocalizationClient
+from infoscope.analysis.reconstruction_client import DeepSeekEventReconstructionClient
 from infoscope.analysis.schemas import WindowAnalysisBatchArtifact, WindowAnalysisPayload
 from infoscope.config import get_settings
 from infoscope.db import close_database, ping_database, session_factory
-from infoscope.integrations.research.client import OpenClawConfig, OpenClawResearchClient
+from infoscope.integrations.research.client import OpenClawResearchClient
 from infoscope.integrations.research.fetcher import DirectHTTPSResearchFetcher
 from infoscope.integrations.research.health import AgentReachHealthChecker
+from infoscope.integrations.research.runtime import (
+    research_capability_checker,
+    research_runtime_config,
+)
 from infoscope.integrations.research.schemas import ResearchRequestSpec
 from infoscope.integrations.telegram import (
     TelegramCollector,
@@ -360,13 +362,7 @@ async def research_once(
     if (request_file is None) == (retry_request_id is None):
         raise ValueError("exactly one research request input is required")
     settings = get_settings()
-    config = OpenClawConfig(
-        executable=settings.research_openclaw_executable,
-        config_path=settings.resolved_research_openclaw_config_path,
-        state_dir=settings.resolved_research_openclaw_state_dir,
-        model=settings.research_openclaw_model,
-        timeout_seconds=settings.research_timeout_seconds,
-    )
+    config = research_runtime_config()
     timeout = httpx.Timeout(connect=10, read=30, write=10, pool=10)
     async with httpx.AsyncClient(
         timeout=timeout,
@@ -400,6 +396,11 @@ async def research_once(
     )
 
 
+async def check_research_capability_once() -> None:
+    await research_capability_checker().check()
+    logger.info("research capability ready")
+
+
 async def compare_ask_once(
     *,
     request_file: Path | None = None,
@@ -424,6 +425,7 @@ async def compare_ask_once(
                 repository=AskComparisonRepository(database),
                 client=DeepSeekIntelligenceClient(client=client, config=config),
                 max_attempts=settings.ask_comparison_max_attempts,
+                research_capability_check=research_capability_checker().check,
             )
             if request_file is not None:
                 request = await runner.create_and_run(spec)
@@ -441,13 +443,7 @@ async def compare_ask_once(
 
 async def run_ask_research_bridge_once(ask_id: UUID) -> None:
     settings = get_settings()
-    config = OpenClawConfig(
-        executable=settings.research_openclaw_executable,
-        config_path=settings.resolved_research_openclaw_config_path,
-        state_dir=settings.resolved_research_openclaw_state_dir,
-        model=settings.research_openclaw_model,
-        timeout_seconds=settings.research_timeout_seconds,
-    )
+    config = research_runtime_config()
     timeout = httpx.Timeout(connect=10, read=30, write=10, pool=10)
     async with httpx.AsyncClient(
         timeout=timeout,
@@ -550,13 +546,7 @@ async def run_backwrite_spec_once(
         )
         return
     analysis_config = load_analysis_config(settings)
-    openclaw_config = OpenClawConfig(
-        executable=settings.research_openclaw_executable,
-        config_path=settings.resolved_research_openclaw_config_path,
-        state_dir=settings.resolved_research_openclaw_state_dir,
-        model=settings.research_openclaw_model,
-        timeout_seconds=settings.research_timeout_seconds,
-    )
+    openclaw_config = research_runtime_config()
     timeout = httpx.Timeout(connect=10, read=30, write=10, pool=10)
     async with httpx.AsyncClient(
         timeout=timeout,
@@ -824,9 +814,33 @@ async def process_maintenance_queue_once(
     *,
     snapshot_provider: UserVisibleEventSnapshotProvider | None = None,
 ) -> bool:
+    settings = get_settings()
+
+    async def heartbeat(run_id: UUID, stop: asyncio.Event) -> None:
+        while not stop.is_set():
+            try:
+                await asyncio.wait_for(stop.wait(), timeout=settings.worker_heartbeat_seconds)
+            except TimeoutError:
+                try:
+                    async with session_factory() as heartbeat_database:
+                        await heartbeat_database.execute(
+                            update(MaintenanceRun)
+                            .where(
+                                MaintenanceRun.id == run_id,
+                                MaintenanceRun.status == "running",
+                            )
+                            .values(updated_at=func.now())
+                        )
+                        await heartbeat_database.commit()
+                except Exception:
+                    logger.exception("Maintenance heartbeat failed run_id=%s", run_id)
+
     async with session_factory() as database:
         provider = snapshot_provider or PersonalizationVisibleEventSnapshotProvider(database)
-        repository = MaintenanceRepository(database)
+        repository = MaintenanceRepository(
+            database,
+            stale_after=timedelta(seconds=settings.maintenance_stale_after_seconds),
+        )
         await repository.enqueue_due()
 
         async def window_analysis(_run: MaintenanceRun) -> None:
@@ -883,6 +897,7 @@ async def process_maintenance_queue_once(
                     strict=True,
                 )
             ),
+            heartbeat=heartbeat,
         ).run_next()
     if result is None:
         return False
@@ -1133,6 +1148,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Collect text messages from the configured Telegram folder once",
     )
+    parser.add_argument(
+        "--check-research-capability",
+        action="store_true",
+        help="Validate the isolated OpenClaw and Agent-Reach runtime and exit",
+    )
     normalization_group = parser.add_mutually_exclusive_group()
     normalization_group.add_argument(
         "--normalize",
@@ -1301,7 +1321,9 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
-    if args.telegram_login:
+    if args.check_research_capability:
+        asyncio.run(check_research_capability_once())
+    elif args.telegram_login:
         asyncio.run(login_telegram())
     else:
         asyncio.run(

@@ -10,7 +10,7 @@ from types import MethodType, SimpleNamespace
 from uuid import UUID, uuid4
 
 import pytest
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 
 from infoscope.integrations.research.client import (
     OPENCLAW_AGENT_ID,
@@ -128,9 +128,7 @@ class _ResearchRequestDatabase:
 
     async def execute(self, statement):
         if getattr(statement, "is_insert", False):
-            values = {
-                column.key: bound.value for column, bound in statement._values.items()
-            }
+            values = {column.key: bound.value for column, bound in statement._values.items()}
             if self.request is not None:
                 return _ScalarResult(None)
             self.request = ResearchRequest(**values)
@@ -175,26 +173,20 @@ async def test_ask_research_request_persists_and_reuses_selected_event_order() -
     request, payload, inserted = await repository.create_or_reuse(spec, max_attempts=3)
     assert inserted
     assert payload.source_event_ids == event_ids
-    assert ResearchRequestPayload.model_validate(
-        request.request_payload
-    ).source_event_ids == event_ids
+    assert (
+        ResearchRequestPayload.model_validate(request.request_payload).source_event_ids == event_ids
+    )
     assert request.input_hash == request_input_hash(payload)
     assert [
-        item.event_id
-        for item in database.added
-        if isinstance(item, ResearchRequestEvent)
+        item.event_id for item in database.added if isinstance(item, ResearchRequestEvent)
     ] == event_ids
 
-    reused, reused_payload, inserted = await repository.create_or_reuse(
-        spec, max_attempts=3
-    )
+    reused, reused_payload, inserted = await repository.create_or_reuse(spec, max_attempts=3)
     assert not inserted
     assert reused is request
     assert reused_payload.source_event_ids == event_ids
 
-    changed_order = spec.model_copy(
-        update={"source_event_ids": list(reversed(event_ids))}
-    )
+    changed_order = spec.model_copy(update={"source_event_ids": list(reversed(event_ids))})
     with pytest.raises(ResearchError, match="RESEARCH_IDEMPOTENCY_CONFLICT"):
         await repository.create_or_reuse(changed_order, max_attempts=3)
     assert database.rollbacks == 1
@@ -377,8 +369,9 @@ async def test_openclaw_invocation_is_isolated_and_cleans_prompt(
             executable="openclaw",
             config_path=config_path,
             state_dir=state_dir,
-            model="deepseek/deepseek-v4-flash",
+            model="deepseek/deepseek-chat",
             timeout_seconds=30,
+            credential_environment={"DEEPSEEK_API_KEY": SecretStr("configured-secret")},
         )
     )
     response = await client.discover(payload, workdir=workdir)
@@ -392,7 +385,7 @@ async def test_openclaw_invocation_is_isolated_and_cleans_prompt(
     assert "--channel" not in argv
     kwargs = captured["kwargs"]
     environment = kwargs["env"]
-    assert environment["DEEPSEEK_API_KEY"] == "secret"
+    assert environment["DEEPSEEK_API_KEY"] == "configured-secret"
     assert "FORBIDDEN_SECRET" not in environment
     assert set(OPENCLAW_CREDENTIAL_ENV_ALLOWLIST) == {"DEEPSEEK_API_KEY"}
     assert environment["OPENCLAW_CONFIG_PATH"] == str(config_path.resolve())
@@ -430,6 +423,83 @@ async def test_agent_reach_uses_same_isolated_home(monkeypatch, tmp_path: Path) 
     assert environment["HOME"] == str(state_dir / "home")
     assert environment["TMPDIR"] == str(state_dir / "tmp")
     assert "FORBIDDEN_SECRET" not in environment
+
+
+async def test_openclaw_capability_check_validates_version_and_config(
+    monkeypatch, tmp_path: Path
+) -> None:
+    calls: list[tuple[str, ...]] = []
+
+    class Process:
+        returncode = 0
+
+        def __init__(self, output: bytes = b"") -> None:
+            self.output = output
+
+        async def communicate(self):
+            return self.output, b""
+
+        async def wait(self):
+            return 0
+
+    async def create_subprocess_exec(*argv, **_kwargs):
+        calls.append(argv)
+        if argv == ("openclaw", "--version"):
+            return Process(b"OpenClaw 2026.7.1-2 (0790d9f)\n")
+        if argv[:3] == ("openclaw", "models", "list"):
+            return Process(b"deepseek/deepseek-chat\n")
+        return Process()
+
+    monkeypatch.setattr(
+        "infoscope.integrations.research.client.asyncio.create_subprocess_exec",
+        create_subprocess_exec,
+    )
+    config_path = tmp_path / "research.json"
+    config_path.write_text("{}")
+    await OpenClawResearchClient(
+        OpenClawConfig(
+            executable="openclaw",
+            config_path=config_path,
+            state_dir=tmp_path / "state",
+            model="deepseek/deepseek-chat",
+            timeout_seconds=30,
+        )
+    ).check_runtime()
+
+    assert calls == [
+        ("openclaw", "--version"),
+        ("openclaw", "config", "validate"),
+        (
+            "openclaw",
+            "models",
+            "status",
+            "--agent",
+            OPENCLAW_AGENT_ID,
+            "--check",
+            "--json",
+        ),
+        (
+            "openclaw",
+            "models",
+            "list",
+            "--all",
+            "--provider",
+            "deepseek",
+            "--plain",
+        ),
+    ]
+
+
+def test_openclaw_config_rejects_non_allowlisted_credentials(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="non-allowlisted"):
+        OpenClawConfig(
+            executable="openclaw",
+            config_path=tmp_path / "research.json",
+            state_dir=tmp_path / "state",
+            model="deepseek/deepseek-chat",
+            timeout_seconds=30,
+            credential_environment={"FORBIDDEN_SECRET": SecretStr("must-not-leak")},
+        )
 
 
 def test_fact_snapshot_rejects_cross_event_relations_and_naive_time() -> None:
@@ -488,9 +558,7 @@ def test_canonical_json_is_stable_and_url_policy_is_exact() -> None:
     )
     assert host == "example.com"
     assert canonical == "https://example.com/a/c~?q=2&q=1"
-    doubled, _host = canonicalize_url(
-        "https://example.com/a//b", ResearchSourceKind.WEB_PAGE
-    )
+    doubled, _host = canonicalize_url("https://example.com/a//b", ResearchSourceKind.WEB_PAGE)
     assert doubled == "https://example.com/a//b"
     escaped, _host = canonicalize_url(
         "https://example.com/a%2fb%25c?q=%2f%25", ResearchSourceKind.WEB_PAGE
@@ -700,9 +768,10 @@ async def test_invalid_and_duplicate_candidates_have_privacy_safe_audits() -> No
     ]
     assert audits[0].error_code == "RESEARCH_URL_REJECTED"
     assert audits[0].canonical_url is None
-    assert audits[0].candidate_url_hash == sha256(
-        discovery.candidates[0].source_url.encode()
-    ).hexdigest()
+    assert (
+        audits[0].candidate_url_hash
+        == sha256(discovery.candidates[0].source_url.encode()).hexdigest()
+    )
     assert audits[1].canonical_url == "https://example.com/a%2Fb"
     assert audits[2].error_code == "RESEARCH_DUPLICATE_CANDIDATE"
     assert audits[2].canonical_url is None

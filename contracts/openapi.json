@@ -1393,6 +1393,23 @@
         "title": "OnboardingSelection",
         "type": "object"
       },
+      "ResearchCapabilityResponse": {
+        "properties": {
+          "status": {
+            "enum": [
+              "ready",
+              "unavailable"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "ResearchCapabilityResponse",
+        "type": "object"
+      },
       "ScopeId": {
         "enum": [
           "ai",
@@ -2798,6 +2815,75 @@
         "summary": "Update Onboarding",
         "tags": [
           "onboarding"
+        ]
+      }
+    },
+    "/api/v1/research/capability": {
+      "get": {
+        "operationId": "research_capability_api_v1_research_capability_get",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "is_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchCapabilityResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Research Capability",
+        "tags": [
+          "research"
         ]
       }
     },

@@ -80,6 +80,12 @@ preflight() {
     printf 'Missing .env. Copy .env.example to .env and add local credentials.\n' >&2
     exit 1
   }
+  if env PATH="$HOME/.local/bin:$PATH" uv run --project "$ROOT/backend" --no-sync \
+    python -m infoscope.worker --check-research-capability >/dev/null 2>&1; then
+    printf 'Research capability ready.\n'
+  else
+    printf 'Research capability unavailable; direct Ask remains available.\n' >&2
+  fi
   printf 'Preflight passed.\n'
 }
 
