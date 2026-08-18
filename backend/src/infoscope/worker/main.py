@@ -757,7 +757,19 @@ async def _derived_artifact(source_artifact_id: UUID, artifact_type: str) -> Pip
 
 
 async def reconcile_window_artifacts_once() -> None:
+    settings = get_settings()
+    recovery_time = datetime.now(UTC)
     async with session_factory() as database:
+        recovered = await PipelineRepository(database).recover_stale_running(
+            stale_before=recovery_time
+            - timedelta(seconds=settings.maintenance_stale_after_seconds),
+            finished_at=recovery_time,
+        )
+        if recovered:
+            logger.warning(
+                "recovered stale pipeline runs count=%d error_code=PIPELINE_WORKER_LOST",
+                len(recovered),
+            )
         windows = list(
             (
                 await database.execute(

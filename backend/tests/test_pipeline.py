@@ -62,6 +62,33 @@ class FakeDatabase:
         self.commits += 1
 
 
+class FakeScalarResult:
+    def __init__(self, values: list[object]) -> None:
+        self.values = values
+
+    def scalars(self) -> list[object]:
+        return self.values
+
+
+async def test_stale_running_pipeline_runs_fail_closed_before_reconciliation() -> None:
+    database = FakeDatabase()
+    stale_id = uuid4()
+    database.execute.return_value = FakeScalarResult([stale_id])
+    repository = PipelineRepository(database)  # type: ignore[arg-type]
+    finished_at = datetime(2026, 8, 16, 10, tzinfo=UTC)
+
+    recovered = await repository.recover_stale_running(
+        stale_before=finished_at - timedelta(minutes=15),
+        finished_at=finished_at,
+    )
+
+    assert recovered == [stale_id]
+    assert database.commits == 1
+    statement = database.execute.await_args.args[0]
+    assert "pipeline_runs.status = :status_1" in str(statement)
+    assert "pipeline_runs.started_at < :started_at_1" in str(statement)
+
+
 async def test_failed_run_retries_the_same_window_without_recollection() -> None:
     database = FakeDatabase()
     repository = PipelineRepository(database)  # type: ignore[arg-type]
