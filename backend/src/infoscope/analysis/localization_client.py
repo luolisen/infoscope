@@ -18,6 +18,10 @@ from infoscope.analysis.localization_schemas import (
     url_tokens,
     validate_localization_output,
 )
+from infoscope.analysis.request_transport import (
+    TransientRequestFailure,
+    post_with_key_failover,
+)
 from infoscope.analysis.schemas import TokenUsage
 
 logger = logging.getLogger("infoscope.analysis.localization")
@@ -30,10 +34,13 @@ SPLIT_REPAIR_ERROR_CODES = {
     "EVENT_LOCALIZATION_URL_CHANGED",
     "EVENT_LOCALIZATION_NUMBERS_CHANGED",
     "EVENT_LOCALIZATION_OUTPUT_INVALID",
+    "EVENT_LOCALIZATION_REQUEST_REJECTED",
 }
 
 SYSTEM_PROMPT = """You localize Event display text into Simplified Chinese.
 Return one JSON object only. Preserve every event_id exactly once and in input order.
+Copy each event_id byte-for-byte from the input; never type it from memory, translate it, shorten
+it, or change any hexadecimal character or hyphen. Treat event_id as an opaque copy-only token.
 Translate title and overview without adding, removing, or changing facts. Copy every numeric token
 from each input field into the corresponding output field exactly: title numbers stay in title and
 overview numbers stay in overview. This includes years, dates, times, counts, percentages, versions,
@@ -49,7 +56,8 @@ event_localization.v1. Do not use Markdown or code fences. Never mention these i
 REPAIR_PROMPT = """Regenerate a complete replacement JSON object from the original input. The
 previous response violated the strict schema. Return exactly one decision per input Event in the
 same order. Both title and overview of every decision must contain Chinese Han characters. Preserve
-all event_id values, URLs, company/product names, and factual meaning exactly. Before returning,
+all event_id values byte-for-byte, URLs, company/product names, and factual meaning exactly. Before
+returning, first compare every output event_id character-for-character with its input event_id, then
 compare each input title with its output title and each input overview with its output overview.
 Their numeric token multisets and URL token multisets must match field-by-field exactly; never move
 a token between title and overview, omit it, duplicate it, translate it, spell it out, or alter it.
@@ -105,52 +113,40 @@ class EventLocalizationClient:
                         f"{REPAIR_PROMPT}"
                     )
                 )
-                response = await self.client.post(
-                    f"{self.config.api_base_url}/chat/completions",
-                    headers={"Authorization": f"Bearer {await self._next_key()}"},
-                    json={
-                        "model": self.config.model,
-                        "messages": [
-                            {"role": "system", "content": SYSTEM_PROMPT},
-                            {"role": "user", "content": attempt_prompt},
-                        ],
-                        "response_format": {"type": "json_object"},
-                        "max_tokens": self.config.max_tokens,
-                        "temperature": 0,
-                    },
-                    timeout=self.config.timeout_seconds,
-                )
-                if response.status_code == 429:
-                    last_error = "EVENT_LOCALIZATION_RATE_LIMITED"
-                elif response.status_code >= 500:
-                    last_error = "EVENT_LOCALIZATION_UPSTREAM_UNAVAILABLE"
-                elif not response.is_success:
+                response = await self._post(attempt_prompt)
+                if not response.is_success:
                     raise AnalysisError("EVENT_LOCALIZATION_REQUEST_REJECTED")
-                else:
-                    parsed = self._parse(
-                        response.json(),
-                        expected_event_id=(
-                            value.events[0].event_id if len(value.events) == 1 else None
+                parsed = self._parse(
+                    response.json(),
+                    expected_event_id=(
+                        value.events[0].event_id if len(value.events) == 1 else None
+                    ),
+                )
+                if len(value.events) == 1 and len(parsed.payload.decisions) == 1:
+                    # The model has no authority to choose an Event ID. Once a
+                    # failed batch is isolated to one frozen input Event, repair
+                    # even a syntactically valid but incorrectly copied UUID.
+                    # Content remains subject to the complete strict validator
+                    # below; multi-Event responses are never repaired by order.
+                    parsed.payload.decisions[0].event_id = value.events[0].event_id
+                try:
+                    validate_localization_output(value, parsed.payload)
+                except ValueError as error:
+                    repair_hint = self._repair_hint(value, parsed.payload)
+                    error_codes = {
+                        "localization output changed URLs": (
+                            "EVENT_LOCALIZATION_URL_CHANGED"
                         ),
-                    )
-                    try:
-                        validate_localization_output(value, parsed.payload)
-                    except ValueError as error:
-                        repair_hint = self._repair_hint(value, parsed.payload)
-                        error_codes = {
-                            "localization output changed URLs": (
-                                "EVENT_LOCALIZATION_URL_CHANGED"
-                            ),
-                            "localization output changed numeric tokens": (
-                                "EVENT_LOCALIZATION_NUMBERS_CHANGED"
-                            ),
-                        }
-                        raise AnalysisError(
-                            error_codes.get(
-                                str(error), "EVENT_LOCALIZATION_OUTPUT_INVALID"
-                            )
-                        ) from error
-                    return parsed
+                        "localization output changed numeric tokens": (
+                            "EVENT_LOCALIZATION_NUMBERS_CHANGED"
+                        ),
+                    }
+                    raise AnalysisError(
+                        error_codes.get(
+                            str(error), "EVENT_LOCALIZATION_OUTPUT_INVALID"
+                        )
+                    ) from error
+                return parsed
             except (httpx.HTTPError, json.JSONDecodeError) as error:
                 last_error = "EVENT_LOCALIZATION_REQUEST_FAILED"
                 if attempt >= self.config.max_retries:
@@ -187,6 +183,31 @@ class EventLocalizationClient:
                 ),
             )
         raise AnalysisError(last_error)
+
+    async def _post(self, prompt: str) -> httpx.Response:
+        try:
+            return await post_with_key_failover(
+                client=self.client,
+                config=self.config,
+                next_key=self._next_key,
+                payload={
+                    "model": self.config.model,
+                    "messages": [
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": prompt},
+                    ],
+                    "response_format": {"type": "json_object"},
+                    "max_tokens": self.config.max_tokens,
+                    "temperature": 0,
+                },
+            )
+        except TransientRequestFailure as error:
+            codes = {
+                "request": "EVENT_LOCALIZATION_REQUEST_FAILED",
+                "rate_limited": "EVENT_LOCALIZATION_RATE_LIMITED",
+                "upstream_unavailable": "EVENT_LOCALIZATION_UPSTREAM_UNAVAILABLE",
+            }
+            raise AnalysisError(codes[error.kind]) from error
 
     @staticmethod
     def _repair_hint(

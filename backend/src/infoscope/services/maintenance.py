@@ -5,7 +5,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Protocol
-from uuid import UUID, uuid4
+from uuid import UUID, uuid4, uuid5
 
 from fastapi import Depends, status
 from sqlalchemy import select
@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from infoscope.db import get_session
 from infoscope.errors import ApiError
-from infoscope.models import MaintenanceRun, User
+from infoscope.models import BackwriteCycle, MaintenanceRun, User
 from infoscope.schemas.maintenance import (
     MaintenanceAcceptedResponse,
     MaintenanceRunResponse,
@@ -22,6 +22,7 @@ from infoscope.schemas.maintenance import (
 )
 
 MAINTENANCE_DELAY = timedelta(hours=1)
+MAINTENANCE_BACKWRITE_NAMESPACE = UUID("44a8817e-991a-4c8c-883a-520677418a2d")
 logger = logging.getLogger("infoscope.maintenance")
 MAINTENANCE_PHASES = (
     "window_analysis",
@@ -109,6 +110,9 @@ class MaintenanceRepository:
 
     async def claim_next(self) -> MaintenanceRun | None:
         await self.recover_stale_running()
+        recovered_backwrites = await self.recover_terminal_maintenance_backwrites()
+        if recovered_backwrites:
+            await self.database.commit()
         run = (
             await self.database.execute(
                 select(MaintenanceRun)
@@ -149,6 +153,51 @@ class MaintenanceRepository:
         if stale:
             await self.database.commit()
         return stale
+
+    async def recover_terminal_maintenance_backwrites(self) -> list[BackwriteCycle]:
+        """Fail closed Backwrite queues abandoned by terminal Maintenance runs."""
+        terminal_run_ids = list(
+            (
+                await self.database.execute(
+                    select(MaintenanceRun.id).where(
+                        MaintenanceRun.status.in_(("completed", "failed"))
+                    )
+                )
+            ).scalars()
+        )
+        if not terminal_run_ids:
+            return []
+        active_cycles = list(
+            (
+                await self.database.execute(
+                    select(BackwriteCycle.idempotency_key, BackwriteCycle.user_id).where(
+                        BackwriteCycle.status.in_(("pending", "running"))
+                    )
+                )
+            ).all()
+        )
+        abandoned_keys = {
+            idempotency_key
+            for idempotency_key, user_id in active_cycles
+            if any(
+                idempotency_key
+                == uuid5(
+                    MAINTENANCE_BACKWRITE_NAMESPACE,
+                    f"{run_id}:{user_id}:event_backwrite.v1",
+                )
+                for run_id in terminal_run_ids
+            )
+        }
+        if not abandoned_keys:
+            return []
+        # Imported lazily to keep Maintenance's public API dependency surface small.
+        from infoscope.services.backwrite import BackwriteRepository
+
+        cycles = await BackwriteRepository(
+            self.database,
+            stale_after=self.stale_after,
+        ).fail_abandoned_cycles(abandoned_keys)
+        return cycles
 
     async def set_phase(self, run_id: UUID, phase: str) -> MaintenanceRun:
         if phase not in MAINTENANCE_PHASES:

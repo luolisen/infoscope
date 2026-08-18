@@ -34,12 +34,15 @@ class NowService:
                 raise self._invalid_cursor()
             after = (display_time, event_id)
         if artifact is None:
-            window_start, window_end, raw_count = await self.personalization.window_stats()
+            window_start, window_end, raw_count, signal_count = (
+                await self.personalization.window_stats()
+            )
             return NowResponse(
                 window_stats=WindowStats(
                     window_started_at=window_start,
                     window_ended_at=window_end,
                     raw_information_count=raw_count,
+                    signal_count=signal_count,
                     event_count=0,
                     relevant_event_count=0,
                 ),
@@ -114,6 +117,7 @@ class NowService:
                 window_started_at=artifact.window_started_at,
                 window_ended_at=artifact.window_ended_at,
                 raw_information_count=artifact.raw_information_count,
+                signal_count=artifact.signal_count,
                 event_count=artifact.event_count,
                 relevant_event_count=artifact.relevant_event_count,
             ),

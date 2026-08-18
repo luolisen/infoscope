@@ -944,8 +944,7 @@ class IntelligenceRunnerBase:
         )
         return IntelligenceResult(run.id, 0, 0, 0, True)
 
-    async def _fail(self, run: PipelineRun, error: Exception) -> None:
-        run_id = run.id
+    async def _fail(self, run_id: UUID, error: Exception) -> None:
         await self.repository.rollback()
         persisted = await self.pipeline.get_run(run_id)
         if persisted is None:
@@ -1008,6 +1007,7 @@ class ClaimExtractionRunner(IntelligenceRunnerBase):
 
     async def run(self, source_artifact_id: UUID) -> IntelligenceResult:
         source, source_run, run = await self._prepare(source_artifact_id)
+        run_id = run.id
         try:
             await self.repository.lock_source(source.id)
             if await self.repository.prior(self.artifact_type, source.id):
@@ -1052,7 +1052,7 @@ class ClaimExtractionRunner(IntelligenceRunnerBase):
             IntelligenceError,
             SQLAlchemyError,
         ) as error:
-            await self._fail(run, error)
+            await self._fail(run_id, error)
             raise
 
     @staticmethod
@@ -1216,6 +1216,7 @@ class TimelineReconstructionRunner(IntelligenceRunnerBase):
 
     async def run(self, source_artifact_id: UUID) -> IntelligenceResult:
         source, source_run, run = await self._prepare(source_artifact_id)
+        run_id = run.id
         try:
             await self.repository.lock_source(source.id)
             if await self.repository.prior(self.artifact_type, source.id):
@@ -1246,7 +1247,7 @@ class TimelineReconstructionRunner(IntelligenceRunnerBase):
             )
             return IntelligenceResult(run.id, created, updated, attached, reused)
         except (AnalysisError, IntelligenceError, SQLAlchemyError) as error:
-            await self._fail(run, error)
+            await self._fail(run_id, error)
             raise
 
     @staticmethod
@@ -1380,6 +1381,7 @@ class ConflictAnalysisRunner(IntelligenceRunnerBase):
 
     async def run(self, source_artifact_id: UUID) -> IntelligenceResult:
         source, source_run, run = await self._prepare(source_artifact_id)
+        run_id = run.id
         try:
             await self.repository.lock_source(source.id)
             if await self.repository.prior(self.artifact_type, source.id):
@@ -1419,7 +1421,7 @@ class ConflictAnalysisRunner(IntelligenceRunnerBase):
             )
             return IntelligenceResult(run.id, created, updated, attached, reused)
         except (AnalysisError, IntelligenceError, SQLAlchemyError) as error:
-            await self._fail(run, error)
+            await self._fail(run_id, error)
             raise
 
     @staticmethod

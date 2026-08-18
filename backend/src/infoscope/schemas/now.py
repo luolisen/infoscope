@@ -16,6 +16,7 @@ class WindowStats(BaseModel):
     window_started_at: datetime
     window_ended_at: datetime
     raw_information_count: int = Field(ge=0)
+    signal_count: int = Field(ge=0)
     event_count: int = Field(ge=0)
     relevant_event_count: int = Field(ge=0)
 

@@ -1645,6 +1645,11 @@
             "title": "Relevant Event Count",
             "type": "integer"
           },
+          "signal_count": {
+            "minimum": 0.0,
+            "title": "Signal Count",
+            "type": "integer"
+          },
           "window_ended_at": {
             "format": "date-time",
             "title": "Window Ended At",
@@ -1660,6 +1665,7 @@
           "window_started_at",
           "window_ended_at",
           "raw_information_count",
+          "signal_count",
           "event_count",
           "relevant_event_count"
         ],

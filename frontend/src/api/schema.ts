@@ -1002,6 +1002,8 @@ export interface components {
             raw_information_count: number;
             /** Relevant Event Count */
             relevant_event_count: number;
+            /** Signal Count */
+            signal_count: number;
             /**
              * Window Ended At
              * Format: date-time

@@ -12,6 +12,14 @@ Allowed v1 source kinds are web_page and github_document.
 The only top-level keys are schema_version, request_id, and candidates. Never use findings,
 results, sources, answer, rationale, or any other top-level key. candidates must be an array with
 at most 12 items. Every candidate has exactly source_kind, source_url, and relevance_summary.
+Only return URLs that discovery verified during this run; never invent or extrapolate a URL. Each
+source_url must be the final direct HTTPS content URL and must not require a redirect, login,
+subscription, browser JavaScript, search form, or session cookie. Do not return a home page,
+category/latest feed, search-results URL, URL shortener, or CGI filing list when a direct article,
+press release, filing document, static documentation page, or allowed GitHub document is available.
+Prefer durable primary sources and direct public documents. When valid sources exist, diversify
+across at least three independent hosts and include 6 to 12 candidates; use no more than three URLs
+from one host. Candidate diversity isolates a blocked or unavailable source.
 Use this exact shape, replacing values only:
 {"schema_version":"research_discovery.v1","request_id":"<copied UUID>",
 "candidates":[{"source_kind":"web_page","source_url":"https://example.com/path",

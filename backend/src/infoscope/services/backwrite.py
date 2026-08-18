@@ -286,6 +286,19 @@ class BackwriteRepository:
         if cycle.status in {"completed", "partial", "failed"}:
             await self.database.commit()
             return None
+        terminal_failure = await self.database.scalar(
+            select(BackwriteItem.id)
+            .where(
+                BackwriteItem.cycle_id == cycle.id,
+                BackwriteItem.status == "failed",
+            )
+            .limit(1)
+        )
+        if terminal_failure is not None:
+            await self._abort_pending_items(cycle)
+            await self._finalize_cycle(cycle)
+            await self.database.commit()
+            return None
         item = (
             await self.database.execute(
                 select(BackwriteItem)
@@ -320,6 +333,28 @@ class BackwriteRepository:
         self.database.add(run)
         await self.database.commit()
         return PreparedBackwriteItem(cycle, item, run)
+
+    async def _abort_pending_items(self, cycle: BackwriteCycle) -> None:
+        """Stop a queue that can no longer produce a successful cycle."""
+        pending = list(
+            (
+                await self.database.execute(
+                    select(BackwriteItem)
+                    .where(
+                        BackwriteItem.cycle_id == cycle.id,
+                        BackwriteItem.status == "pending",
+                    )
+                    .order_by(BackwriteItem.queue_position)
+                    .with_for_update(skip_locked=True)
+                )
+            ).scalars()
+        )
+        finished = datetime.now(UTC)
+        for item in pending:
+            item.status = "failed"
+            item.outcome = None
+            item.error_code = "BACKWRITE_CYCLE_ABORTED"
+            item.finished_at = finished
 
     async def recover_stale_items(self, cycle_id: UUID) -> list[BackwriteItem]:
         """Fail-closed items abandoned by a lost worker and make retries durable.
@@ -379,6 +414,79 @@ class BackwriteRepository:
         await self._finalize_cycle(cycle)
         await self.database.commit()
         return stale
+
+    async def fail_abandoned_cycles(
+        self,
+        idempotency_keys: set[UUID],
+        *,
+        error_code: str = "BACKWRITE_MAINTENANCE_LOST",
+    ) -> list[BackwriteCycle]:
+        """Terminalize active cycles whose owning Maintenance run is already terminal.
+
+        Maintenance owns its Backwrite cycle through a deterministic idempotency key. If the
+        worker disappears, the Maintenance lease is recovered independently; without this repair
+        the cycle and its frozen queue remain permanently ``running`` with no runner that can
+        legally resume them.  Completed and already-failed items remain immutable, while every
+        unfinished item receives an auditable fail-closed terminal state.
+        """
+        if not idempotency_keys:
+            return []
+        cycles = list(
+            (
+                await self.database.execute(
+                    select(BackwriteCycle)
+                    .where(
+                        BackwriteCycle.idempotency_key.in_(idempotency_keys),
+                        BackwriteCycle.status.in_(("pending", "running")),
+                    )
+                    .order_by(BackwriteCycle.created_at, BackwriteCycle.id)
+                    .with_for_update(skip_locked=True)
+                )
+            ).scalars()
+        )
+        if not cycles:
+            return []
+        finished = datetime.now(UTC)
+        for cycle in cycles:
+            items = list(
+                (
+                    await self.database.execute(
+                        select(BackwriteItem)
+                        .where(
+                            BackwriteItem.cycle_id == cycle.id,
+                            BackwriteItem.status.in_(("pending", "researching", "reconciling")),
+                        )
+                        .order_by(BackwriteItem.queue_position)
+                        .with_for_update(skip_locked=True)
+                    )
+                ).scalars()
+            )
+            item_ids = [item.id for item in items]
+            if item_ids:
+                runs = list(
+                    (
+                        await self.database.execute(
+                            select(BackwriteReconciliationRun)
+                            .where(
+                                BackwriteReconciliationRun.item_id.in_(item_ids),
+                                BackwriteReconciliationRun.status == "running",
+                            )
+                            .with_for_update(skip_locked=True)
+                        )
+                    ).scalars()
+                )
+                for run in runs:
+                    run.status = "failed"
+                    run.error_code = error_code
+                    run.finished_at = finished
+            for item in items:
+                item.status = "failed"
+                item.outcome = None
+                item.error_code = error_code
+                item.finished_at = finished
+            await self.database.flush()
+            await self._finalize_cycle(cycle)
+        return cycles
 
     async def attach_research_request(self, item_id: UUID, request_id: UUID) -> None:
         item = await self.database.get(BackwriteItem, item_id)
@@ -701,6 +809,15 @@ class BackwriteRepository:
             events=claim_events,
             candidates=claim_candidates,
         )
+        claim_response = ClaimExtractionRunner._normalize_decisions(
+            claim_response,
+            claim_events,
+            claim_candidates,
+        )
+        claim_response = ClaimExtractionRunner._normalize_coverage(
+            claim_response,
+            claim_events,
+        )
         ClaimExtractionRunner._validate(
             claim_response.payload,
             claim_events,
@@ -718,6 +835,15 @@ class BackwriteRepository:
             events=timeline_events,
             candidates=timeline_candidates,
         )
+        timeline_response = TimelineReconstructionRunner._normalize_decisions(
+            timeline_response,
+            timeline_events,
+            timeline_candidates,
+        )
+        timeline_response = TimelineReconstructionRunner._normalize_coverage(
+            timeline_response,
+            timeline_events,
+        )
         TimelineReconstructionRunner._validate(
             timeline_response.payload,
             timeline_events,
@@ -734,6 +860,15 @@ class BackwriteRepository:
         conflict_response = await client.analyze_conflicts(
             events=conflict_events,
             candidates=conflict_candidates,
+        )
+        conflict_response = ConflictAnalysisRunner._normalize_decisions(
+            conflict_response,
+            conflict_events,
+            conflict_candidates,
+        )
+        conflict_response = ConflictAnalysisRunner._normalize_coverage(
+            conflict_response,
+            conflict_events,
         )
         ConflictAnalysisRunner._validate(
             conflict_response.payload,

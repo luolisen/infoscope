@@ -7,7 +7,6 @@ import signal
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID, uuid4, uuid5
-from uuid import UUID as UUIDType
 
 import httpx
 from sqlalchemy import and_, func, or_, select, update
@@ -15,7 +14,6 @@ from sqlalchemy import and_, func, or_, select, update
 from infoscope.analysis.ask_schemas import AskRequestSpec
 from infoscope.analysis.backwrite_schemas import BackwriteSnapshotSpec
 from infoscope.analysis.client import DeepSeekAnalysisClient
-from infoscope.analysis.config import load_analysis_config
 from infoscope.analysis.intelligence_client import DeepSeekIntelligenceClient
 from infoscope.analysis.localization_client import EventLocalizationClient
 from infoscope.analysis.reconstruction_client import DeepSeekEventReconstructionClient
@@ -85,6 +83,7 @@ from infoscope.services.event_reconstruction import (
     EventRepository,
 )
 from infoscope.services.maintenance import (
+    MAINTENANCE_BACKWRITE_NAMESPACE,
     MAINTENANCE_PHASES,
     MaintenanceError,
     MaintenanceRepository,
@@ -93,6 +92,7 @@ from infoscope.services.maintenance import (
 from infoscope.services.model_settings import (
     analysis_config_for_selection,
     analysis_config_for_user,
+    shared_fact_analysis_config,
 )
 from infoscope.services.normalization import NormalizationResult, NormalizationRunner
 from infoscope.services.personalization import (
@@ -106,7 +106,6 @@ from infoscope.services.window_analysis import WindowAnalysisRunner, WindowRunRe
 from infoscope.services.worker_health import record_worker_heartbeat, remove_worker_heartbeat
 
 logger = logging.getLogger("infoscope.worker")
-MAINTENANCE_BACKWRITE_NAMESPACE = UUIDType("44a8817e-991a-4c8c-883a-520677418a2d")
 
 
 async def _run_heartbeat(
@@ -222,7 +221,7 @@ async def analyze_windows_once(
     if retry_run_id is not None and replay_run_id is not None:
         raise ValueError("retry_run_id and replay_run_id are mutually exclusive")
     settings = get_settings()
-    config = load_analysis_config(settings)
+    config = shared_fact_analysis_config(settings)
     async with httpx.AsyncClient(trust_env=False) as client:
         async with session_factory() as database:
             runner = WindowAnalysisRunner(
@@ -255,7 +254,7 @@ async def analyze_windows_once(
 
 async def reconstruct_event_once(source_artifact_id: UUID) -> EventReconstructionResult:
     settings = get_settings()
-    config = load_analysis_config(settings)
+    config = shared_fact_analysis_config(settings)
     async with httpx.AsyncClient(trust_env=False) as client:
         async with session_factory() as database:
             result = await EventReconstructionRunner(
@@ -276,7 +275,7 @@ async def reconstruct_event_once(source_artifact_id: UUID) -> EventReconstructio
 
 
 async def extract_claims_once(source_artifact_id: UUID) -> IntelligenceResult:
-    config = load_analysis_config(get_settings())
+    config = shared_fact_analysis_config(get_settings())
     async with httpx.AsyncClient(trust_env=False) as client:
         async with session_factory() as database:
             result = await ClaimExtractionRunner(
@@ -296,7 +295,7 @@ async def extract_claims_once(source_artifact_id: UUID) -> IntelligenceResult:
 
 
 async def reconstruct_timeline_once(source_artifact_id: UUID) -> IntelligenceResult:
-    config = load_analysis_config(get_settings())
+    config = shared_fact_analysis_config(get_settings())
     async with httpx.AsyncClient(trust_env=False) as client:
         async with session_factory() as database:
             result = await TimelineReconstructionRunner(
@@ -316,7 +315,7 @@ async def reconstruct_timeline_once(source_artifact_id: UUID) -> IntelligenceRes
 
 
 async def analyze_conflicts_once(source_artifact_id: UUID) -> IntelligenceResult:
-    config = load_analysis_config(get_settings())
+    config = shared_fact_analysis_config(get_settings())
     async with httpx.AsyncClient(trust_env=False) as client:
         async with session_factory() as database:
             result = await ConflictAnalysisRunner(
@@ -336,7 +335,7 @@ async def analyze_conflicts_once(source_artifact_id: UUID) -> IntelligenceResult
 
 
 async def analyze_base_once(source_artifact_id: UUID) -> IntelligenceResult:
-    config = load_analysis_config(get_settings())
+    config = shared_fact_analysis_config(get_settings())
     async with httpx.AsyncClient(trust_env=False) as client:
         async with session_factory() as database:
             result = await BaseAnalysisRunner(
@@ -548,7 +547,7 @@ async def run_backwrite_spec_once(
             cycle.error_code,
         )
         return
-    analysis_config = load_analysis_config(settings)
+    analysis_config = shared_fact_analysis_config(settings)
     openclaw_config = research_runtime_config()
     timeout = httpx.Timeout(connect=10, read=30, write=10, pool=10)
     async with httpx.AsyncClient(
@@ -719,6 +718,9 @@ async def localize_events_once() -> EventLocalizationRun:
             batch_size=settings.event_localization_batch_size,
             batch_concurrency=settings.event_localization_batch_concurrency,
             max_attempts=settings.event_localization_max_attempts,
+            stale_after=timedelta(
+                seconds=max(settings.analysis_timeout_seconds + 60, 300)
+            ),
         ).run()
     logger.info(
         "event localization run status run_id=%s status=%s completed=%d failed=%d total=%d",
@@ -755,7 +757,19 @@ async def _derived_artifact(source_artifact_id: UUID, artifact_type: str) -> Pip
 
 
 async def reconcile_window_artifacts_once() -> None:
+    settings = get_settings()
+    recovery_time = datetime.now(UTC)
     async with session_factory() as database:
+        recovered = await PipelineRepository(database).recover_stale_running(
+            stale_before=recovery_time
+            - timedelta(seconds=settings.maintenance_stale_after_seconds),
+            finished_at=recovery_time,
+        )
+        if recovered:
+            logger.warning(
+                "recovered stale pipeline runs count=%d error_code=PIPELINE_WORKER_LOST",
+                len(recovered),
+            )
         windows = list(
             (
                 await database.execute(

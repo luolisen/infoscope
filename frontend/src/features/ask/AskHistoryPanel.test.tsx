@@ -27,11 +27,34 @@ it("uses the Backend opaque cursor to load more owner history", async () => {
       next_cursor: null,
     });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(<QueryClientProvider client={client}><AskHistoryPanel /></QueryClientProvider>);
+  const onSelect = vi.fn();
+  render(<QueryClientProvider client={client}><AskHistoryPanel onSelect={onSelect} /></QueryClientProvider>);
 
   fireEvent.click(screen.getByRole("button", { name: "展开 Ask 历史" }));
   expect(await screen.findByText("第一问")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: /第一问/ }));
+  expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ ask_id: "ask-1", answer: "回答一" }));
   fireEvent.click(screen.getByRole("button", { name: "加载更多" }));
   expect(await screen.findByText("第二问")).toBeInTheDocument();
   expect(fetchAskHistory).toHaveBeenLastCalledWith(20, "opaque-next");
+});
+
+it("uses explicit controls for expansion and persisted pinning", async () => {
+  vi.mocked(fetchAskHistory).mockResolvedValue({ items: [], next_cursor: null });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(<QueryClientProvider client={client}><AskHistoryPanel /></QueryClientProvider>);
+
+  const panel = screen.getByRole("complementary", { name: "Ask 历史" });
+  fireEvent.mouseEnter(panel);
+  fireEvent.click(screen.getByRole("button", { name: "展开 Ask 历史" }));
+  fireEvent.mouseLeave(panel);
+  expect(screen.getByRole("button", { name: "折叠 Ask 历史" })).toHaveAttribute("aria-expanded", "true");
+
+  const pin = screen.getByRole("button", { name: "固定 Ask 历史" });
+  fireEvent.click(pin);
+  expect(screen.getByRole("button", { name: "取消固定 Ask 历史" })).toHaveAttribute("aria-pressed", "true");
+  expect(window.localStorage.getItem("infoscope.ask-history.pinned")).toBe("true");
+  fireEvent.click(screen.getByRole("button", { name: "取消固定 Ask 历史" }));
+  expect(window.localStorage.getItem("infoscope.ask-history.pinned")).toBe("false");
+  expect(screen.getByRole("button", { name: "展开 Ask 历史" })).toHaveAttribute("aria-expanded", "false");
 });

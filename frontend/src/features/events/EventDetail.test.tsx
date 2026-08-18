@@ -51,7 +51,14 @@ describe("EventDetail", () => {
     expect(screen.getAllByText("First claim")).toHaveLength(2);
     expect(screen.getByRole("link", { name: /打开公开来源/ })).toHaveAttribute("href", "https://example.test/source");
     expect(screen.getByText(/Public desk/)).toBeInTheDocument();
+    expect(screen.getByText("EVENT / 发展中")).toBeInTheDocument();
+    expect(screen.getByText("BASE ANALYSIS / 中")).toBeInTheDocument();
+    expect(screen.getByText("待确认")).toBeInTheDocument();
+    expect(screen.getByText("telegram / 私密·已脱敏")).toBeInTheDocument();
+    expect(screen.getByText("web / 公开")).toBeInTheDocument();
     expect(screen.queryByText(/telegram\.me|invite|username/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "加入询问选择" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "加入询问选择" })).toHaveClass("detail-select-button");
   });
 
   it("renders loading, error, and empty relation states", async () => {

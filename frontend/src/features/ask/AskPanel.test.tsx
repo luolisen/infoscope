@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../api/ask", () => ({
+  askHistoryQueryKey: ["ask", "history"],
   askQueryKey: (askId: string) => ["ask", askId],
   createAsk: vi.fn(),
   fetchAsk: vi.fn(),
@@ -65,10 +66,12 @@ describe("AskPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "发送问题" }));
 
     expect(await screen.findByText("Current answer")).toBeInTheDocument();
+    expect(screen.getByText("分析回答，不作为 Evidence。")).toBeInTheDocument();
     expect(screen.getByText(/Selected event/)).toBeInTheDocument();
     expect(screen.getByText(/事件信息已补充/)).toBeInTheDocument();
     await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ["now"] }));
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["events", "event-1"] });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["ask", "history"] });
   });
 
   it("clears the terminal snapshot only through an explicit new Ask transition", async () => {

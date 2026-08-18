@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, select, tuple_
+from sqlalchemy import func, select, tuple_, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -73,6 +73,48 @@ class PipelineRepository:
 
     async def get_run(self, run_id: UUID) -> PipelineRun | None:
         return await self.database.get(PipelineRun, run_id)
+
+    async def recover_stale_running(
+        self,
+        *,
+        stale_before: datetime,
+        finished_at: datetime,
+        error_code: str = "PIPELINE_WORKER_LOST",
+    ) -> list[UUID]:
+        """Fail closed runs that cannot still belong to a live pipeline worker.
+
+        Pipeline artifacts are committed only on a successful path, so an
+        abandoned ``running`` row has no result to reuse.  Maintenance calls
+        this recovery before rebuilding missing derived artifacts; the age
+        threshold protects an active model request in the current worker.
+        """
+
+        _require_aware(stale_before, "stale_before")
+        _require_aware(finished_at, "finished_at")
+        if not error_code:
+            raise ValueError("a stable error_code is required")
+        recovered = list(
+            (
+                await self.database.execute(
+                    update(PipelineRun)
+                    .where(
+                        PipelineRun.status == PipelineRunStatus.RUNNING.value,
+                        PipelineRun.started_at.is_not(None),
+                        PipelineRun.started_at < stale_before,
+                    )
+                    .values(
+                        status=PipelineRunStatus.FAILED.value,
+                        finished_at=finished_at,
+                        next_retry_at=None,
+                        error_code=error_code[:128],
+                    )
+                    .returning(PipelineRun.id)
+                )
+            ).scalars()
+        )
+        if recovered:
+            await self.database.commit()
+        return recovered
 
     async def latest_window_run(
         self,

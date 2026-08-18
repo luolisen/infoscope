@@ -1,6 +1,6 @@
 # Infoscope 最终开发收口 / dev_final.md
 
-> 状态：待 Alan 确认后冻结
+> 状态：已由 Alan 确认冻结，执行中
 > 日期：2026-08-18
 > 适用仓库：`SCOUT-Infoscope/infoscope`
 > 目的：在 Lingjiu 转入 `infoscope-display` 硬件开发后，收口 Infoscope 应用端 Demo、前端体验与最终验收。
@@ -21,7 +21,8 @@
 
 - `infoscope`：MQTT Display Contract 的唯一权威源，拥有 Schema、canonical fixture、版本升级和破坏性变更。
 - `infoscope-display`：只按批准基线 vendoring canonical fixture，记录上游 immutable commit SHA 与 SHA-256；不得建立第二份权威 Schema。
-- PR #45 在 Contract 审查和测试完成前不得合并。
+- MQTT Contract 若未来重新推进，仍须在独立 PR 完成审查和测试后合并；已关闭的
+  PR #45 不作为本轮应用端 Demo Freeze 的门禁。
 
 ---
 
@@ -30,7 +31,7 @@
 严格按以下顺序推进，不因 UI 修改跳过运行时可靠性：
 
 ```text
-F0  MQTT Display Contract v1 收口
+F0  MQTT Display Contract v1（已退出本轮应用端收口）
 ↓
 F1  Demo Runtime Readiness
 ↓
@@ -47,7 +48,8 @@ F4  Final Demo Freeze
 
 ## 2. F0 — MQTT Display Contract v1
 
-当前 PR：`feat/integration-mqtt-contract` / GitHub PR #45。
+状态：Alan 已明确关闭并忽略 GitHub PR #45。本节保留长期 Contract 所有权与安全
+边界，供未来独立重启该工作时使用；F1–F4 与 PR #70 不再等待 PR #45。
 
 必须保持：
 
@@ -62,7 +64,8 @@ F4  Final Demo Freeze
 - A1 终端只消费标题，不得根据 `state` 过滤、排序、着色、显示状态图标或拒绝未知但 Schema 合法的值。
 - 若不采用 opaque 语义，则必须把 `state` 冻结为明确 enum 并增加拒绝测试；不得保持语义模糊。
 
-PR #45 完成后，Lingjiu 才能在硬件仓库开始 A1.1 fixture vendoring 与 simulator/host tests。
+未来若重新创建 MQTT Contract PR，Lingjiu 只能在该独立 PR 完成后开始对应 fixture
+vendoring 与 simulator/host tests。
 
 ---
 
@@ -287,6 +290,8 @@ Maintenance
 
 侧边导航的英文大写名称属于产品信息架构与 Editorial metadata，不得改成中文、双语或英文下方附中文小字。
 
+产品术语固定：用户可见的 `Signal/signal` 统一称为“因子”；`Raw` 与 `Event` 保留英文产品名。数据库表、Backend 类型、OpenAPI 字段和代码标识继续使用 `signal`，本次不进行破坏性内部重命名。NOW 统计按 immutable Personalization snapshot 返回并展示 `Raw / 因子 / Event` 三项数量，Frontend 不自行查询或推算。
+
 ### 问题 4 — Ask 升级为一级页面
 
 #### 4.1 导航与路由
@@ -310,8 +315,8 @@ Maintenance
 ```text
 ────────────
 Event 列表
-Event title                         □
-Event title                         ☑
+Event title
+Event title                         已选深色态
 ...
 ```
 
@@ -319,11 +324,12 @@ Event title                         ☑
 
 - Divider 使用 style.md 的细线系统。
 - `Event 列表` 使用灰色小型 Meta 文本。
-- Event 标题在前，复选框在标题后。
+- Event row 整行可选择；不显示浏览器默认复选框。底层保留语义化 checkbox 供键盘与读屏使用。
+- 选中项以更深文字、轻背景和左侧细指示条表达，不能只靠颜色；不显示内部 ID。
 - 使用 Backend NOW 顺序，不在 Frontend 二次排序。
 - 最多选择 8 个 Event；达到上限后禁用未选择项并给出解释。
 - 列表是独立滚动区，不能把整个 Sidebar 无限拉长。
-- Keyboard 可达，checkbox 有完整 Event title accessible name。
+- Keyboard 可达，语义化 checkbox 有完整 Event title accessible name。
 
 #### 4.4 Ask 主布局
 
@@ -475,6 +481,31 @@ Flash / Pro / Kimi / Qwen ...
 - Frontend 不解析 cursor，不自行排序，不猜模型状态。
 - 汉化不得修改 Evidence 原文或 provenance。
 - UI 动画不得改变请求、Polling、幂等或事务语义。
+
+### 6.1 Grok 联网 Research 渠道
+
+- 本轮模型生成渠道固定使用 AI Ping，已确认剩余额度足够；POK 只登记为未来 failback，本轮不得探测、调用或自动切换至 POK，以免引入额外变量。
+- Grok 只可作为用户在 ASK composer 中主动开启的 X/实时 Research 补充来源；不得用于 Maintenance、自动 Event Backwrite、Personalization 或 Brief，也不能直接写入 Event、Claim、Timeline、Conflict 或 Base Analysis。
+- 渠道必须完整兼容 OpenAI Responses 语义：`POST /v1/responses`、服务端 `web_search` 工具调用，以及可审计的 citations/source URLs；仅能列出模型或仅兼容 Chat Completions 不算可用。
+- `grok-build-0.1`、`grok-4.5` 等模型名本身不代表联网能力；接入前必须用真实搜索请求验证工具调用与来源 URL。
+- 搜索结果仍必须进入既有 Research Request → Raw → Normalize → Signal → canonical deduplication → Reconciliation 流程；前端可见术语继续写作 `Signal`，中文产品定义为“因子”。
+- 来源抓取必须执行 SSRF 防护、协议 allowlist、响应体长度限制、超时和隐私过滤；不得向渠道发送账户凭据、Raw、私密来源身份/provenance 或 API Key。
+- 渠道暂时不可用、未返回来源或不支持服务端搜索时必须 fail-closed，不能退化为依赖模型记忆回答，也不能把无来源文本写入事实层。
+- 本机 Sub2API/Grok Build 反代当前探测结果为：模型列表可用，但最小 Responses 与 `web_search` Responses 均返回 `Service temporarily unavailable`；在通过上述能力探测前不进入正式配置。
+- 官方 Grok Build CLI 1.0.5 已通过独立能力探测：`grok-4.6` 的 `streaming-json` 明确产生 completed X Search 工具事件，查询 `from:githubstatus` / Latest，并返回可核验的 `x.com` 原帖 URL、发布时间和正文；该 CLI 可进入下一独立切片。
+- 正式接入使用专用 `GrokXResearchCollector`，定位为 X/实时信息补充源，而不是默认模型或事实写入器。Collector 必须只消费 Backend 构建的 public-safe 查询，不接收 Raw、private_sanitized Evidence、Profile、账户数据、完整 Ask 历史或内部 provenance。
+- ASK 输入框内部提供轻量下拉菜单，选项文案为 `开启 Grok`，默认关闭。开关按单次 Ask 冻结并持久化，提交后不可被下一轮选择覆盖；未开启时不得调用 Grok CLI，历史详情不得暴露该内部执行配置。
+- Collector 必须解析有上限的 `streaming-json`，至少验证一次目标 X Search/Web Search 工具调用成功、最终输出满足严格 Schema、每个候选为规范化 `https://x.com/<account>/status/<id>` URL，并记录查询、检索时间、模型、CLI 版本和 token/cost usage；不得记录 OAuth、Cookie、会话令牌、思维文本或完整模型流水。
+- X 结果必须作为公开 Raw 独立持久化，随后经过 Normalize → Signal → canonical deduplication → Reconciliation；模型输出不能直接成为 Claim、Timeline、Conflict、Base Analysis 或 Event 更新。
+- CLI 不可用、未实际调用搜索工具、输出超限、URL/时间/正文不一致或没有可审计来源时，该补充源 fail-closed；原 Research 主链可继续，不能将补充源失败伪装为成功来源。
+- Grok 接入必须位于 PR #70 完成后的独立 `feat/research-grok-x`，避免扩大 Demo Freeze 的回滚与审查单元。
+
+### 6.2 Ask 历史详情
+
+- 历史列表项必须可选择；选择后在 ASK 主区域展示该轮完整问题、公开回答、状态、Event 数量和是否补充 Event，历史浮层保持可切换。
+- 提供 `新建提问` 返回 composer；查看历史不得改变当前 Event 选择、创建新 Ask 或重新触发 Polling/Research。
+- 不显示内部 ID、Prompt、模型/provider、token、artifact、Research rationale、Evidence/provenance 或内部错误码。
+- Event 名称若要展示，必须来自 Ask 创建时保存的有序标题快照；不得用当前 Event 标题回填历史，也不得向用户显示裸 UUID。
 
 ---
 

@@ -93,6 +93,10 @@ from infoscope.analysis.personalization_schemas import (
     PersonalizationResponse,
     canonical_bytes,
 )
+from infoscope.analysis.request_transport import (
+    TransientRequestFailure,
+    post_with_key_failover,
+)
 from infoscope.analysis.schemas import TokenUsage
 
 PayloadT = TypeVar("PayloadT", bound=BaseModel)
@@ -290,21 +294,7 @@ class DeepSeekIntelligenceClient:
                 }
                 if self.config.supports_deepseek_thinking:
                     request_payload["thinking"] = {"type": "disabled"}
-                response = await self.client.post(
-                    f"{self.config.api_base_url}/chat/completions",
-                    headers={"Authorization": f"Bearer {await self._next_key()}"},
-                    json=request_payload,
-                    timeout=self.config.timeout_seconds,
-                )
-                if response.status_code == 429 or response.status_code >= 500:
-                    if attempt < self.config.max_retries:
-                        await asyncio.sleep(min(2**attempt, 8))
-                        continue
-                    raise AnalysisError(
-                        "ANALYSIS_RATE_LIMITED"
-                        if response.status_code == 429
-                        else "ANALYSIS_UPSTREAM_UNAVAILABLE"
-                    )
+                response = await self._post(request_payload)
                 if not response.is_success:
                     raise AnalysisError("ANALYSIS_REQUEST_REJECTED")
                 return self._parse(
@@ -334,6 +324,22 @@ class DeepSeekIntelligenceClient:
                     raise
                 await asyncio.sleep(min(2**attempt, 8))
         raise AnalysisError("ANALYSIS_REQUEST_FAILED")
+
+    async def _post(self, request_payload: dict[str, Any]) -> httpx.Response:
+        try:
+            return await post_with_key_failover(
+                client=self.client,
+                config=self.config,
+                next_key=self._next_key,
+                payload=request_payload,
+            )
+        except TransientRequestFailure as error:
+            codes = {
+                "request": "ANALYSIS_REQUEST_FAILED",
+                "rate_limited": "ANALYSIS_RATE_LIMITED",
+                "upstream_unavailable": "ANALYSIS_UPSTREAM_UNAVAILABLE",
+            }
+            raise AnalysisError(codes[error.kind]) from error
 
     @staticmethod
     def _repair_instruction(

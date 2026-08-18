@@ -17,6 +17,7 @@ from infoscope.services.model_settings import (
     ModelSettingsService,
     analysis_config_for_selection,
     get_model_settings_service,
+    shared_fact_analysis_config,
 )
 
 
@@ -30,6 +31,8 @@ def _settings() -> Settings:
         aiping_api_base_url="https://aiping.example.com/api/v1",
         aiping_api_keys_group_1=SecretStr("aiping-one"),
         aiping_api_keys_group_2=SecretStr("aiping-two"),
+        analysis_max_tokens=16_384,
+        user_analysis_max_tokens=1_024,
     )
 
 
@@ -65,6 +68,13 @@ def test_fixed_catalog_maps_each_model_to_isolated_server_credentials() -> None:
     assert (kimi.provider, kimi.api_keys) == ("ai_ping", ("aiping-one",))
     assert (qwen.provider, qwen.api_keys) == ("ai_ping", ("aiping-two",))
     assert "dragon-one" not in repr(gpt)
+
+    shared = shared_fact_analysis_config(settings)
+    assert shared.provider == "ai_ping"
+    assert shared.model == "DeepSeek-V4-Flash-0731"
+    assert shared.api_keys == ("aiping-one",)
+    assert shared.max_tokens == 16_384
+    assert gpt.max_tokens == 1_024
 
 
 def test_invalid_source_model_pair_is_rejected() -> None:

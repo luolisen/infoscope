@@ -209,7 +209,8 @@ async def test_existing_analysis_is_fully_replaced_without_changing_event_state(
     existing = BaseAnalysis(
         id=analysis_id,
         event_id=event_id,
-        source_artifact_id=uuid4(),
+        source_artifact_id=None,
+        source_backwrite_reconciliation_run_id=uuid4(),
         summary="Old",
         event_type="old.type",
         importance="low",
@@ -276,6 +277,7 @@ async def test_existing_analysis_is_fully_replaced_without_changing_event_state(
 
     assert result == (0, 1, 0, False)
     assert existing.source_artifact_id == source_id
+    assert existing.source_backwrite_reconciliation_run_id is None
     assert existing.summary == "New"
     assert existing.importance == "critical"
     assert existing.topics == ["AI"]

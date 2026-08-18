@@ -40,6 +40,8 @@ describe("ArchivePage", () => {
     expect(await screen.findByText("Second overview")).toBeInTheDocument();
     expect(screen.getAllByRole("link").map((link) => link.textContent)).toEqual(["Second from Backend", "First from Backend"]);
     expect(screen.getByRole("link", { name: "Second from Backend" })).toHaveAttribute("href", "#event/event-2");
+    expect(screen.getByText("EVENT / 发展中")).toBeInTheDocument();
+    expect(screen.getByText("EVENT / 已确认")).toBeInTheDocument();
   });
 
   it("keeps the first page visible when loading the next page fails", async () => {

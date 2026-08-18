@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from uuid import uuid4
@@ -90,6 +91,27 @@ def test_backwrite_prompt_requires_all_top_level_keys_for_no_change() -> None:
     assert "event_update is still a required key" in BACKWRITE_RECONCILIATION_SYSTEM_PROMPT
     assert "JSON null" in BACKWRITE_RECONCILIATION_SYSTEM_PROMPT
     assert "required non-empty audit string" in BACKWRITE_RECONCILIATION_SYSTEM_PROMPT
+
+
+def test_backwrite_downstream_refresh_applies_pipeline_normalization_before_validation() -> None:
+    source = inspect.getsource(BackwriteRepository._refresh_downstream)
+    for runner in (
+        "ClaimExtractionRunner",
+        "TimelineReconstructionRunner",
+        "ConflictAnalysisRunner",
+    ):
+        normalize_decisions = source.index(f"{runner}._normalize_decisions")
+        normalize_coverage = source.index(f"{runner}._normalize_coverage")
+        validate = source.index(f"{runner}._validate")
+        assert normalize_decisions < normalize_coverage < validate
+
+
+def test_backwrite_queue_fail_fast_is_auditable() -> None:
+    source = inspect.getsource(BackwriteRepository.prepare_next_item)
+    assert "terminal_failure" in source
+    assert "_abort_pending_items" in source
+    abort_source = inspect.getsource(BackwriteRepository._abort_pending_items)
+    assert "BACKWRITE_CYCLE_ABORTED" in abort_source
 
 
 def test_prepared_item_freezes_identifiers_before_session_rollback() -> None:
