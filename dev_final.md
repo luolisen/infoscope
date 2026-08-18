@@ -492,6 +492,12 @@ Flash / Pro / Kimi / Qwen ...
 - 来源抓取必须执行 SSRF 防护、协议 allowlist、响应体长度限制、超时和隐私过滤；不得向渠道发送账户凭据、Raw、私密来源身份/provenance 或 API Key。
 - 渠道暂时不可用、未返回来源或不支持服务端搜索时必须 fail-closed，不能退化为依赖模型记忆回答，也不能把无来源文本写入事实层。
 - 本机 Sub2API/Grok Build 反代当前探测结果为：模型列表可用，但最小 Responses 与 `web_search` Responses 均返回 `Service temporarily unavailable`；在通过上述能力探测前不进入正式配置。
+- 官方 Grok Build CLI 1.0.5 已通过独立能力探测：`grok-4.6` 的 `streaming-json` 明确产生 completed X Search 工具事件，查询 `from:githubstatus` / Latest，并返回可核验的 `x.com` 原帖 URL、发布时间和正文；该 CLI 可进入下一独立切片。
+- 正式接入使用专用 `GrokXResearchCollector`，定位为 X/实时信息补充源，而不是默认模型或事实写入器。Collector 必须只消费 Backend 构建的 public-safe 查询，不接收 Raw、private_sanitized Evidence、Profile、账户数据、完整 Ask 历史或内部 provenance。
+- Collector 必须解析有上限的 `streaming-json`，至少验证一次目标 X Search/Web Search 工具调用成功、最终输出满足严格 Schema、每个候选为规范化 `https://x.com/<account>/status/<id>` URL，并记录查询、检索时间、模型、CLI 版本和 token/cost usage；不得记录 OAuth、Cookie、会话令牌、思维文本或完整模型流水。
+- X 结果必须作为公开 Raw 独立持久化，随后经过 Normalize → Signal → canonical deduplication → Reconciliation；模型输出不能直接成为 Claim、Timeline、Conflict、Base Analysis 或 Event 更新。
+- CLI 不可用、未实际调用搜索工具、输出超限、URL/时间/正文不一致或没有可审计来源时，该补充源 fail-closed；原 Research 主链可继续，不能将补充源失败伪装为成功来源。
+- Grok 接入必须位于 PR #70 完成后的独立 `feat/research-grok-x`，避免扩大 Demo Freeze 的回滚与审查单元。
 
 ---
 
