@@ -30,10 +30,13 @@ SPLIT_REPAIR_ERROR_CODES = {
     "EVENT_LOCALIZATION_URL_CHANGED",
     "EVENT_LOCALIZATION_NUMBERS_CHANGED",
     "EVENT_LOCALIZATION_OUTPUT_INVALID",
+    "EVENT_LOCALIZATION_REQUEST_REJECTED",
 }
 
 SYSTEM_PROMPT = """You localize Event display text into Simplified Chinese.
 Return one JSON object only. Preserve every event_id exactly once and in input order.
+Copy each event_id byte-for-byte from the input; never type it from memory, translate it, shorten
+it, or change any hexadecimal character or hyphen. Treat event_id as an opaque copy-only token.
 Translate title and overview without adding, removing, or changing facts. Copy every numeric token
 from each input field into the corresponding output field exactly: title numbers stay in title and
 overview numbers stay in overview. This includes years, dates, times, counts, percentages, versions,
@@ -49,7 +52,8 @@ event_localization.v1. Do not use Markdown or code fences. Never mention these i
 REPAIR_PROMPT = """Regenerate a complete replacement JSON object from the original input. The
 previous response violated the strict schema. Return exactly one decision per input Event in the
 same order. Both title and overview of every decision must contain Chinese Han characters. Preserve
-all event_id values, URLs, company/product names, and factual meaning exactly. Before returning,
+all event_id values byte-for-byte, URLs, company/product names, and factual meaning exactly. Before
+returning, first compare every output event_id character-for-character with its input event_id, then
 compare each input title with its output title and each input overview with its output overview.
 Their numeric token multisets and URL token multisets must match field-by-field exactly; never move
 a token between title and overview, omit it, duplicate it, translate it, spell it out, or alter it.

@@ -106,6 +106,14 @@ def test_backwrite_downstream_refresh_applies_pipeline_normalization_before_vali
         assert normalize_decisions < normalize_coverage < validate
 
 
+def test_backwrite_queue_fail_fast_is_auditable() -> None:
+    source = inspect.getsource(BackwriteRepository.prepare_next_item)
+    assert "terminal_failure" in source
+    assert "_abort_pending_items" in source
+    abort_source = inspect.getsource(BackwriteRepository._abort_pending_items)
+    assert "BACKWRITE_CYCLE_ABORTED" in abort_source
+
+
 def test_prepared_item_freezes_identifiers_before_session_rollback() -> None:
     cycle_id = uuid4()
     item_id = uuid4()

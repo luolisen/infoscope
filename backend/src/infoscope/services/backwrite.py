@@ -286,6 +286,19 @@ class BackwriteRepository:
         if cycle.status in {"completed", "partial", "failed"}:
             await self.database.commit()
             return None
+        terminal_failure = await self.database.scalar(
+            select(BackwriteItem.id)
+            .where(
+                BackwriteItem.cycle_id == cycle.id,
+                BackwriteItem.status == "failed",
+            )
+            .limit(1)
+        )
+        if terminal_failure is not None:
+            await self._abort_pending_items(cycle)
+            await self._finalize_cycle(cycle)
+            await self.database.commit()
+            return None
         item = (
             await self.database.execute(
                 select(BackwriteItem)
@@ -320,6 +333,28 @@ class BackwriteRepository:
         self.database.add(run)
         await self.database.commit()
         return PreparedBackwriteItem(cycle, item, run)
+
+    async def _abort_pending_items(self, cycle: BackwriteCycle) -> None:
+        """Stop a queue that can no longer produce a successful cycle."""
+        pending = list(
+            (
+                await self.database.execute(
+                    select(BackwriteItem)
+                    .where(
+                        BackwriteItem.cycle_id == cycle.id,
+                        BackwriteItem.status == "pending",
+                    )
+                    .order_by(BackwriteItem.queue_position)
+                    .with_for_update(skip_locked=True)
+                )
+            ).scalars()
+        )
+        finished = datetime.now(UTC)
+        for item in pending:
+            item.status = "failed"
+            item.outcome = None
+            item.error_code = "BACKWRITE_CYCLE_ABORTED"
+            item.finished_at = finished
 
     async def recover_stale_items(self, cycle_id: UUID) -> list[BackwriteItem]:
         """Fail-closed items abandoned by a lost worker and make retries durable.

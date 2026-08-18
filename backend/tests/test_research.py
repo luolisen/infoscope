@@ -26,6 +26,7 @@ from infoscope.integrations.research.fetcher import (
     normalize_text,
 )
 from infoscope.integrations.research.health import AgentReachHealthChecker
+from infoscope.integrations.research.prompt import SYSTEM_INSTRUCTION
 from infoscope.integrations.research.schemas import (
     ResearchDiscovery,
     ResearchDiscoveryAudit,
@@ -56,6 +57,13 @@ from infoscope.models import (
 )
 from infoscope.services.normalization import DeterministicNormalizer
 from infoscope.services.research import ResearchError, ResearchRepository, ResearchRunner
+
+
+def test_discovery_prompt_requires_direct_diverse_fetchable_urls() -> None:
+    assert "final direct HTTPS content URL" in SYSTEM_INSTRUCTION
+    assert "must not require a redirect" in SYSTEM_INSTRUCTION
+    assert "never invent or extrapolate a URL" in SYSTEM_INSTRUCTION
+    assert "at least three independent hosts" in SYSTEM_INSTRUCTION
 
 
 def _payload() -> ResearchRequestPayload:
