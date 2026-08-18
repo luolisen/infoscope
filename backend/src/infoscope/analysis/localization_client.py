@@ -137,6 +137,13 @@ class EventLocalizationClient:
                             value.events[0].event_id if len(value.events) == 1 else None
                         ),
                     )
+                    if len(value.events) == 1 and len(parsed.payload.decisions) == 1:
+                        # The model has no authority to choose an Event ID. Once a
+                        # failed batch is isolated to one frozen input Event, repair
+                        # even a syntactically valid but incorrectly copied UUID.
+                        # Content remains subject to the complete strict validator
+                        # below; multi-Event responses are never repaired by order.
+                        parsed.payload.decisions[0].event_id = value.events[0].event_id
                     try:
                         validate_localization_output(value, parsed.payload)
                     except ValueError as error:

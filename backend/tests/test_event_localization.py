@@ -241,6 +241,58 @@ async def test_localization_client_splits_batch_after_strict_repairs_are_exhaust
     assert response.token_usage.total_tokens == 4
 
 
+async def test_localization_client_repairs_valid_but_wrong_singleton_id() -> None:
+    event = _event()
+    value = EventLocalizationInput(events=[event_localization_item(event)])
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {
+                            "content": json.dumps(
+                                {
+                                    "schema_version": "event_localization.v1",
+                                    "decisions": [
+                                        {
+                                            "event_id": str(uuid4()),
+                                            "title": "NVIDIA 向 Example AI 投资 $10 billion",
+                                            "overview": (
+                                                "该协议于 2026-08-18 开始。"
+                                                "详见 https://example.com/a."
+                                            ),
+                                        }
+                                    ],
+                                }
+                            )
+                        },
+                    }
+                ],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+            },
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        response = await EventLocalizationClient(
+            client=client,
+            config=AnalysisConfig(
+                api_base_url="https://aiping.example.com/api/v1",
+                model="DeepSeek-V4-Flash-0731",
+                api_keys=("local-test-key",),
+                timeout_seconds=10,
+                max_retries=0,
+                max_tokens=4096,
+                provider="ai_ping",
+            ),
+        ).localize(value)
+
+    validate_localization_output(value, response.payload)
+    assert response.payload.decisions[0].event_id == event.id
+
+
 async def test_localization_client_splits_rejected_multi_event_request() -> None:
     events = sorted([_event(), _event()], key=lambda item: item.id)
     value = EventLocalizationInput(events=[event_localization_item(item) for item in events])
