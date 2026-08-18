@@ -3,9 +3,9 @@ import { apiClient } from "./client";
 export const askQueryKey = (askId: string) => ["ask", askId] as const;
 export const askHistoryQueryKey = ["ask", "history"] as const;
 
-export async function createAsk(eventIds: string[], question: string) {
+export async function createAsk(eventIds: string[], question: string, grokEnabled = false) {
   const { data, error } = await apiClient.POST("/api/v1/ask", {
-    body: { event_ids: eventIds, question },
+    body: { event_ids: eventIds, question, grok_enabled: grokEnabled },
   });
 
   if (error !== undefined || data === undefined) {

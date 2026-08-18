@@ -20,6 +20,19 @@ afterEach(() => {
 });
 
 describe("AskPanel", () => {
+  it("passes the explicit Grok toggle with the immutable Ask submission", async () => {
+    vi.mocked(createAsk).mockResolvedValue({ ask_id: "ask-grok", status: "pending" });
+    vi.mocked(fetchAsk).mockImplementation(() => new Promise(() => undefined));
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={queryClient}><AskPanel onClearSelection={() => undefined} selectedEvents={[{ id: "event-1", title: "Event" }]} /></QueryClientProvider>);
+
+    fireEvent.change(screen.getByLabelText("Grok 实时搜索"), { target: { value: "on" } });
+    fireEvent.change(screen.getByLabelText("你的问题"), { target: { value: "What changed?" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送问题" }));
+
+    await waitFor(() => expect(createAsk).toHaveBeenCalledWith(["event-1"], "What changed?", true));
+  });
+
   it("does not show progress before submission and locks the submitted Ask while polling", async () => {
     vi.mocked(createAsk).mockResolvedValue({ ask_id: "ask-1", status: "pending" });
     vi.mocked(fetchAsk).mockImplementation(() => new Promise(() => undefined));

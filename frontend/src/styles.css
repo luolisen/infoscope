@@ -257,3 +257,6 @@ kbd { border: 1px solid #bac2c3; border-radius: .2rem; padding: .1rem .35rem; co
   .ask-event-sidebar__header { padding-top: .2rem; }
   .ask-event-sidebar h2::after { content: " ·"; }
 }
+/* ASK-only live search source selector */
+.ask-grok-toggle { align-items: center; color: #526062; display: flex; font-size: .78rem; gap: .65rem; justify-content: flex-end; }
+.ask-grok-toggle select { background: rgb(245 246 245 / 72%); border: 1px solid #829092; border-radius: 999px; color: #172022; font: inherit; padding: .45rem .8rem; }

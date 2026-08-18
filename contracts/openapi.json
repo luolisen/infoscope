@@ -89,6 +89,11 @@
             "title": "Event Ids",
             "type": "array"
           },
+          "grok_enabled": {
+            "default": false,
+            "title": "Grok Enabled",
+            "type": "boolean"
+          },
           "question": {
             "maxLength": 2000,
             "minLength": 1,

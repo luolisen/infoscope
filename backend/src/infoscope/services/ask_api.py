@@ -64,6 +64,7 @@ class AskService:
                 ask_id=ask_id,
                 question=value.question,
                 selected_event_ids=value.event_ids,
+                grok_enabled=value.grok_enabled,
             )
         except AskComparisonError as error:
             if error.error_code == "ASK_EVENT_NOT_FOUND":
@@ -87,6 +88,7 @@ class AskService:
             user_id=user.id,
             question=value.question,
             selected_event_ids=value.event_ids,
+            grok_enabled=value.grok_enabled,
         )
         await repository.create_request(
             spec,

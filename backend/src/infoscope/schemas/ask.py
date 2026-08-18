@@ -12,6 +12,7 @@ from infoscope.schemas.common import ErrorDetail
 class AskCreateRequest(BaseModel):
     event_ids: list[UUID] = Field(min_length=1, max_length=8)
     question: str = Field(min_length=1, max_length=2000)
+    grok_enabled: bool = False
 
     @field_validator("event_ids")
     @classmethod

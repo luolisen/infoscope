@@ -60,6 +60,9 @@ class Settings(BaseSettings):
     research_openclaw_model: str = Field(default="deepseek/deepseek-chat", min_length=1)
     research_deepseek_api_key: SecretStr | None = None
     research_timeout_seconds: int = Field(default=300, gt=0, le=1800)
+    research_grok_executable: str = str(Path.home() / ".grok/bin/grok")
+    research_grok_model: str = "grok-4.6"
+    research_grok_timeout_seconds: int = Field(default=180, gt=0, le=900)
     research_max_attempts: int = Field(default=3, gt=0, le=10)
     ask_comparison_max_attempts: int = Field(default=3, gt=0, le=10)
     ask_research_bridge_max_attempts: int = Field(default=3, gt=0, le=10)

@@ -40,6 +40,9 @@ class AskRequest(Base):
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     question: Mapped[str] = mapped_column(Text, nullable=False)
+    grok_enabled: Mapped[bool] = mapped_column(
+        nullable=False, default=False, server_default="false"
+    )
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
     stage: Mapped[str] = mapped_column(String(32), nullable=False, default="comparing")
     input_hash: Mapped[str] = mapped_column(String(64), nullable=False)
