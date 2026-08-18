@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Protocol
@@ -21,6 +22,7 @@ from infoscope.schemas.maintenance import (
 )
 
 MAINTENANCE_DELAY = timedelta(hours=1)
+logger = logging.getLogger("infoscope.maintenance")
 MAINTENANCE_PHASES = (
     "window_analysis",
     "reconciliation",
@@ -230,6 +232,13 @@ class MaintenanceRunner:
             return await self.repository.complete(run.id)
         except Exception as error:
             error_code = getattr(error, "error_code", "MAINTENANCE_FAILED")
+            logger.exception(
+                "maintenance phase failed run_id=%s phase=%s error_type=%s error_code=%s",
+                run.id,
+                run.phase,
+                type(error).__name__,
+                error_code,
+            )
             return await self.repository.fail(run.id, error_code)
         finally:
             heartbeat_stop.set()
