@@ -16,14 +16,14 @@ export function AskWorkspace({ selectedEvents, onClearSelection }: AskWorkspaceP
   const [historyItem, setHistoryItem] = useState<AskHistoryItem | null>(null);
 
   return (
-    <main className="main-content ask-workspace" aria-labelledby="ask-workspace-heading">
+    <main className="main-content ask-workspace" aria-label={historyItem === null && selectedEvents.length > 0 ? "Ask 工作区" : undefined} aria-labelledby={historyItem !== null || selectedEvents.length === 0 ? "ask-workspace-heading" : undefined}>
       <AskHistoryPanel onSelect={setHistoryItem} selectedAskId={historyItem?.ask_id} />
       {historyItem === null ? <>
-        <header className="ask-workspace__hero">
+        {selectedEvents.length === 0 && <header className="ask-workspace__hero">
           <p className="editorial-label">ASK</p>
           <h1 id="ask-workspace-heading">观澜能帮忙做什么</h1>
           <p>选择一个或多个 Event，再提出你想理解的问题。</p>
-        </header>
+        </header>}
         <AskPanel onClearSelection={onClearSelection} selectedEvents={selectedEvents} workspace />
       </> : <section className="ask-history-detail" aria-labelledby="ask-workspace-heading">
         <div className="ask-history-detail__meta">

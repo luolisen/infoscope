@@ -1,4 +1,5 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -13,10 +14,11 @@ from infoscope.schemas.ask import (
     AskFailedResponse,
     AskHistoryItem,
     AskHistoryResponse,
+    AskProgress,
     AskResult,
 )
 from infoscope.schemas.common import ErrorDetail
-from infoscope.services.ask_api import get_ask_service
+from infoscope.services.ask_api import AskService, get_ask_service
 
 
 def _user() -> User:
@@ -42,6 +44,7 @@ class _Service:
         return AskCompletedResponse(
             ask_id=ask_id,
             status="completed",
+            progress=AskProgress(stage="finalizing", elapsed_seconds=12),
             result=AskResult(
                 answer="Grounded answer",
                 event_ids=[uuid4()],
@@ -102,6 +105,7 @@ def test_failed_public_dto_contains_only_generic_error() -> None:
     response = AskFailedResponse(
         ask_id=ask_id,
         status="failed",
+        progress=AskProgress(stage="comparing", elapsed_seconds=8),
         error=ErrorDetail(
             code="ASK_FAILED",
             message="Ask processing failed.",
@@ -111,6 +115,7 @@ def test_failed_public_dto_contains_only_generic_error() -> None:
     assert response.model_dump(mode="json") == {
         "ask_id": str(ask_id),
         "status": "failed",
+        "progress": {"stage": "comparing", "elapsed_seconds": 8},
         "result": None,
         "error": {
             "code": "ASK_FAILED",
@@ -120,9 +125,21 @@ def test_failed_public_dto_contains_only_generic_error() -> None:
     }
 
 
-def test_ask_history_cursor_is_opaque_and_strictly_validated() -> None:
-    from infoscope.services.ask_api import AskService
+def test_public_progress_maps_internal_stage_and_elapsed_time() -> None:
+    started = datetime(2026, 1, 1, tzinfo=UTC)
+    request = SimpleNamespace(
+        stage="awaiting_reconciliation",
+        created_at=started,
+        finished_at=started + timedelta(seconds=17.9),
+    )
 
+    progress = AskService._progress(request)
+
+    assert progress.stage == "reconciling"
+    assert progress.elapsed_seconds == 17
+
+
+def test_ask_history_cursor_is_opaque_and_strictly_validated() -> None:
     created_at = datetime(2026, 1, 1, tzinfo=UTC)
     cursor = AskService._encode_history_cursor(created_at, uuid4())
     decoded = AskService._decode_history_cursor(cursor)

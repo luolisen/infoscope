@@ -398,6 +398,7 @@ export interface components {
             ask_id: string;
             /** Error */
             error?: null;
+            progress: components["schemas"]["AskProgress"];
             result: components["schemas"]["AskResult"];
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -425,6 +426,7 @@ export interface components {
              */
             ask_id: string;
             error: components["schemas"]["ErrorDetail"];
+            progress: components["schemas"]["AskProgress"];
             /** Result */
             result?: null;
             /**
@@ -465,6 +467,11 @@ export interface components {
              * @enum {string}
              */
             status: "pending" | "running" | "completed" | "failed";
+            /**
+             * Thinking Seconds
+             * @default 0
+             */
+            thinking_seconds: number;
             /** Updated Event Ids */
             updated_event_ids?: string[];
         };
@@ -484,6 +491,7 @@ export interface components {
             ask_id: string;
             /** Error */
             error?: null;
+            progress: components["schemas"]["AskProgress"];
             /** Result */
             result?: null;
             /**
@@ -491,6 +499,16 @@ export interface components {
              * @enum {string}
              */
             status: "pending";
+        };
+        /** AskProgress */
+        AskProgress: {
+            /** Elapsed Seconds */
+            elapsed_seconds: number;
+            /**
+             * Stage
+             * @enum {string}
+             */
+            stage: "comparing" | "researching" | "reconciling" | "finalizing";
         };
         /** AskResult */
         AskResult: {
@@ -518,6 +536,7 @@ export interface components {
             ask_id: string;
             /** Error */
             error?: null;
+            progress: components["schemas"]["AskProgress"];
             /** Result */
             result?: null;
             /**

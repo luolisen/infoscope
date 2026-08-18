@@ -346,6 +346,9 @@ Event title                         已选深色态
 - 明确显示当前选中的 Event 数量与标题上下文。
 - 发送后冻结该轮 Event ID 与标题快照，不受用户随后勾选变化影响。
 - pending/running 时禁止重复提交，但允许浏览历史。
+- 提交后 composer 下沉并 sticky 于工作区底部；用户问题以右侧气泡呈现，观澜回答在左侧自然排版，保持 Editorial 字体与间距，不复制 ChatGPT 专有视觉资产。
+- 处理中只展示 Backend 可审计阶段（Event 数据库比较、Research、Reconciliation、Finalization）与累计耗时，不展示、存储或伪造模型私有 Chain-of-Thought。
+- 完成或失败后阶段轨迹默认折叠为 `已思考 xx 秒`，用户可展开查看公开阶段；输入框立即恢复，可继续提交下一轮独立 Ask。
 - 结果始终明确 Answer ≠ Evidence；Event 有补充时显示 `事件信息已补充` 并 refetch NOW/Event Detail。
 
 #### 4.5 Ask 历史浮动栏
@@ -356,6 +359,7 @@ Event title                         已选深色态
 - 提供 pin 按钮固定展开；使用通用、自有的置顶图标，不复制 ChatGPT 二进制/专有图形资产。
 - 固定状态持久化到本地 UI preference；不包含问题正文或答案正文的 localStorage 缓存。
 - 历史记录必须 owner-only。
+- 只要 Ask 页面当前选中了 Event，Frontend 自动载入 owner history 中与任一所选 Event 相关的最近 Ask，并按时间正序渲染为左右对话；当前正在 Poll 的 Ask 按 `ask_id` 去重。
 
 Backend Contract 前置：
 

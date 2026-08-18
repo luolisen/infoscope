@@ -60,6 +60,9 @@
             "title": "Error",
             "type": "null"
           },
+          "progress": {
+            "$ref": "#/components/schemas/AskProgress"
+          },
           "result": {
             "$ref": "#/components/schemas/AskResult"
           },
@@ -72,6 +75,7 @@
         "required": [
           "ask_id",
           "status",
+          "progress",
           "result"
         ],
         "title": "AskCompletedResponse",
@@ -118,6 +122,9 @@
           "error": {
             "$ref": "#/components/schemas/ErrorDetail"
           },
+          "progress": {
+            "$ref": "#/components/schemas/AskProgress"
+          },
           "result": {
             "title": "Result",
             "type": "null"
@@ -131,6 +138,7 @@
         "required": [
           "ask_id",
           "status",
+          "progress",
           "error"
         ],
         "title": "AskFailedResponse",
@@ -194,6 +202,12 @@
             "title": "Status",
             "type": "string"
           },
+          "thinking_seconds": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Thinking Seconds",
+            "type": "integer"
+          },
           "updated_event_ids": {
             "items": {
               "format": "uuid",
@@ -252,6 +266,9 @@
             "title": "Error",
             "type": "null"
           },
+          "progress": {
+            "$ref": "#/components/schemas/AskProgress"
+          },
           "result": {
             "title": "Result",
             "type": "null"
@@ -264,9 +281,35 @@
         },
         "required": [
           "ask_id",
-          "status"
+          "status",
+          "progress"
         ],
         "title": "AskPendingResponse",
+        "type": "object"
+      },
+      "AskProgress": {
+        "properties": {
+          "elapsed_seconds": {
+            "minimum": 0.0,
+            "title": "Elapsed Seconds",
+            "type": "integer"
+          },
+          "stage": {
+            "enum": [
+              "comparing",
+              "researching",
+              "reconciling",
+              "finalizing"
+            ],
+            "title": "Stage",
+            "type": "string"
+          }
+        },
+        "required": [
+          "stage",
+          "elapsed_seconds"
+        ],
+        "title": "AskProgress",
         "type": "object"
       },
       "AskResult": {
@@ -347,6 +390,9 @@
             "title": "Error",
             "type": "null"
           },
+          "progress": {
+            "$ref": "#/components/schemas/AskProgress"
+          },
           "result": {
             "title": "Result",
             "type": "null"
@@ -359,7 +405,8 @@
         },
         "required": [
           "ask_id",
-          "status"
+          "status",
+          "progress"
         ],
         "title": "AskRunningResponse",
         "type": "object"

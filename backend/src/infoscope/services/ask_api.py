@@ -3,7 +3,7 @@ from __future__ import annotations
 import base64
 import binascii
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID, uuid4
 
@@ -25,6 +25,7 @@ from infoscope.schemas.ask import (
     AskHistoryItem,
     AskHistoryResponse,
     AskPendingResponse,
+    AskProgress,
     AskResult,
     AskRunningResponse,
     AskStatusResponse,
@@ -113,10 +114,11 @@ class AskService:
                 code="ASK_NOT_FOUND",
                 message="Ask request was not found.",
             )
+        progress = self._progress(request)
         if request.status == "pending":
-            return AskPendingResponse(ask_id=request.id, status="pending")
+            return AskPendingResponse(ask_id=request.id, status="pending", progress=progress)
         if request.status == "running":
-            return AskRunningResponse(ask_id=request.id, status="running")
+            return AskRunningResponse(ask_id=request.id, status="running", progress=progress)
         if request.status == "failed":
             message = (
                 "Research is temporarily unavailable. Please try again later."
@@ -126,6 +128,7 @@ class AskService:
             return AskFailedResponse(
                 ask_id=request.id,
                 status="failed",
+                progress=progress,
                 error=ErrorDetail(
                     code="ASK_FAILED",
                     message=message,
@@ -154,6 +157,7 @@ class AskService:
         return AskCompletedResponse(
             ask_id=request.id,
             status="completed",
+            progress=progress,
             result=AskResult(
                 answer=payload.answer,
                 event_ids=payload.event_ids,
@@ -228,6 +232,7 @@ class AskService:
                     event_ids=list(event_rows),
                     created_at=request.created_at,
                     finished_at=request.finished_at,
+                    thinking_seconds=self._elapsed_seconds(request),
                     answer=answer,
                     updated_event_ids=updated_event_ids,
                 )
@@ -238,6 +243,24 @@ class AskService:
             last = page[-1]
             next_cursor = self._encode_history_cursor(last.created_at, last.id)
         return AskHistoryResponse(items=items, next_cursor=next_cursor)
+
+    @staticmethod
+    def _elapsed_seconds(request: AskRequest) -> int:
+        finished = request.finished_at or datetime.now(UTC)
+        return max(0, int((finished - request.created_at).total_seconds()))
+
+    @classmethod
+    def _progress(cls, request: AskRequest) -> AskProgress:
+        stages = {
+            "comparing": "comparing",
+            "awaiting_research": "researching",
+            "awaiting_reconciliation": "reconciling",
+            "finalizing": "finalizing",
+        }
+        return AskProgress(
+            stage=stages[request.stage],  # type: ignore[arg-type]
+            elapsed_seconds=cls._elapsed_seconds(request),
+        )
 
     @staticmethod
     def _encode_history_cursor(created_at: datetime, ask_id: UUID) -> str:
