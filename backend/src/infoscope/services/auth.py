@@ -18,7 +18,6 @@ from infoscope.security import (
     hash_password,
     hash_session_token,
     new_session_token,
-    verify_password,
 )
 
 
@@ -39,37 +38,32 @@ class AuthService:
             raise self._auth_required()
         return user
 
-    async def register(self, username: str, password: str) -> tuple[SessionResponse, str]:
-        user = User(
-            username=username,
-            username_normalized=username.casefold(),
-            password_hash=await hash_password(password),
-        )
-        self.database.add(user)
-        try:
-            await self.database.flush()
-        except IntegrityError as error:
-            await self.database.rollback()
-            raise ApiError(
-                status_code=status.HTTP_409_CONFLICT,
-                code="USERNAME_TAKEN",
-                message="Username is already registered.",
-            ) from error
-
-        token = self._add_session(user)
-        await self.database.commit()
-        return self._session_response(user), token
-
-    async def login(self, username: str, password: str) -> tuple[SessionResponse, str]:
+    async def local_access(self, display_name: str) -> tuple[SessionResponse, str]:
+        internal_username = self.settings.local_user_username.strip()
         user = await self.database.scalar(
-            select(User).where(User.username_normalized == username.casefold())
+            select(User)
+            .where(User.username_normalized == internal_username.casefold())
+            .with_for_update()
         )
-        if not await verify_password(password, user.password_hash if user else None):
-            raise ApiError(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                code="INVALID_CREDENTIALS",
-                message="Username or password is invalid.",
+        if user is None:
+            user = User(
+                username=internal_username,
+                username_normalized=internal_username.casefold(),
+                display_name=display_name,
+                password_hash=await hash_password(new_session_token()),
             )
+            self.database.add(user)
+            try:
+                await self.database.flush()
+            except IntegrityError as error:
+                await self.database.rollback()
+                raise ApiError(
+                    status_code=status.HTTP_409_CONFLICT,
+                    code="LOCAL_USER_CONFLICT",
+                    message="The local user could not be created.",
+                ) from error
+        else:
+            user.display_name = display_name
 
         token = self._add_session(user)
         await self.database.commit()
@@ -117,7 +111,10 @@ class AuthService:
         state = (
             SessionState.READY if user.onboarding_completed else SessionState.ONBOARDING_REQUIRED
         )
-        return SessionResponse(state=state, user=SessionUser(username=user.username))
+        return SessionResponse(
+            state=state,
+            user=SessionUser(display_name=user.display_name or user.username),
+        )
 
     @staticmethod
     def _auth_required() -> ApiError:

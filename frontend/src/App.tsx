@@ -42,6 +42,7 @@ export function App() {
 }
 
 function ReadyApp() {
+  const [demoStage, setDemoStage] = useState<"name" | "onboarding" | null>(null);
   const [locationHash, setLocationHash] = useState(() => window.location.hash);
   const [selectedEvents, setSelectedEvents] = useState<SelectedEvent[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -113,6 +114,17 @@ function ReadyApp() {
     return () => window.removeEventListener("keydown", openSearch);
   }, []);
 
+  if (demoStage === "name") {
+    return <AuthScreen onDemoContinue={() => setDemoStage("onboarding")} />;
+  }
+
+  if (demoStage === "onboarding") {
+    return <OnboardingPending demoMode onComplete={() => {
+      setDemoStage(null);
+      window.location.hash = "#now";
+    }} />;
+  }
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -147,7 +159,7 @@ function ReadyApp() {
 
       <div className="content-column">
         <div className="page-transition" key={locationHash}>
-          {isSettings ? <SettingsPage /> : isScope ? <OnboardingPending editExisting onComplete={() => { window.location.hash = "#now"; }} /> : isAsk ? <AskWorkspace onClearSelection={() => setSelectedEvents([])} selectedEvents={selectedEvents} /> : isBrief ? <BriefPage /> : isArchive ? <ArchivePage /> : eventId === undefined ? <NowShell onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} /> : <EventDetail eventId={eventId} onAsk={() => { window.location.hash = "#ask"; }} onBack={() => { window.location.hash = ""; }} onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} />}
+          {isSettings ? <SettingsPage onStartDemo={() => setDemoStage("name")} /> : isScope ? <OnboardingPending editExisting onComplete={() => { window.location.hash = "#now"; }} /> : isAsk ? <AskWorkspace onClearSelection={() => setSelectedEvents([])} selectedEvents={selectedEvents} /> : isBrief ? <BriefPage /> : isArchive ? <ArchivePage /> : eventId === undefined ? <NowShell onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} /> : <EventDetail eventId={eventId} onAsk={() => { window.location.hash = "#ask"; }} onBack={() => { window.location.hash = ""; }} onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} />}
         </div>
       </div>
       <SearchOverlay onClose={closeSearch} open={searchOpen} />

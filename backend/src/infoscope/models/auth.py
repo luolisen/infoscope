@@ -16,6 +16,9 @@ class User(Base):
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     username: Mapped[str] = mapped_column(String(64), nullable=False)
     username_normalized: Mapped[str] = mapped_column(String(256), unique=True, index=True)
+    display_name: Mapped[str] = mapped_column(
+        String(64), nullable=False, server_default=""
+    )
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     onboarding_completed: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"

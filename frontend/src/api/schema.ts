@@ -72,7 +72,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/auth/login": {
+    "/api/v1/auth/local": {
         parameters: {
             query?: never;
             header?: never;
@@ -81,8 +81,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Login */
-        post: operations["login_api_v1_auth_login_post"];
+        /** Local Access */
+        post: operations["local_access_api_v1_auth_local_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -100,23 +100,6 @@ export interface paths {
         put?: never;
         /** Logout */
         post: operations["logout_api_v1_auth_logout_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/register": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Register */
-        post: operations["register_api_v1_auth_register_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -593,13 +576,6 @@ export interface components {
              */
             signal_count: number;
         };
-        /** CredentialsRequest */
-        CredentialsRequest: {
-            /** Password */
-            password: string;
-            /** Username */
-            username: string;
-        };
         /** ErrorDetail */
         ErrorDetail: {
             /** Code */
@@ -856,6 +832,11 @@ export interface components {
             /** Label */
             label: string;
         };
+        /** LocalAccessRequest */
+        LocalAccessRequest: {
+            /** Display Name */
+            display_name: string;
+        };
         /** MaintenanceAcceptedResponse */
         MaintenanceAcceptedResponse: {
             /**
@@ -913,7 +894,7 @@ export interface components {
              * Id
              * @enum {string}
              */
-            id: "deepseek-v4-flash" | "deepseek-v4-pro" | "gpt-5.5" | "DeepSeek-V4-Flash-0731" | "Kimi-K3" | "Qwen3.8-Max";
+            id: "deepseek-v4-flash" | "deepseek-v4-pro" | "gpt-5.5" | "DeepSeek-V4-Flash-0731" | "DeepSeek-V4-Pro" | "Kimi-K3" | "Qwen3.8-Max";
             /** Label */
             label: string;
         };
@@ -923,7 +904,7 @@ export interface components {
              * Model Id
              * @enum {string}
              */
-            model_id: "deepseek-v4-flash" | "deepseek-v4-pro" | "gpt-5.5" | "DeepSeek-V4-Flash-0731" | "Kimi-K3" | "Qwen3.8-Max";
+            model_id: "deepseek-v4-flash" | "deepseek-v4-pro" | "gpt-5.5" | "DeepSeek-V4-Flash-0731" | "DeepSeek-V4-Pro" | "Kimi-K3" | "Qwen3.8-Max";
             /**
              * Source Id
              * @enum {string}
@@ -1020,8 +1001,8 @@ export interface components {
         SessionState: "anonymous" | "onboarding_required" | "ready";
         /** SessionUser */
         SessionUser: {
-            /** Username */
-            username: string;
+            /** Display Name */
+            display_name: string;
         };
         /** ValidationError */
         ValidationError: {
@@ -1301,7 +1282,7 @@ export interface operations {
             };
         };
     };
-    login_api_v1_auth_login_post: {
+    local_access_api_v1_auth_local_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -1310,7 +1291,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CredentialsRequest"];
+                "application/json": components["schemas"]["LocalAccessRequest"];
             };
         };
         responses: {
@@ -1325,8 +1306,8 @@ export interface operations {
                     "application/json": components["schemas"]["SessionResponse"];
                 };
             };
-            /** @description Unauthorized */
-            401: {
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1379,50 +1360,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    register_api_v1_auth_register_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CredentialsRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    /** @description HttpOnly is_session cookie. */
-                    "Set-Cookie"?: string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SessionResponse"];
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };

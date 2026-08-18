@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 from uuid import UUID
 
 from fastapi import Depends, status
-from pydantic import SecretStr
+from pydantic import SecretStr, ValidationError
 from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -50,6 +50,7 @@ MODEL_DEFINITIONS = (
         "DeepSeek V4 Flash 0731",
         1,
     ),
+    _ModelDefinition("ai_ping", "AI Ping", "DeepSeek-V4-Pro", "DeepSeek V4 Pro", 1),
     _ModelDefinition("ai_ping", "AI Ping", "Kimi-K3", "Kimi K3", 1),
     _ModelDefinition("ai_ping", "AI Ping", "Qwen3.8-Max", "Qwen 3.8 Max", 2),
 )
@@ -60,6 +61,19 @@ SHARED_FACT_MODEL_SELECTION = ModelSelection(
     source_id="ai_ping",
     model_id="DeepSeek-V4-Flash-0731",
 )
+
+
+def run_model_selection(settings: Settings) -> ModelSelection | None:
+    source_id = settings.analysis_run_source_id
+    model_id = settings.analysis_run_model_id
+    if source_id is None and model_id is None:
+        return None
+    if source_id is None or model_id is None:
+        raise AnalysisConfigurationError("run model override is incomplete")
+    try:
+        return ModelSelection(source_id=source_id, model_id=model_id)  # type: ignore[arg-type]
+    except ValidationError as error:
+        raise AnalysisConfigurationError("run model override is unsupported") from error
 
 
 def _credentials(
@@ -100,8 +114,9 @@ def analysis_config_for_selection(
 def shared_fact_analysis_config(settings: Settings) -> AnalysisConfig:
     """Return the fixed model used by the user-independent fact pipeline."""
 
+    selection = run_model_selection(settings) or SHARED_FACT_MODEL_SELECTION
     definition = _DEFINITIONS_BY_SELECTION[
-        (SHARED_FACT_MODEL_SELECTION.source_id, SHARED_FACT_MODEL_SELECTION.model_id)
+        (selection.source_id, selection.model_id)
     ]
     api_base_url, keys, provider = _credentials(settings, definition)
     return build_analysis_config(
@@ -144,6 +159,9 @@ async def analysis_config_for_user(
     user_id: UUID,
     settings: Settings,
 ) -> AnalysisConfig:
+    override = run_model_selection(settings)
+    if override is not None:
+        return analysis_config_for_selection(settings, override)
     return analysis_config_for_selection(
         settings,
         await selected_model_for_user(database, user_id, settings),

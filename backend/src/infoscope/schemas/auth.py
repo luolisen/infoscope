@@ -10,7 +10,7 @@ class SessionState(StrEnum):
 
 
 class SessionUser(BaseModel):
-    username: str
+    display_name: str
 
 
 class SessionResponse(BaseModel):
@@ -18,14 +18,13 @@ class SessionResponse(BaseModel):
     user: SessionUser | None
 
 
-class CredentialsRequest(BaseModel):
-    username: str = Field(min_length=1, max_length=64)
-    password: str = Field(min_length=8, max_length=128)
+class LocalAccessRequest(BaseModel):
+    display_name: str = Field(min_length=1, max_length=64)
 
-    @field_validator("username")
+    @field_validator("display_name")
     @classmethod
-    def normalize_username_input(cls, value: str) -> str:
+    def normalize_display_name(cls, value: str) -> str:
         stripped = value.strip()
         if not stripped:
-            raise ValueError("username must not be blank")
+            raise ValueError("display_name must not be blank")
         return stripped

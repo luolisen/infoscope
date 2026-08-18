@@ -1,7 +1,7 @@
 import type { components } from "./schema";
 import { apiClient } from "./client";
 
-type Credentials = components["schemas"]["CredentialsRequest"];
+type LocalAccess = components["schemas"]["LocalAccessRequest"];
 
 export class AuthenticationError extends Error {
   constructor(public readonly code: string | undefined) {
@@ -9,18 +9,8 @@ export class AuthenticationError extends Error {
   }
 }
 
-export async function login(credentials: Credentials) {
-  const response = await apiClient.POST("/api/v1/auth/login", { body: credentials });
-
-  if (response.error !== undefined || response.data === undefined) {
-    throw new AuthenticationError(response.error?.error.code);
-  }
-
-  return response.data;
-}
-
-export async function register(credentials: Credentials) {
-  const response = await apiClient.POST("/api/v1/auth/register", { body: credentials });
+export async function accessLocal(request: LocalAccess) {
+  const response = await apiClient.POST("/api/v1/auth/local", { body: request });
 
   if (response.error !== undefined || response.data === undefined) {
     throw new AuthenticationError(response.error?.error.code);

@@ -24,16 +24,24 @@ In a second terminal:
 uv run --project backend python -m infoscope.worker
 ```
 
-Phase 2 authentication uses a server-side session stored in PostgreSQL. The
-browser receives only the opaque `is_session` cookie, which is HttpOnly,
-SameSite=Lax, and scoped to `/`. Run migrations before testing these endpoints:
+The localhost Demo uses one internal user identity and a server-side session
+stored in PostgreSQL. The browser asks only how to address the user; it never
+asks for or transmits a username/password. The browser receives only the opaque
+`is_session` cookie, which is HttpOnly, SameSite=Lax, and scoped to `/`. Run
+migrations before testing these endpoints:
 
 ```text
 GET  /api/v1/session
-POST /api/v1/auth/register
-POST /api/v1/auth/login
+POST /api/v1/auth/local
 POST /api/v1/auth/logout
 ```
+
+`POST /api/v1/auth/local` accepts `{ "display_name": "Alan" }`. It creates or
+reuses the internal user selected by `LOCAL_USER_USERNAME` (default `demo`) and
+preserves that user's onboarding/Profile data. Settings exposes an
+`演示demo` replay of the welcome and onboarding screens; its temporary name,
+Scope, market, and Focus selections remain frontend-only and never mutate the
+User, Profile, personalization queue, or fact database.
 
 Set `SESSION_COOKIE_SECURE=true` outside the localhost HTTP demo when the API is
 served over HTTPS.
@@ -178,6 +186,11 @@ default. `GET/PUT /api/v1/settings/models` exposes only the fixed source/model
 identifiers and availability; credentials and endpoint URLs remain server-side.
 The user preference applies to Personalization, Brief, and Ask. Shared Event
 fact pipelines and Backwrite continue to use `ANALYSIS_*`.
+Operators may apply one process-local full-cycle override with both
+`ANALYSIS_RUN_SOURCE_ID` and `ANALYSIS_RUN_MODEL_ID`. The override applies to
+shared fact stages, localization, Personalization, and Brief without changing
+the durable user preference. Both variables are required together and an
+unsupported pair fails closed.
 Personalization calls use ordered batches (`PERSONALIZATION_BATCH_SIZE`, default
 10) with bounded concurrency (`PERSONALIZATION_BATCH_CONCURRENCY`, default 2),
 then validate and persist one complete immutable snapshot. User-selected models

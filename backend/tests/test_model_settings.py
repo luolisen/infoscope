@@ -16,6 +16,7 @@ from infoscope.schemas.model_settings import ModelSelection, ModelSettingsRespon
 from infoscope.services.model_settings import (
     ModelSettingsService,
     analysis_config_for_selection,
+    analysis_config_for_user,
     get_model_settings_service,
     shared_fact_analysis_config,
 )
@@ -76,6 +77,18 @@ def test_fixed_catalog_maps_each_model_to_isolated_server_credentials() -> None:
     assert shared.max_tokens == 16_384
     assert gpt.max_tokens == 1_024
 
+    run_override = shared_fact_analysis_config(
+        _settings().model_copy(
+            update={
+                "analysis_run_source_id": "ai_ping",
+                "analysis_run_model_id": "DeepSeek-V4-Pro",
+            }
+        )
+    )
+    assert run_override.provider == "ai_ping"
+    assert run_override.model == "DeepSeek-V4-Pro"
+    assert run_override.api_keys == ("aiping-one",)
+
 
 def test_invalid_source_model_pair_is_rejected() -> None:
     with pytest.raises(ValidationError, match="does not belong"):
@@ -87,6 +100,29 @@ def test_unconfigured_provider_fails_closed() -> None:
         analysis_config_for_selection(
             Settings(_env_file=None),
             ModelSelection(source_id="gpt_5_5", model_id="gpt-5.5"),
+        )
+
+
+@pytest.mark.asyncio
+async def test_run_override_applies_to_user_analysis_without_reading_preference() -> None:
+    settings = _settings().model_copy(
+        update={
+            "analysis_run_source_id": "ai_ping",
+            "analysis_run_model_id": "DeepSeek-V4-Pro",
+        }
+    )
+
+    config = await analysis_config_for_user(object(), uuid4(), settings)  # type: ignore[arg-type]
+
+    assert config.provider == "ai_ping"
+    assert config.model == "DeepSeek-V4-Pro"
+    assert config.api_keys == ("aiping-one",)
+
+
+def test_incomplete_run_override_fails_closed() -> None:
+    with pytest.raises(AnalysisConfigurationError, match="incomplete"):
+        shared_fact_analysis_config(
+            _settings().model_copy(update={"analysis_run_source_id": "ai_ping"})
         )
 
 
@@ -176,6 +212,8 @@ async def test_model_settings_api_exposes_catalog_without_credentials() -> None:
     ]
     assert "key" not in fetched.text.casefold()
     assert "base_url" not in fetched.text.casefold()
+    ai_ping = next(item for item in document["sources"] if item["id"] == "ai_ping")
+    assert "DeepSeek-V4-Pro" in [item["id"] for item in ai_ping["models"]]
     assert updated.status_code == 200
     assert updated.json()["selection"] == {
         "source_id": "ai_ping",

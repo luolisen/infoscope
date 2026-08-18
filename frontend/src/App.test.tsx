@@ -36,7 +36,7 @@ import { fetchSession } from "./api/session";
 import { fetchNow } from "./api/now";
 import { fetchLatestBrief } from "./api/brief";
 import { fetchMaintenanceStatus } from "./api/maintenance";
-import { fetchOnboarding } from "./api/onboarding";
+import { fetchOnboarding, updateOnboarding } from "./api/onboarding";
 
 beforeEach(() => {
   vi.spyOn(window, "scrollTo").mockImplementation(() => undefined);
@@ -55,20 +55,21 @@ function renderApp() {
 }
 
 describe("App", () => {
-  it("shows the credential-only access screen for anonymous sessions", async () => {
+  it("only asks how to address an anonymous local user", async () => {
     vi.mocked(fetchSession).mockResolvedValue({ state: "anonymous", user: null });
 
     renderApp();
 
-    expect(await screen.findByRole("heading", { name: "建立你的视野。" })).toBeInTheDocument();
-    expect(screen.getByLabelText("用户名")).toBeInTheDocument();
-    expect(screen.getByLabelText("密码")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "提交登录" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "我们怎么称呼您？" })).toBeInTheDocument();
+    expect(screen.getByLabelText("称呼")).toBeInTheDocument();
+    expect(screen.queryByLabelText("用户名")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("密码")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "继续建立视野" })).toBeInTheDocument();
   });
 
   it("shows the editorial app shell and health success state", async () => {
     vi.mocked(fetchSession).mockResolvedValue({
-      state: "ready", user: { username: "lingjiu" },
+      state: "ready", user: { display_name: "Lingjiu" },
     });
     vi.mocked(fetchHealth).mockResolvedValue({
       status: "ok", api: "ok", database: "ok", worker: "ok",
@@ -86,7 +87,7 @@ describe("App", () => {
   });
 
   it("filters NOW Events by Backend state without changing their order", async () => {
-    vi.mocked(fetchSession).mockResolvedValue({ state: "ready", user: { username: "lingjiu" } });
+    vi.mocked(fetchSession).mockResolvedValue({ state: "ready", user: { display_name: "Lingjiu" } });
     vi.mocked(fetchHealth).mockResolvedValue({ status: "ok", api: "ok", database: "ok", worker: "ok" });
     vi.mocked(fetchNow).mockResolvedValue({
       items: [
@@ -108,7 +109,7 @@ describe("App", () => {
   });
 
   it("returns focus to the search trigger after Escape closes the overlay", async () => {
-    vi.mocked(fetchSession).mockResolvedValue({ state: "ready", user: { username: "lingjiu" } });
+    vi.mocked(fetchSession).mockResolvedValue({ state: "ready", user: { display_name: "Lingjiu" } });
     vi.mocked(fetchHealth).mockResolvedValue({ status: "ok", api: "ok", database: "ok", worker: "ok" });
     vi.mocked(fetchNow).mockResolvedValue({ corpus_stats: { raw_information_count: 0, signal_count: 0 }, items: [], next_cursor: null, window_stats: { raw_information_count: 0, signal_count: 0, event_count: 0, relevant_event_count: 0, window_started_at: "2026-01-01T00:00:00Z", window_ended_at: "2026-01-01T01:00:00Z" } });
 
@@ -121,7 +122,7 @@ describe("App", () => {
   });
 
   it("resets the document scroll position on hash-route changes", async () => {
-    vi.mocked(fetchSession).mockResolvedValue({ state: "ready", user: { username: "lingjiu" } });
+    vi.mocked(fetchSession).mockResolvedValue({ state: "ready", user: { display_name: "Lingjiu" } });
     vi.mocked(fetchHealth).mockResolvedValue({ status: "ok", api: "ok", database: "ok", worker: "ok" });
     vi.mocked(fetchNow).mockResolvedValue({ corpus_stats: { raw_information_count: 0, signal_count: 0 }, items: [], next_cursor: null, window_stats: { raw_information_count: 0, signal_count: 0, event_count: 0, relevant_event_count: 0, window_started_at: "2026-01-01T00:00:00Z", window_ended_at: "2026-01-01T01:00:00Z" } });
 
@@ -136,7 +137,7 @@ describe("App", () => {
 
   it("marks only Settings as the current navigation page on the maintenance route", async () => {
     window.location.hash = "#settings";
-    vi.mocked(fetchSession).mockResolvedValue({ state: "ready", user: { username: "lingjiu" } });
+    vi.mocked(fetchSession).mockResolvedValue({ state: "ready", user: { display_name: "Lingjiu" } });
     vi.mocked(fetchHealth).mockResolvedValue({ status: "ok", api: "ok", database: "ok", worker: "ok" });
     vi.mocked(fetchMaintenanceStatus).mockResolvedValue({ status: "idle", phase: null, cycle_started_at: null, cycle_finished_at: null, next_cycle_at: null });
 
@@ -147,9 +148,41 @@ describe("App", () => {
     expect(screen.getByRole("link", { name: "NOW" })).not.toHaveAttribute("aria-current");
   });
 
+  it("replays onboarding from Settings without persisting demo choices", async () => {
+    window.location.hash = "#settings";
+    vi.mocked(fetchSession).mockResolvedValue({ state: "ready", user: { display_name: "Alan" } });
+    vi.mocked(fetchHealth).mockResolvedValue({ status: "ok", api: "ok", database: "ok", worker: "ok" });
+    vi.mocked(fetchMaintenanceStatus).mockResolvedValue({ status: "idle", phase: null, cycle_started_at: null, cycle_finished_at: null, next_cycle_at: null });
+    vi.mocked(fetchNow).mockResolvedValue({ corpus_stats: { raw_information_count: 0, signal_count: 0 }, items: [], next_cursor: null, window_stats: { raw_information_count: 0, signal_count: 0, event_count: 0, relevant_event_count: 0, window_started_at: "2026-01-01T00:00:00Z", window_ended_at: "2026-01-01T01:00:00Z" } });
+    vi.mocked(fetchOnboarding).mockResolvedValue({
+      completed: true,
+      scope_options: [{ id: "ai", label: "AI" }, { id: "science", label: "科学" }],
+      investment_market_options: [],
+      focus_options: [{ id: "major_changes", label: "重要变化" }, { id: "deep_context", label: "深度背景" }],
+      answers: { scope_ids: ["ai"], investment_market_ids: [], focus_ids: ["major_changes"] },
+    });
+
+    renderApp();
+    fireEvent.click(await screen.findByRole("button", { name: "演示demo" }));
+    expect(screen.getByRole("heading", { name: "我们怎么称呼您？" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("称呼"), { target: { value: "临时演示称呼" } });
+    fireEvent.click(screen.getByRole("button", { name: "继续建立视野" }));
+
+    expect(await screen.findByRole("heading", { name: "哪些内容进入你的视野？" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /AI/ })).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(screen.getByRole("button", { name: /科学/ }));
+    fireEvent.click(screen.getByRole("button", { name: "继续" }));
+    expect(await screen.findByRole("heading", { name: "什么内容应该更容易浮上来？" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /深度背景/ }));
+    fireEvent.click(screen.getByRole("button", { name: "进入演示" }));
+
+    expect(updateOnboarding).not.toHaveBeenCalled();
+    expect(await screen.findByRole("heading", { name: "此刻，什么值得关注。" })).toBeInTheDocument();
+  });
+
   it("marks Brief as the only current primary navigation page on the Brief route", async () => {
     window.location.hash = "#brief";
-    vi.mocked(fetchSession).mockResolvedValue({ state: "ready", user: { username: "lingjiu" } });
+    vi.mocked(fetchSession).mockResolvedValue({ state: "ready", user: { display_name: "Lingjiu" } });
     vi.mocked(fetchHealth).mockResolvedValue({ status: "ok", api: "ok", database: "ok", worker: "ok" });
     vi.mocked(fetchLatestBrief).mockResolvedValue({ generated_at: null, items: [] });
 
@@ -162,7 +195,7 @@ describe("App", () => {
 
   it("renders the saved onboarding choices on the Scope route", async () => {
     window.location.hash = "#scope";
-    vi.mocked(fetchSession).mockResolvedValue({ state: "ready", user: { username: "lingjiu" } });
+    vi.mocked(fetchSession).mockResolvedValue({ state: "ready", user: { display_name: "Lingjiu" } });
     vi.mocked(fetchHealth).mockResolvedValue({ status: "ok", api: "ok", database: "ok", worker: "ok" });
     vi.mocked(fetchOnboarding).mockResolvedValue({
       completed: true,
@@ -183,7 +216,7 @@ describe("App", () => {
 
   it("renders the Ask Event picker inside the sidebar below navigation", async () => {
     window.location.hash = "#ask";
-    vi.mocked(fetchSession).mockResolvedValue({ state: "ready", user: { username: "lingjiu" } });
+    vi.mocked(fetchSession).mockResolvedValue({ state: "ready", user: { display_name: "Lingjiu" } });
     vi.mocked(fetchHealth).mockResolvedValue({ status: "ok", api: "ok", database: "ok", worker: "ok" });
     vi.mocked(fetchNow).mockResolvedValue({
       items: [{ id: "event-1", title: "可选择的 Event", overview: "Overview", state: "developing", display_time: "2026-01-01T00:30:00Z", updated_at: "2026-01-01T00:30:00Z", why_it_matters: "Why", new_claim_count: 0, conflict_count: 0, topics: [], saved: false }],

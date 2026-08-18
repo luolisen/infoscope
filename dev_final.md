@@ -97,7 +97,8 @@ http://127.0.0.1:8000/
 ### 3.1 Skeleton 与用户循环
 
 - FastAPI + PostgreSQL + Alembic + Native Worker + React/Vite monorepo。
-- 注册、登录、登出、HttpOnly session。
+- 单一本地称呼入口、登出与 HttpOnly session；公开界面不出现账号或密码。
+- Settings 的 `演示demo` 仅在前端重放称呼、Scope、市场与 Focus，不写入 User/Profile，不排队 Personalization。
 - Onboarding、SCOPE、投资二级 Scope、FOCUS。
 - ready-user gate 与统一错误 DTO。
 - React production build 由 FastAPI 托管，API 路由不被静态 fallback 覆盖。
@@ -253,7 +254,7 @@ git pull --ff-only origin main
 真实浏览器至少验证：
 
 ```text
-登录 → NOW → Event Detail → ASK
+称呼 → Onboarding → NOW → Event Detail → ASK
 选择多个 Event → direct Ask
 开启增强搜索 → Research Ask
 展开“已思考”阶段
