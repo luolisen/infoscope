@@ -125,10 +125,9 @@ class GrokBuildResearchClient:
             raise ResearchRuntimeError("GROK_SEARCH_TOOL_NOT_USED")
         raw_text = "".join(texts).strip()
         try:
-            document = json.loads(raw_text)
-            discovery = ResearchDiscovery.model_validate(document)
+            discovery = GrokBuildResearchClient._parse_discovery_text(raw_text)
             usage = RuntimeUsage.model_validate(usage_document or {})
-        except (json.JSONDecodeError, ValueError) as error:
+        except ValueError as error:
             raise ResearchRuntimeError("RESEARCH_DISCOVERY_SCHEMA_INVALID") from error
         if discovery.request_id != payload.request_id:
             raise ResearchRuntimeError("RESEARCH_DISCOVERY_REQUEST_MISMATCH")
@@ -141,3 +140,16 @@ class GrokBuildResearchClient:
             model="grok-build",
             usage=usage,
         )
+
+    @staticmethod
+    def _parse_discovery_text(value: str) -> ResearchDiscovery:
+        decoder = json.JSONDecoder()
+        for index in range(len(value) - 1, -1, -1):
+            if value[index] != "{":
+                continue
+            try:
+                document, _end = decoder.raw_decode(value[index:])
+                return ResearchDiscovery.model_validate(document)
+            except (json.JSONDecodeError, ValueError):
+                continue
+        raise ValueError("no valid research discovery JSON")

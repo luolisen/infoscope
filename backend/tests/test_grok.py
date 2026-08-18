@@ -54,6 +54,7 @@ def test_grok_stream_requires_completed_x_search_and_parses_public_candidate() -
                 "rawOutput": {"name": "x_keyword_search"},
             }
         ),
+        json.dumps({"type": "text", "data": "I will search live X now. "}),
         json.dumps({"type": "text", "data": json.dumps(document)}),
         json.dumps({"type": "usage", "usage": {"input": 10, "output": 8, "total": 18}}),
     ]).encode()
