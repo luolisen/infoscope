@@ -19,6 +19,7 @@ from infoscope.api.routes.maintenance import router as maintenance_router
 from infoscope.api.routes.model_settings import router as model_settings_router
 from infoscope.api.routes.now import router as now_router
 from infoscope.api.routes.onboarding import router as onboarding_router
+from infoscope.api.routes.research_capability import router as research_capability_router
 from infoscope.db import close_database
 from infoscope.errors import ApiError
 from infoscope.schemas.common import ErrorDetail, ErrorResponse
@@ -44,6 +45,7 @@ app.include_router(ask_router, prefix="/api/v1")
 app.include_router(events_router, prefix="/api/v1")
 app.include_router(health_router, prefix="/api/v1")
 app.include_router(maintenance_router, prefix="/api/v1")
+app.include_router(research_capability_router, prefix="/api/v1")
 app.include_router(model_settings_router, prefix="/api/v1")
 app.include_router(onboarding_router, prefix="/api/v1")
 app.include_router(now_router, prefix="/api/v1")

@@ -19,6 +19,7 @@ MAX_CANONICAL_BYTES = 128_000
 _CJK = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff]")
 _URL = re.compile(r"https?://[^\s]+", re.IGNORECASE)
 _NUMBER = re.compile(r"(?<![\w])[-+]?\d+(?:[.,:/-]\d+)*(?![\w])")
+_URL_TRAILING_PUNCTUATION = ".,;:!?)]}，。；：！？）】》"
 
 
 def canonical_bytes(value: StrictModel) -> bytes:
@@ -32,6 +33,14 @@ def canonical_bytes(value: StrictModel) -> bytes:
 
 def canonical_hash(value: StrictModel) -> str:
     return hashlib.sha256(canonical_bytes(value)).hexdigest()
+
+
+def url_tokens(value: str) -> list[str]:
+    return [item.rstrip(_URL_TRAILING_PUNCTUATION) for item in _URL.findall(value)]
+
+
+def number_tokens(value: str) -> list[str]:
+    return _NUMBER.findall(value)
 
 
 class EventLocalizationItem(StrictModel):
@@ -109,7 +118,7 @@ def validate_localization_output(
             (source.title, decision.title),
             (source.overview, decision.overview),
         ):
-            if sorted(_URL.findall(original_text)) != sorted(_URL.findall(localized_text)):
+            if sorted(url_tokens(original_text)) != sorted(url_tokens(localized_text)):
                 raise ValueError("localization output changed URLs")
-            if sorted(_NUMBER.findall(original_text)) != sorted(_NUMBER.findall(localized_text)):
+            if sorted(number_tokens(original_text)) != sorted(number_tokens(localized_text)):
                 raise ValueError("localization output changed numeric tokens")

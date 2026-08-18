@@ -4,7 +4,7 @@ import asyncio
 import os
 from pathlib import Path
 
-from infoscope.integrations.research.client import ResearchRuntimeError
+from infoscope.integrations.research.client import OpenClawResearchClient, ResearchRuntimeError
 
 
 class AgentReachHealthChecker:
@@ -53,3 +53,17 @@ class AgentReachHealthChecker:
         environment["HOME"] = str(isolated_home)
         environment["TMPDIR"] = str(isolated_tmp)
         return environment
+
+
+class ResearchCapabilityChecker:
+    def __init__(
+        self,
+        openclaw: OpenClawResearchClient,
+        agent_reach: AgentReachHealthChecker,
+    ) -> None:
+        self.openclaw = openclaw
+        self.agent_reach = agent_reach
+
+    async def check(self) -> None:
+        await self.openclaw.check_runtime()
+        await self.agent_reach.check()

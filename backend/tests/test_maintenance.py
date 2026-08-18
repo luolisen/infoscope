@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import uuid4
@@ -151,3 +152,27 @@ async def test_maintenance_runner_isolates_phase_failure() -> None:
 
     assert result.status == "failed"
     assert repository.error_code == "MAINTENANCE_FAILED"
+
+
+@pytest.mark.asyncio
+async def test_maintenance_runner_keeps_independent_heartbeat_until_terminal_state() -> None:
+    repository = _RunnerRepository()
+    heartbeat_started = asyncio.Event()
+    heartbeat_stopped = asyncio.Event()
+
+    async def heartbeat(_run_id, stop):
+        heartbeat_started.set()
+        await stop.wait()
+        heartbeat_stopped.set()
+
+    async def execute(_run):
+        await heartbeat_started.wait()
+
+    result = await MaintenanceRunner(
+        repository,  # type: ignore[arg-type]
+        {phase: execute for phase in MAINTENANCE_PHASES},
+        heartbeat=heartbeat,
+    ).run_next()
+
+    assert result.status == "completed"
+    assert heartbeat_stopped.is_set()

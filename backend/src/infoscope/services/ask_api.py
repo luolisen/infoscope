@@ -110,12 +110,17 @@ class AskService:
         if request.status == "running":
             return AskRunningResponse(ask_id=request.id, status="running")
         if request.status == "failed":
+            message = (
+                "Research is temporarily unavailable. Please try again later."
+                if request.error_code == "ASK_RESEARCH_CAPABILITY_UNAVAILABLE"
+                else "Ask processing failed."
+            )
             return AskFailedResponse(
                 ask_id=request.id,
                 status="failed",
                 error=ErrorDetail(
                     code="ASK_FAILED",
-                    message="Ask processing failed.",
+                    message=message,
                     request_id=request_id,
                 ),
             )

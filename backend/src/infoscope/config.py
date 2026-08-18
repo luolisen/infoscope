@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     worker_poll_seconds: float = Field(default=30.0, gt=0)
     worker_heartbeat_seconds: float = Field(default=5.0, gt=0, le=60)
     worker_stale_after_seconds: float = Field(default=20.0, gt=0, le=300)
+    maintenance_stale_after_seconds: float = Field(default=60.0, gt=10, le=3600)
     trendradar_config_path: Path = Path("backend/config/trendradar.yaml")
     telegram_api_id: int | None = Field(default=None, gt=0)
     telegram_api_hash: SecretStr | None = None
@@ -56,7 +57,8 @@ class Settings(BaseSettings):
     research_agent_reach_executable: str = "agent-reach"
     research_openclaw_config_path: Path = Path(".state/openclaw/research.json")
     research_openclaw_state_dir: Path = Path(".state/openclaw/research")
-    research_openclaw_model: str = Field(default="deepseek/deepseek-v4-flash", min_length=1)
+    research_openclaw_model: str = Field(default="deepseek/deepseek-chat", min_length=1)
+    research_deepseek_api_key: SecretStr | None = None
     research_timeout_seconds: int = Field(default=300, gt=0, le=1800)
     research_max_attempts: int = Field(default=3, gt=0, le=10)
     ask_comparison_max_attempts: int = Field(default=3, gt=0, le=10)
