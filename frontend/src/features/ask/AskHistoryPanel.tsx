@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 
 import { askHistoryQueryKey, fetchAskHistory } from "../../api/ask";
+import type { components } from "../../api/schema";
 import { ChevronIcon, PinIcon } from "../../components/Icons";
 
 const PIN_KEY = "infoscope.ask-history.pinned";
@@ -21,7 +22,14 @@ function statusLabel(status: string) {
   return "等待中";
 }
 
-export function AskHistoryPanel() {
+type AskHistoryItem = components["schemas"]["AskHistoryItem"];
+
+type AskHistoryPanelProps = {
+  onSelect?: (item: AskHistoryItem) => void;
+  selectedAskId?: string | null;
+};
+
+export function AskHistoryPanel({ onSelect, selectedAskId = null }: AskHistoryPanelProps) {
   const [pinned, setPinned] = useState(readPinned);
   const [expanded, setExpanded] = useState(readPinned);
   const [hovered, setHovered] = useState(false);
@@ -102,11 +110,11 @@ export function AskHistoryPanel() {
           {history.isError && <p className="ask-history__empty" role="alert">历史暂时无法加载。</p>}
           {history.data !== undefined && items.length === 0 && <p className="ask-history__empty">还没有历史提问。</p>}
           {items.map((item) => (
-            <article className="ask-history__item" key={item.ask_id}>
+            <button aria-current={selectedAskId === item.ask_id ? "true" : undefined} className="ask-history__item" key={item.ask_id} onClick={() => onSelect?.(item)} type="button">
               <p className="editorial-label">{statusLabel(item.status)}</p>
               <p className="ask-history__question">{item.question}</p>
               {item.answer && <p className="ask-history__answer">{item.answer}</p>}
-            </article>
+            </button>
           ))}
           {history.isFetchNextPageError && <p className="ask-history__empty" role="alert">无法加载更多历史。</p>}
           {history.hasNextPage && <button className="text-button ask-history__more" disabled={history.isFetchingNextPage} onClick={() => { void history.fetchNextPage(); }} type="button">{history.isFetchingNextPage ? "加载中…" : "加载更多"}</button>}

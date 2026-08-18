@@ -27,10 +27,13 @@ it("uses the Backend opaque cursor to load more owner history", async () => {
       next_cursor: null,
     });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(<QueryClientProvider client={client}><AskHistoryPanel /></QueryClientProvider>);
+  const onSelect = vi.fn();
+  render(<QueryClientProvider client={client}><AskHistoryPanel onSelect={onSelect} /></QueryClientProvider>);
 
   fireEvent.click(screen.getByRole("button", { name: "展开 Ask 历史" }));
   expect(await screen.findByText("第一问")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: /第一问/ }));
+  expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ ask_id: "ask-1", answer: "回答一" }));
   fireEvent.click(screen.getByRole("button", { name: "加载更多" }));
   expect(await screen.findByText("第二问")).toBeInTheDocument();
   expect(fetchAskHistory).toHaveBeenLastCalledWith(20, "opaque-next");
