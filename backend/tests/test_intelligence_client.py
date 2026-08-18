@@ -4,6 +4,7 @@ from uuid import uuid4
 import httpx
 
 from infoscope.analysis.ask_schemas import AskComparisonPayload
+from infoscope.analysis.backwrite_schemas import BackwriteReconciliationPayload
 from infoscope.analysis.config import AnalysisConfig
 from infoscope.analysis.intelligence_client import DeepSeekIntelligenceClient
 from infoscope.analysis.intelligence_schemas import (
@@ -56,6 +57,18 @@ def test_ask_comparison_repair_prompt_rejects_invented_citation_fields() -> None
     assert instruction is not None
     assert "timeline_entry_ids" in instruction
     assert "Never output status, citations, cited_ids" in instruction
+
+
+def test_backwrite_repair_prompt_requires_explicit_null_and_rationale() -> None:
+    instruction = DeepSeekIntelligenceClient._repair_instruction(
+        "ANALYSIS_SCHEMA_INVALID",
+        payload_type=BackwriteReconciliationPayload,
+    )
+
+    assert instruction is not None
+    assert "event_update is mandatory" in instruction
+    assert "JSON null for no_change" in instruction
+    assert "rationale is mandatory" in instruction
 
 
 async def test_intelligence_client_parses_claim_and_timeline_contracts() -> None:

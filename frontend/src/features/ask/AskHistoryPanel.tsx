@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 
 import { askHistoryQueryKey, fetchAskHistory } from "../../api/ask";
+import { ChevronIcon, PinIcon } from "../../components/Icons";
 
 const PIN_KEY = "infoscope.ask-history.pinned";
 
@@ -57,10 +58,10 @@ export function AskHistoryPanel() {
           onClick={() => setExpanded((value) => !value)}
           type="button"
         >
-          <span aria-hidden="true">{expanded ? "‹" : "›"}</span>
+          <ChevronIcon className="action-icon" direction={expanded ? "right" : "left"} />
         </button>
         {expanded && <span className="ask-history__title">历史提问</span>}
-        {expanded && <button aria-pressed={pinned} aria-label={pinned ? "取消固定 Ask 历史" : "固定 Ask 历史"} className="icon-button ask-history__pin" onClick={togglePinned} type="button"><span aria-hidden="true">{pinned ? "●" : "○"}</span></button>}
+        {expanded && <button aria-pressed={pinned} aria-label={pinned ? "取消固定 Ask 历史" : "固定 Ask 历史"} className="icon-button ask-history__pin" onClick={togglePinned} title={pinned ? "取消固定" : "固定历史"} type="button"><PinIcon className="action-icon" filled={pinned} /></button>}
       </div>
       {expanded && (
         <div className="ask-history__body" aria-live="polite">

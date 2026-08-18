@@ -12,6 +12,7 @@ from infoscope.analysis.ask_schemas import (
     AskEventInput,
     AskReconciliationSignal,
 )
+from infoscope.analysis.backwrite_prompt import BACKWRITE_RECONCILIATION_SYSTEM_PROMPT
 from infoscope.analysis.backwrite_schemas import (
     BackwriteEventUpdate,
     BackwriteReconciliationArtifactPayload,
@@ -82,6 +83,13 @@ def test_frozen_queue_alternates_edges_without_duplicates() -> None:
     assert frozen_queue_indices(7) == [0, 6, 1, 5, 2, 4, 3]
     assert frozen_queue_indices(6) == [0, 5, 1, 4, 2, 3]
     assert sorted(frozen_queue_indices(11)) == list(range(11))
+
+
+def test_backwrite_prompt_requires_all_top_level_keys_for_no_change() -> None:
+    assert "exactly these seven keys" in BACKWRITE_RECONCILIATION_SYSTEM_PROMPT
+    assert "event_update is still a required key" in BACKWRITE_RECONCILIATION_SYSTEM_PROMPT
+    assert "JSON null" in BACKWRITE_RECONCILIATION_SYSTEM_PROMPT
+    assert "required non-empty audit string" in BACKWRITE_RECONCILIATION_SYSTEM_PROMPT
 
 
 def test_prepared_item_freezes_identifiers_before_session_rollback() -> None:

@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { askQueryKey, createAsk, fetchAsk } from "../../api/ask";
 import { eventDetailQueryKey } from "../../api/events";
 import { nowQueryKey } from "../../api/now";
+import { SendIcon } from "../../components/Icons";
 
 type AskPanelProps = {
   selectedEvents: { id: string; title: string }[];
@@ -76,7 +77,7 @@ export function AskPanel({ selectedEvents, onClearSelection, workspace = false }
       <form className="ask-form" onSubmit={submit}>
         <label htmlFor="ask-question">你的问题</label>
         <textarea disabled={askId !== null} id="ask-question" maxLength={2000} onChange={(event) => setQuestion(event.target.value)} placeholder="你想了解什么？" required value={question} />
-        {(question.trim().length > 0 || create.isPending || isActive) && <button aria-label={isActive ? "处理中" : "发送问题"} className="auth-submit ask-send-button" disabled={create.isPending || askId !== null || question.trim().length === 0 || selectedEvents.length === 0} type="submit"><span aria-hidden="true">↑</span><span>{create.isPending ? "正在准备…" : isActive ? "处理中" : "发送问题"}</span></button>}
+        {(question.trim().length > 0 || create.isPending || isActive) && <button aria-busy={create.isPending || isActive} aria-label={isActive ? "处理中" : "发送问题"} className={`auth-submit ask-send-button${create.isPending || isActive ? " ask-send-button--busy" : ""}`} disabled={create.isPending || askId !== null || question.trim().length === 0 || selectedEvents.length === 0} title={isActive ? "处理中" : "发送问题"} type="submit"><SendIcon className="action-icon" /></button>}
       </form>
       {create.isError && <p className="auth-error" role="alert">无法开始 Ask，请稍后重试。</p>}
       {isActive && <p className="ask-progress" role="status">正在整理相关信息…</p>}

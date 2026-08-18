@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { archiveQueryKey, searchQueryKey, setEventSaved } from "../../api/archiveSearch";
 import { eventDetailQueryKey } from "../../api/events";
 import { nowQueryKey } from "../../api/now";
+import { BookmarkIcon } from "../../components/Icons";
 
 type SaveButtonProps = { eventId: string; saved: boolean; onSaved?: () => void };
 
@@ -22,5 +23,5 @@ export function SaveButton({ eventId, saved, onSaved }: SaveButtonProps) {
     });
   }
 
-  return <span className="save-control"><button aria-label={saved ? "取消保存 Event" : "保存 Event"} className={`icon-button save-button${saved ? " save-button--saved" : ""}`} disabled={mutation.isPending} onClick={toggle} type="button"><span aria-hidden="true">{saved ? "★" : "☆"}</span></button>{mutation.isError && <span className="auth-error" role="alert">无法更新保存状态。</span>}</span>;
+  return <span className="save-control"><button aria-label={saved ? "取消保存 Event" : "保存 Event"} aria-pressed={saved} className={`icon-button save-button${saved ? " save-button--saved" : ""}`} disabled={mutation.isPending} onClick={toggle} title={saved ? "取消保存" : "保存"} type="button"><BookmarkIcon className="action-icon" filled={saved} /></button>{mutation.isError && <span className="auth-error" role="alert">无法更新保存状态。</span>}</span>;
 }
