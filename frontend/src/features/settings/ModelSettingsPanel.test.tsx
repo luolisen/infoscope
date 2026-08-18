@@ -64,15 +64,13 @@ describe("ModelSettingsPanel", () => {
     }));
     renderPanel();
 
-    const source = await screen.findByRole("combobox", { name: "模型来源" });
-    const model = screen.getByRole("combobox", { name: "模型" });
-    expect(source).toHaveValue("deepseek_official");
-    expect(model).toHaveValue("deepseek-v4-flash");
-    expect(screen.getByRole("option", { name: "GPT-5.5" })).toBeDisabled();
+    expect(await screen.findByRole("radio", { name: /Deepseek官方/ })).toBeChecked();
+    expect(screen.getByRole("radio", { name: /^Flash/ })).toBeChecked();
+    expect(screen.getByRole("radio", { name: /GPT-5.5/ })).toBeDisabled();
 
-    fireEvent.change(source, { target: { value: "ai_ping" } });
-    expect(model).toHaveValue("DeepSeek-V4-Flash-0731");
-    fireEvent.change(model, { target: { value: "Qwen3.8-Max" } });
+    fireEvent.click(screen.getByRole("radio", { name: /AI Ping/ }));
+    expect(screen.getByRole("radio", { name: /DeepSeek V4 Flash 0731/ })).toBeChecked();
+    fireEvent.click(screen.getByRole("radio", { name: /Qwen 3.8 Max/ }));
     fireEvent.click(screen.getByRole("button", { name: "保存模型" }));
 
     await waitFor(() => expect(vi.mocked(updateModelSettings).mock.calls[0]?.[0]).toEqual({
