@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { askQueryKey, createAsk, fetchAsk } from "../../api/ask";
+import { askHistoryQueryKey, askQueryKey, createAsk, fetchAsk } from "../../api/ask";
 import { eventDetailQueryKey } from "../../api/events";
 import { nowQueryKey } from "../../api/now";
 import { SendIcon } from "../../components/Icons";
@@ -37,6 +37,11 @@ export function AskPanel({ selectedEvents, onClearSelection, workspace = false }
     refreshedAskId.current = ask.data.ask_id;
   }, [ask.data, queryClient]);
 
+  useEffect(() => {
+    if (ask.data?.status !== "completed" && ask.data?.status !== "failed") return;
+    void queryClient.invalidateQueries({ queryKey: askHistoryQueryKey });
+  }, [ask.data?.ask_id, ask.data?.status, queryClient]);
+
   const isTerminal = ask.data?.status === "completed" || ask.data?.status === "failed";
   const isActive = askId !== null && !isTerminal;
   const displayEvents = askId === null ? selectedEvents : submittedEvents ?? selectedEvents;
@@ -54,6 +59,7 @@ export function AskPanel({ selectedEvents, onClearSelection, workspace = false }
         setSubmittedEvents(selectedEvents);
         setQuestion("");
         refreshedAskId.current = null;
+        void queryClient.invalidateQueries({ queryKey: askHistoryQueryKey });
       },
     });
   }
