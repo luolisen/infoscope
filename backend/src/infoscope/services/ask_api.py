@@ -3,7 +3,7 @@ from __future__ import annotations
 import base64
 import binascii
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID, uuid4
 
@@ -16,7 +16,13 @@ from infoscope.analysis.ask_schemas import AskFinalAnswerPayload, AskRequestSpec
 from infoscope.config import Settings, get_settings
 from infoscope.db import get_session
 from infoscope.errors import ApiError
-from infoscope.models import AskFinalArtifact, AskRequest, AskRequestEvent, User
+from infoscope.models import (
+    AskEventReconciliationArtifact,
+    AskFinalArtifact,
+    AskRequest,
+    AskRequestEvent,
+    User,
+)
 from infoscope.schemas.ask import (
     AskAcceptedResponse,
     AskCompletedResponse,
@@ -25,6 +31,8 @@ from infoscope.schemas.ask import (
     AskHistoryItem,
     AskHistoryResponse,
     AskPendingResponse,
+    AskProgress,
+    AskProgressStage,
     AskResult,
     AskRunningResponse,
     AskStatusResponse,
@@ -113,10 +121,11 @@ class AskService:
                 code="ASK_NOT_FOUND",
                 message="Ask request was not found.",
             )
+        progress = self._progress(request, researched=await self._was_researched(request))
         if request.status == "pending":
-            return AskPendingResponse(ask_id=request.id, status="pending")
+            return AskPendingResponse(ask_id=request.id, status="pending", progress=progress)
         if request.status == "running":
-            return AskRunningResponse(ask_id=request.id, status="running")
+            return AskRunningResponse(ask_id=request.id, status="running", progress=progress)
         if request.status == "failed":
             message = (
                 "Research is temporarily unavailable. Please try again later."
@@ -126,6 +135,7 @@ class AskService:
             return AskFailedResponse(
                 ask_id=request.id,
                 status="failed",
+                progress=progress,
                 error=ErrorDetail(
                     code="ASK_FAILED",
                     message=message,
@@ -154,6 +164,7 @@ class AskService:
         return AskCompletedResponse(
             ask_id=request.id,
             status="completed",
+            progress=progress,
             result=AskResult(
                 answer=payload.answer,
                 event_ids=payload.event_ids,
@@ -193,6 +204,17 @@ class AskService:
             )
         ).scalars().all()
         page = rows[:limit]
+        researched_ids = set(
+            (
+                await self.database.execute(
+                    select(AskEventReconciliationArtifact.ask_request_id).where(
+                        AskEventReconciliationArtifact.ask_request_id.in_(
+                            [request.id for request in page]
+                        )
+                    )
+                )
+            ).scalars()
+        )
         items: list[AskHistoryItem] = []
         for request in page:
             event_rows = (
@@ -228,6 +250,11 @@ class AskService:
                     event_ids=list(event_rows),
                     created_at=request.created_at,
                     finished_at=request.finished_at,
+                    thinking_seconds=self._elapsed_seconds(request),
+                    process_stages=self._process_stages(
+                        request,
+                        researched=request.id in researched_ids,
+                    ),
                     answer=answer,
                     updated_event_ids=updated_event_ids,
                 )
@@ -238,6 +265,53 @@ class AskService:
             last = page[-1]
             next_cursor = self._encode_history_cursor(last.created_at, last.id)
         return AskHistoryResponse(items=items, next_cursor=next_cursor)
+
+    @staticmethod
+    def _elapsed_seconds(request: AskRequest) -> int:
+        finished = request.finished_at or datetime.now(UTC)
+        return max(0, int((finished - request.created_at).total_seconds()))
+
+    @classmethod
+    async def _was_researched(self, request: AskRequest) -> bool:
+        if request.stage != "finalizing":
+            return False
+        return (
+            await self.database.execute(
+                select(AskEventReconciliationArtifact.id).where(
+                    AskEventReconciliationArtifact.ask_request_id == request.id
+                )
+            )
+        ).scalar_one_or_none() is not None
+
+    @staticmethod
+    def _process_stages(
+        request: AskRequest,
+        *,
+        researched: bool,
+    ) -> list[AskProgressStage]:
+        if request.stage == "comparing":
+            return ["comparing"]
+        if request.stage == "awaiting_research":
+            return ["comparing", "researching"]
+        if request.stage == "awaiting_reconciliation":
+            return ["comparing", "researching", "reconciling"]
+        if researched:
+            return ["comparing", "researching", "reconciling", "finalizing"]
+        return ["comparing", "finalizing"]
+
+    @classmethod
+    def _progress(cls, request: AskRequest, *, researched: bool) -> AskProgress:
+        stages: dict[str, AskProgressStage] = {
+            "comparing": "comparing",
+            "awaiting_research": "researching",
+            "awaiting_reconciliation": "reconciling",
+            "finalizing": "finalizing",
+        }
+        return AskProgress(
+            stage=stages[request.stage],
+            stages=cls._process_stages(request, researched=researched),
+            elapsed_seconds=cls._elapsed_seconds(request),
+        )
 
     @staticmethod
     def _encode_history_cursor(created_at: datetime, ask_id: UUID) -> str:

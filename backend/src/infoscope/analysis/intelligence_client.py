@@ -397,7 +397,9 @@ class DeepSeekIntelligenceClient:
                     "even when empty. Copy only Backend-supplied IDs and preserve event_ids "
                     "order. Put citations only in those arrays: the human-readable answer must "
                     "never contain internal IDs, UUID fragments, internal labels, or "
-                    "provider/prompt metadata. Return one complete replacement JSON object only."
+                    "provider/prompt metadata. For research_required, every missing_facts item "
+                    "must contain exactly event_ids, question, and a non-empty reason; reason is "
+                    "mandatory on every item. Return one complete replacement JSON object only."
                 )
             if payload_type is AskFinalizationModelPayload:
                 return (

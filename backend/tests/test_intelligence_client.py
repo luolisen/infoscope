@@ -59,6 +59,7 @@ def test_ask_comparison_repair_prompt_rejects_invented_citation_fields() -> None
     assert "timeline_entry_ids" in instruction
     assert "Never output status, citations, cited_ids" in instruction
     assert "human-readable answer must never contain internal IDs" in instruction
+    assert "reason is mandatory on every item" in instruction
 
 
 async def test_ask_public_answer_internal_uuid_fragment_is_retried() -> None:

@@ -662,6 +662,15 @@ MCP、Scheduler 或 AI 模块。API 地址和来源由 Backend 配置提供，�
 
 固定 RSS 来源为：
 
+- `openai-news`：`https://openai.com/news/rss.xml`
+- `google-deepmind`：`https://deepmind.google/blog/rss.xml`
+- `hugging-face-blog`：`https://huggingface.co/blog/feed.xml`
+- `nvidia-technical-blog`：`https://developer.nvidia.com/blog/feed/`
+- `sec-press-releases`：`https://www.sec.gov/news/pressreleases.rss`
+- `federal-reserve-press-releases`：`https://www.federalreserve.gov/feeds/press_all.xml`
+- `coindesk`：`https://www.coindesk.com/arc/outboundfeeds/rss/`
+- `techcrunch`：`https://techcrunch.com/feed/`
+- `github-changelog`：`https://github.blog/changelog/feed/`
 - `hacker-news`：`https://hnrss.org/frontpage`
 
 采集阶段不执行 AI 分类或关键词丢弃。相同 NewsNow snapshot 与相同 RSS

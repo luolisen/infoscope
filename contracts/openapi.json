@@ -60,6 +60,9 @@
             "title": "Error",
             "type": "null"
           },
+          "progress": {
+            "$ref": "#/components/schemas/AskProgress"
+          },
           "result": {
             "$ref": "#/components/schemas/AskResult"
           },
@@ -72,6 +75,7 @@
         "required": [
           "ask_id",
           "status",
+          "progress",
           "result"
         ],
         "title": "AskCompletedResponse",
@@ -118,6 +122,9 @@
           "error": {
             "$ref": "#/components/schemas/ErrorDetail"
           },
+          "progress": {
+            "$ref": "#/components/schemas/AskProgress"
+          },
           "result": {
             "title": "Result",
             "type": "null"
@@ -131,6 +138,7 @@
         "required": [
           "ask_id",
           "status",
+          "progress",
           "error"
         ],
         "title": "AskFailedResponse",
@@ -180,6 +188,21 @@
             ],
             "title": "Finished At"
           },
+          "process_stages": {
+            "items": {
+              "enum": [
+                "comparing",
+                "researching",
+                "reconciling",
+                "finalizing"
+              ],
+              "type": "string"
+            },
+            "maxItems": 4,
+            "minItems": 1,
+            "title": "Process Stages",
+            "type": "array"
+          },
           "question": {
             "title": "Question",
             "type": "string"
@@ -193,6 +216,12 @@
             ],
             "title": "Status",
             "type": "string"
+          },
+          "thinking_seconds": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Thinking Seconds",
+            "type": "integer"
           },
           "updated_event_ids": {
             "items": {
@@ -208,7 +237,8 @@
           "status",
           "question",
           "event_ids",
-          "created_at"
+          "created_at",
+          "process_stages"
         ],
         "title": "AskHistoryItem",
         "type": "object"
@@ -252,6 +282,9 @@
             "title": "Error",
             "type": "null"
           },
+          "progress": {
+            "$ref": "#/components/schemas/AskProgress"
+          },
           "result": {
             "title": "Result",
             "type": "null"
@@ -264,9 +297,51 @@
         },
         "required": [
           "ask_id",
-          "status"
+          "status",
+          "progress"
         ],
         "title": "AskPendingResponse",
+        "type": "object"
+      },
+      "AskProgress": {
+        "properties": {
+          "elapsed_seconds": {
+            "minimum": 0.0,
+            "title": "Elapsed Seconds",
+            "type": "integer"
+          },
+          "stage": {
+            "enum": [
+              "comparing",
+              "researching",
+              "reconciling",
+              "finalizing"
+            ],
+            "title": "Stage",
+            "type": "string"
+          },
+          "stages": {
+            "items": {
+              "enum": [
+                "comparing",
+                "researching",
+                "reconciling",
+                "finalizing"
+              ],
+              "type": "string"
+            },
+            "maxItems": 4,
+            "minItems": 1,
+            "title": "Stages",
+            "type": "array"
+          }
+        },
+        "required": [
+          "stage",
+          "stages",
+          "elapsed_seconds"
+        ],
+        "title": "AskProgress",
         "type": "object"
       },
       "AskResult": {
@@ -347,6 +422,9 @@
             "title": "Error",
             "type": "null"
           },
+          "progress": {
+            "$ref": "#/components/schemas/AskProgress"
+          },
           "result": {
             "title": "Result",
             "type": "null"
@@ -359,7 +437,8 @@
         },
         "required": [
           "ask_id",
-          "status"
+          "status",
+          "progress"
         ],
         "title": "AskRunningResponse",
         "type": "object"

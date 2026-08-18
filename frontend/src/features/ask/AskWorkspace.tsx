@@ -16,14 +16,14 @@ export function AskWorkspace({ selectedEvents, onClearSelection }: AskWorkspaceP
   const [historyItem, setHistoryItem] = useState<AskHistoryItem | null>(null);
 
   return (
-    <main className="main-content ask-workspace" aria-labelledby="ask-workspace-heading">
+    <main className="main-content ask-workspace" aria-label={historyItem === null && selectedEvents.length > 0 ? "Ask 工作区" : undefined} aria-labelledby={historyItem !== null || selectedEvents.length === 0 ? "ask-workspace-heading" : undefined}>
       <AskHistoryPanel onSelect={setHistoryItem} selectedAskId={historyItem?.ask_id} />
       {historyItem === null ? <>
-        <header className="ask-workspace__hero">
+        {selectedEvents.length === 0 && <header className="ask-workspace__hero">
           <p className="editorial-label">ASK</p>
           <h1 id="ask-workspace-heading">观澜能帮忙做什么</h1>
           <p>选择一个或多个 Event，再提出你想理解的问题。</p>
-        </header>
+        </header>}
         <AskPanel onClearSelection={onClearSelection} selectedEvents={selectedEvents} workspace />
       </> : <section className="ask-history-detail" aria-labelledby="ask-workspace-heading">
         <div className="ask-history-detail__meta">
@@ -32,6 +32,7 @@ export function AskWorkspace({ selectedEvents, onClearSelection }: AskWorkspaceP
         </div>
         <h1 id="ask-workspace-heading">{historyItem.question}</h1>
         <p className="ask-history-detail__context">涉及 {historyItem.event_ids.length} 个 Event · {historyItem.status === "completed" ? "已完成" : historyItem.status === "failed" ? "失败" : "处理中"}</p>
+        <details className="ask-thinking ask-thinking--complete"><summary>已思考 {historyItem.thinking_seconds} 秒</summary><ol>{historyItem.process_stages.map((stage) => <li key={stage}>{stage === "comparing" ? "已比较 Event 数据库" : stage === "researching" ? "已获取并规范化补充信息" : stage === "reconciling" ? "已复核 Event 事实" : "已组织回答"}</li>)}</ol></details>
         {historyItem.answer ? <div className="ask-history-detail__answer"><p className="editorial-label">回答</p><p>{historyItem.answer}</p></div> : <p className="ask-history-detail__empty">{historyItem.status === "failed" ? "该轮提问未能完成。" : "该轮提问仍在处理中。"}</p>}
         {(historyItem.updated_event_ids?.length ?? 0) > 0 && <p className="ask-updated">该轮补充了 Event 信息。</p>}
       </section>}

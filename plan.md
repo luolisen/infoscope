@@ -840,6 +840,15 @@ SQLite、通知、MCP、Scheduler 或 AI 模块。Adapter 兼容 NewsNow Hotlist
 
 固定 RSS 来源：
 
+- `openai-news`：`https://openai.com/news/rss.xml`
+- `google-deepmind`：`https://deepmind.google/blog/rss.xml`
+- `hugging-face-blog`：`https://huggingface.co/blog/feed.xml`
+- `nvidia-technical-blog`：`https://developer.nvidia.com/blog/feed/`
+- `sec-press-releases`：`https://www.sec.gov/news/pressreleases.rss`
+- `federal-reserve-press-releases`：`https://www.federalreserve.gov/feeds/press_all.xml`
+- `coindesk`：`https://www.coindesk.com/arc/outboundfeeds/rss/`
+- `techcrunch`：`https://techcrunch.com/feed/`
+- `github-changelog`：`https://github.blog/changelog/feed/`
 - `hacker-news`：`https://hnrss.org/frontpage`
 
 相同 NewsNow snapshot 与相同 RSS GUID / URL 必须幂等；新的 Hotlist
@@ -4093,7 +4102,7 @@ Personalization 对完整 canonical 100-Event snapshot 使用 Backend 固定顺�
 - Backwrite / Window Analysis 调度：完整更新流程结束后开始计时，1 小时后启动下一轮。
 - Window Analysis 逻辑窗口长度：1 小时。
 - TrendRadar Phase 3 v1 拆分边界与固定来源：IS 内部 NewsNow / RSS 薄
-  Adapter；7 个固定 Hotlist 与 Hacker News RSS；不引入其 AI、SQLite、通知、
+  Adapter；7 个固定 Hotlist 与 10 个固定 RSS；不引入其 AI、SQLite、通知、
   MCP 或 Scheduler。
 - Research Integration v1：OpenClaw headless JSON envelope、Agent-Reach capability/doctor
   边界、严格事实快照、专用 Request/Run/Artifact/Source 表、`web_page / github_document`

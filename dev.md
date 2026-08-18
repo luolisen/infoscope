@@ -293,7 +293,7 @@ Register
 ### Alan 的顺序
 
 1. 在共同确认后建立 Raw、Signal 及必要 Pipeline 数据结构和 Migration。
-2. 按已冻结的 7 个 Hotlist + Hacker News RSS 薄 Adapter 边界实现
+2. 按已冻结的 7 个 Hotlist + 10 个 RSS 薄 Adapter 边界实现
    TrendRadar Integration；不引入 TrendRadar AI、SQLite、通知、MCP 或 Scheduler。
 3. 实现 TG News / Telegram Integration。
 4. 采集后立即持久化 Raw Information。

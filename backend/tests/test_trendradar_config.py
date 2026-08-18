@@ -19,7 +19,18 @@ def test_frozen_trendradar_sources_load_from_repository_config() -> None:
         "zhihu",
         "bilibili-hot-search",
     ]
-    assert [feed.id for feed in config.rss.feeds] == ["hacker-news"]
+    assert [feed.id for feed in config.rss.feeds] == [
+        "openai-news",
+        "google-deepmind",
+        "hugging-face-blog",
+        "nvidia-technical-blog",
+        "sec-press-releases",
+        "federal-reserve-press-releases",
+        "coindesk",
+        "techcrunch",
+        "github-changelog",
+        "hacker-news",
+    ]
 
 
 def test_config_rejects_duplicate_source_ids(tmp_path: Path) -> None:

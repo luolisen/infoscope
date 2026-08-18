@@ -45,9 +45,19 @@ class AskResult(BaseModel):
     updated_event_ids: list[UUID]
 
 
+AskProgressStage = Literal["comparing", "researching", "reconciling", "finalizing"]
+
+
+class AskProgress(BaseModel):
+    stage: AskProgressStage
+    stages: list[AskProgressStage] = Field(min_length=1, max_length=4)
+    elapsed_seconds: int = Field(ge=0)
+
+
 class AskPendingResponse(BaseModel):
     ask_id: UUID
     status: Literal["pending"]
+    progress: AskProgress
     result: None = None
     error: None = None
 
@@ -55,6 +65,7 @@ class AskPendingResponse(BaseModel):
 class AskRunningResponse(BaseModel):
     ask_id: UUID
     status: Literal["running"]
+    progress: AskProgress
     result: None = None
     error: None = None
 
@@ -62,6 +73,7 @@ class AskRunningResponse(BaseModel):
 class AskCompletedResponse(BaseModel):
     ask_id: UUID
     status: Literal["completed"]
+    progress: AskProgress
     result: AskResult
     error: None = None
 
@@ -69,6 +81,7 @@ class AskCompletedResponse(BaseModel):
 class AskFailedResponse(BaseModel):
     ask_id: UUID
     status: Literal["failed"]
+    progress: AskProgress
     result: None = None
     error: ErrorDetail
 
@@ -87,6 +100,8 @@ class AskHistoryItem(BaseModel):
     event_ids: list[UUID]
     created_at: datetime
     finished_at: datetime | None = None
+    thinking_seconds: int = Field(default=0, ge=0)
+    process_stages: list[AskProgressStage] = Field(min_length=1, max_length=4)
     answer: str | None = None
     updated_event_ids: list[UUID] = Field(default_factory=list)
 
