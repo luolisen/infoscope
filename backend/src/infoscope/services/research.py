@@ -18,6 +18,7 @@ from infoscope.integrations.research.fetcher import (
     ResearchFetchError,
 )
 from infoscope.integrations.research.schemas import (
+    RESEARCH_EVIDENCE_MAX_CHARS,
     ResearchClaim,
     ResearchConflict,
     ResearchDiscovery,
@@ -196,10 +197,16 @@ class ResearchRepository:
                     source_kind=str(raw.get("source_kind")),
                     canonical_url=str(raw.get("canonical_url")),
                 )
+        sanitized_text = signal.normalized_text
+        if len(sanitized_text) > RESEARCH_EVIDENCE_MAX_CHARS:
+            # Signal/Raw persistence keeps the complete normalized body and its
+            # content hash. Model-facing evidence is a deterministic bounded
+            # projection and visibly marks that the excerpt was shortened.
+            sanitized_text = sanitized_text[: RESEARCH_EVIDENCE_MAX_CHARS - 1] + "…"
         return ResearchEvidence(
             signal_id=signal.id,
             published_at=signal.published_at,
-            sanitized_text=signal.normalized_text,
+            sanitized_text=sanitized_text,
             evidence_visibility=signal.evidence_visibility,
             public_safe_provenance=provenance,
         )

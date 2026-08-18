@@ -38,12 +38,13 @@ PublicSafeProvenance = Annotated[
     Field(discriminator="kind"),
 ]
 PROVENANCE_ADAPTER = TypeAdapter(PublicSafeProvenance)
+RESEARCH_EVIDENCE_MAX_CHARS = 20_000
 
 
 class ResearchEvidence(StrictModel):
     signal_id: UUID
     published_at: datetime | None
-    sanitized_text: str = Field(min_length=1, max_length=20_000)
+    sanitized_text: str = Field(min_length=1, max_length=RESEARCH_EVIDENCE_MAX_CHARS)
     evidence_visibility: Literal["public", "private_sanitized"]
     public_safe_provenance: PublicSafeProvenance | None
 
