@@ -442,6 +442,28 @@
         "title": "ClaimState",
         "type": "string"
       },
+      "CorpusStats": {
+        "properties": {
+          "raw_information_count": {
+            "description": "Current total Raw Information rows in the corpus.",
+            "minimum": 0.0,
+            "title": "Raw Information Count",
+            "type": "integer"
+          },
+          "signal_count": {
+            "description": "Current total canonical Signals after deduplication.",
+            "minimum": 0.0,
+            "title": "Signal Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "raw_information_count",
+          "signal_count"
+        ],
+        "title": "CorpusStats",
+        "type": "object"
+      },
       "CredentialsRequest": {
         "properties": {
           "password": {
@@ -1366,6 +1388,9 @@
       },
       "NowResponse": {
         "properties": {
+          "corpus_stats": {
+            "$ref": "#/components/schemas/CorpusStats"
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/EventSummary"
@@ -1390,6 +1415,7 @@
         },
         "required": [
           "window_stats",
+          "corpus_stats",
           "items",
           "next_cursor"
         ],

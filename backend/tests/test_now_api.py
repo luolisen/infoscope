@@ -1,4 +1,6 @@
 from datetime import UTC, datetime
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -8,7 +10,7 @@ from infoscope.api.app import app
 from infoscope.api.dependencies import get_ready_user
 from infoscope.errors import ApiError
 from infoscope.models import User
-from infoscope.schemas.now import NowResponse, WindowStats
+from infoscope.schemas.now import CorpusStats, NowResponse, WindowStats
 from infoscope.services.now import NowService, get_now_service
 
 
@@ -38,6 +40,7 @@ class FixedNowService:
                 event_count=0,
                 relevant_event_count=0,
             ),
+            corpus_stats=CorpusStats(raw_information_count=12, signal_count=34),
             items=[],
             next_cursor=None,
         )
@@ -61,6 +64,10 @@ async def test_now_returns_the_frozen_empty_contract() -> None:
             "signal_count": 0,
             "event_count": 0,
             "relevant_event_count": 0,
+        },
+        "corpus_stats": {
+            "raw_information_count": 12,
+            "signal_count": 34,
         },
         "items": [],
         "next_cursor": None,
@@ -133,3 +140,18 @@ def test_now_cursor_round_trips_an_immutable_artifact_anchor() -> None:
 def test_now_cursor_rejects_malformed_or_unknown_versions() -> None:
     with pytest.raises(ApiError, match="NOW cursor is invalid"):
         NowService._decode_cursor("not-a-cursor")
+
+
+async def test_now_corpus_stats_count_all_raw_and_only_canonical_signals() -> None:
+    database = AsyncMock()
+    database.execute.side_effect = [
+        SimpleNamespace(scalar_one=lambda: 120),
+        SimpleNamespace(scalar_one=lambda: 87),
+    ]
+
+    stats = await NowService(database)._corpus_stats()
+
+    assert stats.raw_information_count == 120
+    assert stats.signal_count == 87
+    signal_query = str(database.execute.await_args_list[1].args[0])
+    assert "signals.duplicate_of_signal_id IS NULL" in signal_query

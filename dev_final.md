@@ -290,7 +290,7 @@ Maintenance
 
 侧边导航的英文大写名称属于产品信息架构与 Editorial metadata，不得改成中文、双语或英文下方附中文小字。
 
-产品术语固定：用户可见的 `Signal/signal` 统一称为“因子”；`Raw` 与 `Event` 保留英文产品名。数据库表、Backend 类型、OpenAPI 字段和代码标识继续使用 `signal`，本次不进行破坏性内部重命名。NOW 统计按 immutable Personalization snapshot 返回并展示 `Raw / 因子 / Event` 三项数量，Frontend 不自行查询或推算。
+产品术语固定：用户可见的 `Signal/signal` 统一称为“因子”；`Raw` 与 `Event` 保留英文产品名。数据库表、Backend 类型、OpenAPI 字段和代码标识继续使用 `signal`，本次不进行破坏性内部重命名。NOW 顶部通过 Backend `corpus_stats` 展示数据库当前累计的全部 Raw 与 canonical Signal（因子）数量；当前 Event 数仍取用户最新 immutable Personalization artifact 的 relevant Event 数。Frontend 不自行查询或推算。
 
 ### 问题 4 — Ask 升级为一级页面
 

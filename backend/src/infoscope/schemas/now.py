@@ -21,6 +21,17 @@ class WindowStats(BaseModel):
     relevant_event_count: int = Field(ge=0)
 
 
+class CorpusStats(BaseModel):
+    raw_information_count: int = Field(
+        ge=0,
+        description="Current total Raw Information rows in the corpus.",
+    )
+    signal_count: int = Field(
+        ge=0,
+        description="Current total canonical Signals after deduplication.",
+    )
+
+
 class EventSummary(BaseModel):
     id: UUID
     title: str
@@ -37,5 +48,6 @@ class EventSummary(BaseModel):
 
 class NowResponse(BaseModel):
     window_stats: WindowStats
+    corpus_stats: CorpusStats
     items: list[EventSummary]
     next_cursor: str | None

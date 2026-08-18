@@ -73,14 +73,14 @@ describe("App", () => {
     vi.mocked(fetchHealth).mockResolvedValue({
       status: "ok", api: "ok", database: "ok", worker: "ok",
     });
-    vi.mocked(fetchNow).mockResolvedValue({ items: [], next_cursor: null, window_stats: { raw_information_count: 0, signal_count: 0, event_count: 0, relevant_event_count: 0, window_started_at: "2026-01-01T00:00:00Z", window_ended_at: "2026-01-01T01:00:00Z" } });
+    vi.mocked(fetchNow).mockResolvedValue({ corpus_stats: { raw_information_count: 0, signal_count: 0 }, items: [], next_cursor: null, window_stats: { raw_information_count: 0, signal_count: 0, event_count: 0, relevant_event_count: 0, window_started_at: "2026-01-01T00:00:00Z", window_ended_at: "2026-01-01T01:00:00Z" } });
 
     renderApp();
 
     expect(await screen.findByRole("heading", { name: "此刻，什么值得关注。" })).toBeInTheDocument();
     expect(screen.queryByText(/SYSTEM \/ (ONLINE|CHECKING)/)).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "NOW" })).toHaveAttribute("aria-current", "page");
-    expect(screen.getByText("本轮新增 Raw 0 条 · 因子 0 个 · 当前 Event 0 个"))
+    expect(screen.getByText("当前已有 Raw 0 条 · 因子 0 个 · 当前 Event 0 个"))
       .toBeInTheDocument();
     expect(await screen.findByText(/暂时没有需要关注的内容/)).toBeInTheDocument();
   });
@@ -94,6 +94,7 @@ describe("App", () => {
         { id: "event-conflicting", title: "存在冲突的 Event", overview: "Overview", state: "conflicting", display_time: "2026-01-01T00:20:00Z", updated_at: "2026-01-01T00:20:00Z", why_it_matters: "Why", new_claim_count: 0, conflict_count: 1, topics: [], saved: false },
       ],
       next_cursor: null,
+      corpus_stats: { raw_information_count: 20, signal_count: 18 },
       window_stats: { raw_information_count: 2, signal_count: 2, event_count: 2, relevant_event_count: 2, window_started_at: "2026-01-01T00:00:00Z", window_ended_at: "2026-01-01T01:00:00Z" },
     });
 
@@ -109,7 +110,7 @@ describe("App", () => {
   it("returns focus to the search trigger after Escape closes the overlay", async () => {
     vi.mocked(fetchSession).mockResolvedValue({ state: "ready", user: { username: "lingjiu" } });
     vi.mocked(fetchHealth).mockResolvedValue({ status: "ok", api: "ok", database: "ok", worker: "ok" });
-    vi.mocked(fetchNow).mockResolvedValue({ items: [], next_cursor: null, window_stats: { raw_information_count: 0, signal_count: 0, event_count: 0, relevant_event_count: 0, window_started_at: "2026-01-01T00:00:00Z", window_ended_at: "2026-01-01T01:00:00Z" } });
+    vi.mocked(fetchNow).mockResolvedValue({ corpus_stats: { raw_information_count: 0, signal_count: 0 }, items: [], next_cursor: null, window_stats: { raw_information_count: 0, signal_count: 0, event_count: 0, relevant_event_count: 0, window_started_at: "2026-01-01T00:00:00Z", window_ended_at: "2026-01-01T01:00:00Z" } });
 
     renderApp();
     const trigger = await screen.findByRole("button", { name: "搜索，快捷键 Command K" });
@@ -122,7 +123,7 @@ describe("App", () => {
   it("resets the document scroll position on hash-route changes", async () => {
     vi.mocked(fetchSession).mockResolvedValue({ state: "ready", user: { username: "lingjiu" } });
     vi.mocked(fetchHealth).mockResolvedValue({ status: "ok", api: "ok", database: "ok", worker: "ok" });
-    vi.mocked(fetchNow).mockResolvedValue({ items: [], next_cursor: null, window_stats: { raw_information_count: 0, signal_count: 0, event_count: 0, relevant_event_count: 0, window_started_at: "2026-01-01T00:00:00Z", window_ended_at: "2026-01-01T01:00:00Z" } });
+    vi.mocked(fetchNow).mockResolvedValue({ corpus_stats: { raw_information_count: 0, signal_count: 0 }, items: [], next_cursor: null, window_stats: { raw_information_count: 0, signal_count: 0, event_count: 0, relevant_event_count: 0, window_started_at: "2026-01-01T00:00:00Z", window_ended_at: "2026-01-01T01:00:00Z" } });
 
     renderApp();
     await screen.findByRole("heading", { name: "此刻，什么值得关注。" });
@@ -187,6 +188,7 @@ describe("App", () => {
     vi.mocked(fetchNow).mockResolvedValue({
       items: [{ id: "event-1", title: "可选择的 Event", overview: "Overview", state: "developing", display_time: "2026-01-01T00:30:00Z", updated_at: "2026-01-01T00:30:00Z", why_it_matters: "Why", new_claim_count: 0, conflict_count: 0, topics: [], saved: false }],
       next_cursor: null,
+      corpus_stats: { raw_information_count: 10, signal_count: 9 },
       window_stats: { raw_information_count: 1, signal_count: 1, event_count: 1, relevant_event_count: 1, window_started_at: "2026-01-01T00:00:00Z", window_ended_at: "2026-01-01T01:00:00Z" },
     });
 

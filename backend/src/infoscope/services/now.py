@@ -7,13 +7,20 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import Depends, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from infoscope.db import get_session
 from infoscope.errors import ApiError
-from infoscope.models import EventSave, PersonalizationArtifact, PersonalizedEvent, User
-from infoscope.schemas.now import EventSummary, NowResponse, WindowStats
+from infoscope.models import (
+    EventSave,
+    PersonalizationArtifact,
+    PersonalizedEvent,
+    RawInformation,
+    Signal,
+    User,
+)
+from infoscope.schemas.now import CorpusStats, EventSummary, NowResponse, WindowStats
 from infoscope.services.personalization import PersonalizationRepository
 
 
@@ -33,6 +40,7 @@ class NowService:
             if artifact is None or artifact.user_id != user.id:
                 raise self._invalid_cursor()
             after = (display_time, event_id)
+        corpus_stats = await self._corpus_stats()
         if artifact is None:
             window_start, window_end, raw_count, signal_count = (
                 await self.personalization.window_stats()
@@ -46,6 +54,7 @@ class NowService:
                     event_count=0,
                     relevant_event_count=0,
                 ),
+                corpus_stats=corpus_stats,
                 items=[],
                 next_cursor=None,
             )
@@ -121,8 +130,23 @@ class NowService:
                 event_count=artifact.event_count,
                 relevant_event_count=artifact.relevant_event_count,
             ),
+            corpus_stats=corpus_stats,
             items=items,
             next_cursor=next_cursor,
+        )
+
+    async def _corpus_stats(self) -> CorpusStats:
+        raw_count = (
+            await self.database.execute(select(func.count(RawInformation.id)))
+        ).scalar_one()
+        signal_count = (
+            await self.database.execute(
+                select(func.count(Signal.id)).where(Signal.duplicate_of_signal_id.is_(None))
+            )
+        ).scalar_one()
+        return CorpusStats(
+            raw_information_count=raw_count,
+            signal_count=signal_count,
         )
 
     @staticmethod
