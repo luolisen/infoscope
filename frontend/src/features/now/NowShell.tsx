@@ -24,12 +24,12 @@ export function NowShell({ selectedEvents, onToggleEventSelection }: NowShellPro
   const now = useQuery({ queryKey: nowQueryKey, queryFn: fetchNow });
   if (now.isPending) return <main className="main-content"><p className="editorial-label">NOW / 加载中</p><p>正在整理当前信息窗口…</p></main>;
   if (now.isError) return <main className="main-content"><p className="editorial-label">NOW / 不可用</p><p role="alert">无法加载 NOW，请稍后重试。</p></main>;
-  const { items, window_stats } = now.data;
+  const { corpus_stats, items, window_stats } = now.data;
   const visibleItems = stateFilter === "all" ? items : items.filter((event) => event.state === stateFilter);
   const activeFilterIndex = stateFilters.findIndex((filter) => filter.value === stateFilter);
   return <main className="main-content" id="now">
     <p className="editorial-label">NOW</p>
-    <header className="now-header"><h1>此刻，什么值得关注。</h1><p>本轮新增 Raw {window_stats.raw_information_count} 条 · 因子 {window_stats.signal_count} 个 · 当前 Event {window_stats.relevant_event_count} 个</p></header>
+    <header className="now-header"><h1>此刻，什么值得关注。</h1><p>当前已有 Raw {corpus_stats.raw_information_count} 条 · 因子 {corpus_stats.signal_count} 个 · 当前 Event {window_stats.relevant_event_count} 个</p></header>
     {items.length > 0 && <div aria-label="按 Event 状态筛选" className="now-state-filter" role="toolbar" style={{ "--state-filter-index": activeFilterIndex } as CSSProperties}>
       <span aria-hidden="true" className="now-state-filter__indicator" />
       {stateFilters.map((filter) => <button aria-pressed={filter.value === stateFilter} key={filter.value} onClick={() => setStateFilter(filter.value)} type="button">{filter.label}</button>)}

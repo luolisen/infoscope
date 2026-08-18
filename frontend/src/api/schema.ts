@@ -557,6 +557,19 @@ export interface components {
          * @enum {string}
          */
         ClaimState: "confirmed" | "unresolved" | "conflicting" | "contradicted";
+        /** CorpusStats */
+        CorpusStats: {
+            /**
+             * Raw Information Count
+             * @description Current total Raw Information rows in the corpus.
+             */
+            raw_information_count: number;
+            /**
+             * Signal Count
+             * @description Current total canonical Signals after deduplication.
+             */
+            signal_count: number;
+        };
         /** CredentialsRequest */
         CredentialsRequest: {
             /** Password */
@@ -916,6 +929,7 @@ export interface components {
         };
         /** NowResponse */
         NowResponse: {
+            corpus_stats: components["schemas"]["CorpusStats"];
             /** Items */
             items: components["schemas"]["EventSummary"][];
             /** Next Cursor */
