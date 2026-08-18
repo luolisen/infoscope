@@ -14,7 +14,6 @@ from sqlalchemy import and_, func, or_, select, update
 from infoscope.analysis.ask_schemas import AskRequestSpec
 from infoscope.analysis.backwrite_schemas import BackwriteSnapshotSpec
 from infoscope.analysis.client import DeepSeekAnalysisClient
-from infoscope.analysis.config import load_analysis_config
 from infoscope.analysis.intelligence_client import DeepSeekIntelligenceClient
 from infoscope.analysis.localization_client import EventLocalizationClient
 from infoscope.analysis.reconstruction_client import DeepSeekEventReconstructionClient
@@ -93,6 +92,7 @@ from infoscope.services.maintenance import (
 from infoscope.services.model_settings import (
     analysis_config_for_selection,
     analysis_config_for_user,
+    shared_fact_analysis_config,
 )
 from infoscope.services.normalization import NormalizationResult, NormalizationRunner
 from infoscope.services.personalization import (
@@ -221,7 +221,7 @@ async def analyze_windows_once(
     if retry_run_id is not None and replay_run_id is not None:
         raise ValueError("retry_run_id and replay_run_id are mutually exclusive")
     settings = get_settings()
-    config = load_analysis_config(settings)
+    config = shared_fact_analysis_config(settings)
     async with httpx.AsyncClient(trust_env=False) as client:
         async with session_factory() as database:
             runner = WindowAnalysisRunner(
@@ -254,7 +254,7 @@ async def analyze_windows_once(
 
 async def reconstruct_event_once(source_artifact_id: UUID) -> EventReconstructionResult:
     settings = get_settings()
-    config = load_analysis_config(settings)
+    config = shared_fact_analysis_config(settings)
     async with httpx.AsyncClient(trust_env=False) as client:
         async with session_factory() as database:
             result = await EventReconstructionRunner(
@@ -275,7 +275,7 @@ async def reconstruct_event_once(source_artifact_id: UUID) -> EventReconstructio
 
 
 async def extract_claims_once(source_artifact_id: UUID) -> IntelligenceResult:
-    config = load_analysis_config(get_settings())
+    config = shared_fact_analysis_config(get_settings())
     async with httpx.AsyncClient(trust_env=False) as client:
         async with session_factory() as database:
             result = await ClaimExtractionRunner(
@@ -295,7 +295,7 @@ async def extract_claims_once(source_artifact_id: UUID) -> IntelligenceResult:
 
 
 async def reconstruct_timeline_once(source_artifact_id: UUID) -> IntelligenceResult:
-    config = load_analysis_config(get_settings())
+    config = shared_fact_analysis_config(get_settings())
     async with httpx.AsyncClient(trust_env=False) as client:
         async with session_factory() as database:
             result = await TimelineReconstructionRunner(
@@ -315,7 +315,7 @@ async def reconstruct_timeline_once(source_artifact_id: UUID) -> IntelligenceRes
 
 
 async def analyze_conflicts_once(source_artifact_id: UUID) -> IntelligenceResult:
-    config = load_analysis_config(get_settings())
+    config = shared_fact_analysis_config(get_settings())
     async with httpx.AsyncClient(trust_env=False) as client:
         async with session_factory() as database:
             result = await ConflictAnalysisRunner(
@@ -335,7 +335,7 @@ async def analyze_conflicts_once(source_artifact_id: UUID) -> IntelligenceResult
 
 
 async def analyze_base_once(source_artifact_id: UUID) -> IntelligenceResult:
-    config = load_analysis_config(get_settings())
+    config = shared_fact_analysis_config(get_settings())
     async with httpx.AsyncClient(trust_env=False) as client:
         async with session_factory() as database:
             result = await BaseAnalysisRunner(
@@ -547,7 +547,7 @@ async def run_backwrite_spec_once(
             cycle.error_code,
         )
         return
-    analysis_config = load_analysis_config(settings)
+    analysis_config = shared_fact_analysis_config(settings)
     openclaw_config = research_runtime_config()
     timeout = httpx.Timeout(connect=10, read=30, write=10, pool=10)
     async with httpx.AsyncClient(

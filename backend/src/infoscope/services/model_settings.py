@@ -56,6 +56,10 @@ MODEL_DEFINITIONS = (
 _DEFINITIONS_BY_SELECTION = {
     (item.source_id, item.model_id): item for item in MODEL_DEFINITIONS
 }
+SHARED_FACT_MODEL_SELECTION = ModelSelection(
+    source_id="ai_ping",
+    model_id="DeepSeek-V4-Flash-0731",
+)
 
 
 def _credentials(
@@ -89,6 +93,24 @@ def analysis_config_for_selection(
         timeout_seconds=settings.analysis_timeout_seconds,
         max_retries=settings.analysis_max_retries,
         max_tokens=min(settings.analysis_max_tokens, settings.user_analysis_max_tokens),
+        provider=provider,
+    )
+
+
+def shared_fact_analysis_config(settings: Settings) -> AnalysisConfig:
+    """Return the fixed model used by the user-independent fact pipeline."""
+
+    definition = _DEFINITIONS_BY_SELECTION[
+        (SHARED_FACT_MODEL_SELECTION.source_id, SHARED_FACT_MODEL_SELECTION.model_id)
+    ]
+    api_base_url, keys, provider = _credentials(settings, definition)
+    return build_analysis_config(
+        api_base_url=api_base_url,
+        model=definition.model_id,
+        api_keys=keys,
+        timeout_seconds=settings.analysis_timeout_seconds,
+        max_retries=settings.analysis_max_retries,
+        max_tokens=settings.analysis_max_tokens,
         provider=provider,
     )
 
