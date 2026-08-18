@@ -40,6 +40,7 @@ from infoscope.models import (
     PersonalizedEvent,
     PipelineRun,
     RawInformation,
+    Signal,
     User,
 )
 from infoscope.schemas.onboarding import FocusId, InvestmentMarketId, ScopeId
@@ -390,7 +391,7 @@ class PersonalizationRepository:
             raise PersonalizationError("PERSONALIZATION_INPUT_CHANGED")
         payload = response.payload if response is not None else PersonalizationPayload(decisions=[])
         self.validate_output(payload, current)
-        window_start, window_end, raw_count = await self.window_stats()
+        window_start, window_end, raw_count, signal_count = await self.window_stats()
         artifact = PersonalizationArtifact(
             user_id=run.user_id,
             created_by_run_id=run.id,
@@ -405,6 +406,7 @@ class PersonalizationRepository:
             window_started_at=window_start,
             window_ended_at=window_end,
             raw_information_count=raw_count,
+            signal_count=signal_count,
             event_count=len(current.events),
             relevant_event_count=sum(item.relevant for item in payload.decisions),
         )
@@ -492,7 +494,7 @@ class PersonalizationRepository:
             user.personalization_update_requested_at = None
             await self.database.commit()
 
-    async def window_stats(self) -> tuple[datetime, datetime, int]:
+    async def window_stats(self) -> tuple[datetime, datetime, int, int]:
         window = (
             await self.database.execute(
                 select(PipelineRun)
@@ -509,7 +511,7 @@ class PersonalizationRepository:
             end = start + timedelta(hours=1)
         else:
             start, end = window.window_start, window.window_end
-        count = (
+        raw_count = (
             await self.database.execute(
                 select(func.count(RawInformation.id)).where(
                     RawInformation.acquired_at >= start,
@@ -517,7 +519,18 @@ class PersonalizationRepository:
                 )
             )
         ).scalar_one()
-        return start, end, count
+        signal_count = (
+            await self.database.execute(
+                select(func.count(Signal.id))
+                .join(RawInformation, RawInformation.id == Signal.raw_information_id)
+                .where(
+                    RawInformation.acquired_at >= start,
+                    RawInformation.acquired_at < end,
+                    Signal.duplicate_of_signal_id.is_(None),
+                )
+            )
+        ).scalar_one()
+        return start, end, raw_count, signal_count
 
     async def _event_counts(self, column, event_ids: list[UUID], *conditions) -> dict[UUID, int]:
         if not event_ids:

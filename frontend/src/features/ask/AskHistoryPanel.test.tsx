@@ -51,4 +51,7 @@ it("uses explicit controls for expansion and persisted pinning", async () => {
   fireEvent.click(pin);
   expect(screen.getByRole("button", { name: "取消固定 Ask 历史" })).toHaveAttribute("aria-pressed", "true");
   expect(window.localStorage.getItem("infoscope.ask-history.pinned")).toBe("true");
+  fireEvent.click(screen.getByRole("button", { name: "取消固定 Ask 历史" }));
+  expect(window.localStorage.getItem("infoscope.ask-history.pinned")).toBe("false");
+  expect(screen.getByRole("button", { name: "展开 Ask 历史" })).toHaveAttribute("aria-expanded", "false");
 });

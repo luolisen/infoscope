@@ -78,6 +78,7 @@ async def test_save_archive_search_and_cursor_snapshot_contract() -> None:
             window_started_at=created_at - timedelta(hours=1),
             window_ended_at=created_at,
             raw_information_count=len(snapshots),
+            signal_count=len(snapshots),
             event_count=len(snapshots),
             relevant_event_count=len(snapshots),
             created_at=created_at,

@@ -26,6 +26,7 @@ export function AskHistoryPanel() {
   const [expanded, setExpanded] = useState(readPinned);
   const [hovered, setHovered] = useState(false);
   const [focusWithin, setFocusWithin] = useState(false);
+  const [manuallyCollapsed, setManuallyCollapsed] = useState(false);
   const panelRef = useRef<HTMLElement>(null);
   const history = useInfiniteQuery({
     queryKey: askHistoryQueryKey,
@@ -35,7 +36,7 @@ export function AskHistoryPanel() {
   });
   const items = history.data?.pages.flatMap((page) => page.items) ?? [];
   const persistentlyExpanded = pinned || expanded;
-  const visible = persistentlyExpanded || hovered || focusWithin;
+  const visible = persistentlyExpanded || (!manuallyCollapsed && (hovered || focusWithin));
 
   const persistPin = (next: boolean) => {
     setPinned(next);
@@ -49,15 +50,18 @@ export function AskHistoryPanel() {
   const togglePinned = () => {
     const next = !pinned;
     persistPin(next);
-    if (next) setExpanded(true);
+    setExpanded(next);
+    setManuallyCollapsed(!next);
   };
 
   const toggleExpanded = () => {
     if (persistentlyExpanded) {
       persistPin(false);
       setExpanded(false);
+      setManuallyCollapsed(true);
       return;
     }
+    setManuallyCollapsed(false);
     setExpanded(true);
   };
 
@@ -68,8 +72,14 @@ export function AskHistoryPanel() {
       onBlur={(event) => {
         if (!panelRef.current?.contains(event.relatedTarget)) setFocusWithin(false);
       }}
-      onFocus={() => setFocusWithin(true)}
-      onMouseEnter={() => setHovered(true)}
+      onFocus={() => {
+        setFocusWithin(true);
+        setManuallyCollapsed(false);
+      }}
+      onMouseEnter={() => {
+        setHovered(true);
+        setManuallyCollapsed(false);
+      }}
       onMouseLeave={() => setHovered(false)}
       ref={panelRef}
     >

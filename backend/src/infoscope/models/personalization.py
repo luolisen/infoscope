@@ -97,7 +97,7 @@ class PersonalizationArtifact(Base):
             "window_started_at < window_ended_at", name="ck_personalization_artifacts_window"
         ),
         CheckConstraint(
-            "raw_information_count >= 0 AND event_count >= 0 "
+            "raw_information_count >= 0 AND signal_count >= 0 AND event_count >= 0 "
             "AND relevant_event_count >= 0 AND relevant_event_count <= event_count",
             name="ck_personalization_artifacts_counts",
         ),
@@ -128,6 +128,7 @@ class PersonalizationArtifact(Base):
     window_started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     window_ended_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     raw_information_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    signal_count: Mapped[int] = mapped_column(Integer, nullable=False)
     event_count: Mapped[int] = mapped_column(Integer, nullable=False)
     relevant_event_count: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(

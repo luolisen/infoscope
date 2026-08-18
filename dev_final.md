@@ -1,6 +1,6 @@
 # Infoscope 最终开发收口 / dev_final.md
 
-> 状态：待 Alan 确认后冻结
+> 状态：已由 Alan 确认冻结，执行中
 > 日期：2026-08-18
 > 适用仓库：`SCOUT-Infoscope/infoscope`
 > 目的：在 Lingjiu 转入 `infoscope-display` 硬件开发后，收口 Infoscope 应用端 Demo、前端体验与最终验收。
@@ -287,6 +287,8 @@ Maintenance
 
 侧边导航的英文大写名称属于产品信息架构与 Editorial metadata，不得改成中文、双语或英文下方附中文小字。
 
+产品术语固定：用户可见的 `Signal/signal` 统一称为“因子”；`Raw` 与 `Event` 保留英文产品名。数据库表、Backend 类型、OpenAPI 字段和代码标识继续使用 `signal`，本次不进行破坏性内部重命名。NOW 统计按 immutable Personalization snapshot 返回并展示 `Raw / 因子 / Event` 三项数量，Frontend 不自行查询或推算。
+
 ### 问题 4 — Ask 升级为一级页面
 
 #### 4.1 导航与路由
@@ -310,8 +312,8 @@ Maintenance
 ```text
 ────────────
 Event 列表
-Event title                         □
-Event title                         ☑
+Event title
+Event title                         已选深色态
 ...
 ```
 
@@ -319,11 +321,12 @@ Event title                         ☑
 
 - Divider 使用 style.md 的细线系统。
 - `Event 列表` 使用灰色小型 Meta 文本。
-- Event 标题在前，复选框在标题后。
+- Event row 整行可选择；不显示浏览器默认复选框。底层保留语义化 checkbox 供键盘与读屏使用。
+- 选中项以更深文字、轻背景和左侧细指示条表达，不能只靠颜色；不显示内部 ID。
 - 使用 Backend NOW 顺序，不在 Frontend 二次排序。
 - 最多选择 8 个 Event；达到上限后禁用未选择项并给出解释。
 - 列表是独立滚动区，不能把整个 Sidebar 无限拉长。
-- Keyboard 可达，checkbox 有完整 Event title accessible name。
+- Keyboard 可达，语义化 checkbox 有完整 Event title accessible name。
 
 #### 4.4 Ask 主布局
 
