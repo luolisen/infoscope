@@ -332,6 +332,7 @@ class BaseAnalysisRepository(IntelligenceRepository):
             if analysis is None or analysis.event_id != decision.event_id:
                 raise IntelligenceError("BASE_ANALYSIS_EVENT_MISMATCH")
             analysis.source_artifact_id = source_artifact_id
+            analysis.source_backwrite_reconciliation_run_id = None
             analysis.summary = decision.summary
             analysis.event_type = decision.event_type
             analysis.importance = decision.importance
@@ -411,6 +412,7 @@ class BaseAnalysisRunner(IntelligenceRunnerBase):
 
     async def run(self, source_artifact_id: UUID) -> IntelligenceResult:
         source, source_run, run = await self._prepare(source_artifact_id)
+        run_id = run.id
         try:
             await self.repository.lock_source(source.id)
             if await self.repository.prior(self.artifact_type, source.id):
@@ -442,7 +444,7 @@ class BaseAnalysisRunner(IntelligenceRunnerBase):
             )
             return IntelligenceResult(run.id, created, updated, attached, reused)
         except (AnalysisError, IntelligenceError, SQLAlchemyError) as error:
-            await self._fail(run, error)
+            await self._fail(run_id, error)
             raise
 
     @staticmethod

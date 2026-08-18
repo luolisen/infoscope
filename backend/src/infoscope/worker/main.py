@@ -7,7 +7,6 @@ import signal
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID, uuid4, uuid5
-from uuid import UUID as UUIDType
 
 import httpx
 from sqlalchemy import and_, func, or_, select, update
@@ -85,6 +84,7 @@ from infoscope.services.event_reconstruction import (
     EventRepository,
 )
 from infoscope.services.maintenance import (
+    MAINTENANCE_BACKWRITE_NAMESPACE,
     MAINTENANCE_PHASES,
     MaintenanceError,
     MaintenanceRepository,
@@ -106,7 +106,6 @@ from infoscope.services.window_analysis import WindowAnalysisRunner, WindowRunRe
 from infoscope.services.worker_health import record_worker_heartbeat, remove_worker_heartbeat
 
 logger = logging.getLogger("infoscope.worker")
-MAINTENANCE_BACKWRITE_NAMESPACE = UUIDType("44a8817e-991a-4c8c-883a-520677418a2d")
 
 
 async def _run_heartbeat(
