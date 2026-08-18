@@ -35,3 +35,20 @@ it("uses the Backend opaque cursor to load more owner history", async () => {
   expect(await screen.findByText("第二问")).toBeInTheDocument();
   expect(fetchAskHistory).toHaveBeenLastCalledWith(20, "opaque-next");
 });
+
+it("uses explicit controls for expansion and persisted pinning", async () => {
+  vi.mocked(fetchAskHistory).mockResolvedValue({ items: [], next_cursor: null });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(<QueryClientProvider client={client}><AskHistoryPanel /></QueryClientProvider>);
+
+  const panel = screen.getByRole("complementary", { name: "Ask 历史" });
+  fireEvent.mouseEnter(panel);
+  fireEvent.click(screen.getByRole("button", { name: "展开 Ask 历史" }));
+  fireEvent.mouseLeave(panel);
+  expect(screen.getByRole("button", { name: "折叠 Ask 历史" })).toHaveAttribute("aria-expanded", "true");
+
+  const pin = screen.getByRole("button", { name: "固定 Ask 历史" });
+  fireEvent.click(pin);
+  expect(screen.getByRole("button", { name: "取消固定 Ask 历史" })).toHaveAttribute("aria-pressed", "true");
+  expect(window.localStorage.getItem("infoscope.ask-history.pinned")).toBe("true");
+});
