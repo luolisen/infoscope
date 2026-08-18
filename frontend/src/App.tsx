@@ -5,6 +5,7 @@ import { fetchHealth } from "./api/health";
 import { fetchSession, sessionQueryKey } from "./api/session";
 import { AuthScreen } from "./features/auth/AuthScreen";
 import { AskWorkspace } from "./features/ask/AskWorkspace";
+import { AskEventSidebar } from "./features/ask/AskEventSidebar";
 import { BriefPage } from "./features/brief/BriefPage";
 import { ArchivePage } from "./features/archive/ArchivePage";
 import { EventDetail } from "./features/events/EventDetail";
@@ -12,6 +13,7 @@ import { OnboardingPending } from "./features/auth/OnboardingPending";
 import { NowShell } from "./features/now/NowShell";
 import { SearchOverlay } from "./features/search/SearchOverlay";
 import { SettingsPage } from "./features/settings/SettingsPage";
+import { SearchIcon } from "./components/Icons";
 
 const primaryNavigation = ["NOW", "ASK", "BRIEF", "ARCHIVE"];
 const settingsNavigation = ["SCOPE", "SETTINGS"];
@@ -115,6 +117,7 @@ function ReadyApp() {
         <a className="wordmark" href="/" aria-label="Infoscope home">IS</a>
         <span className="meta">{healthQuery.isSuccess ? "SYSTEM / ONLINE" : "SYSTEM / CHECKING"}</span>
         <button className="search-trigger" onClick={() => setSearchOpen(true)} ref={searchTriggerRef} type="button" aria-label="搜索，快捷键 Command K">
+          <SearchIcon className="action-icon" />
           <span>搜索</span>
           <kbd>⌘K</kbd>
         </button>
@@ -138,11 +141,12 @@ function ReadyApp() {
             ))}
           </ul>
         </nav>
+        {isAsk && <AskEventSidebar onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} />}
       </aside>
 
       <div className="content-column">
         <div className="page-transition" key={locationHash}>
-          {isSettings ? <SettingsPage /> : isScope ? <OnboardingPending editExisting onComplete={() => { window.location.hash = "#now"; }} /> : isAsk ? <AskWorkspace onClearSelection={() => setSelectedEvents([])} onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} /> : isBrief ? <BriefPage /> : isArchive ? <ArchivePage /> : eventId === undefined ? <NowShell onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} /> : <EventDetail eventId={eventId} onAsk={() => { window.location.hash = "#ask"; }} onBack={() => { window.location.hash = ""; }} onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} />}
+          {isSettings ? <SettingsPage /> : isScope ? <OnboardingPending editExisting onComplete={() => { window.location.hash = "#now"; }} /> : isAsk ? <AskWorkspace onClearSelection={() => setSelectedEvents([])} selectedEvents={selectedEvents} /> : isBrief ? <BriefPage /> : isArchive ? <ArchivePage /> : eventId === undefined ? <NowShell onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} /> : <EventDetail eventId={eventId} onAsk={() => { window.location.hash = "#ask"; }} onBack={() => { window.location.hash = ""; }} onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} />}
         </div>
       </div>
       <SearchOverlay onClose={closeSearch} open={searchOpen} />

@@ -383,6 +383,18 @@ class DeepSeekIntelligenceClient:
                     "even when empty. Copy only Backend-supplied IDs and preserve event_ids "
                     "order. Return one complete replacement JSON object only."
                 )
+            if payload_type is BackwriteReconciliationPayload:
+                return (
+                    "The previous response violated the strict Backwrite Reconciliation schema. "
+                    "Regenerate from the original input. The top-level object must contain "
+                    "exactly these seven keys: schema_version, item_id, event_id, decision, "
+                    "event_update, unassigned_signal_ids, rationale. event_update is mandatory: "
+                    "use JSON null for no_change, or an object with exactly title, overview, "
+                    "display_time, signal_ids for update. rationale is mandatory and non-empty. "
+                    "Every supplied canonical Signal ID must appear exactly once across "
+                    "event_update.signal_ids and unassigned_signal_ids. Never omit a required "
+                    "key, and return one complete replacement JSON object only."
+                )
             return (
                 "The previous response violated the strict schema. Regenerate from the original "
                 "input, use only Backend-supplied IDs, obey all coverage and candidate rules, and "

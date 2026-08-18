@@ -22,6 +22,13 @@ vi.mock("./api/maintenance", () => ({
   maintenanceRunQueryKey: (runId: string) => ["maintenance", "runs", runId],
   maintenanceStatusQueryKey: ["maintenance", "status"],
 }));
+vi.mock("./api/ask", () => ({
+  askHistoryQueryKey: ["ask", "history"],
+  askQueryKey: (askId: string) => ["ask", askId],
+  createAsk: vi.fn(),
+  fetchAsk: vi.fn(),
+  fetchAskHistory: vi.fn().mockResolvedValue({ items: [], next_cursor: null }),
+}));
 
 import { App } from "./App";
 import { fetchHealth } from "./api/health";
@@ -127,5 +134,24 @@ describe("App", () => {
     expect(screen.getByRole("link", { name: "SCOPE" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "NOW" })).not.toHaveAttribute("aria-current");
     expect(await screen.findByRole("button", { name: /AI/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("更改将在下次Event更新时生效")).toBeInTheDocument();
+  });
+
+  it("renders the Ask Event picker inside the sidebar below navigation", async () => {
+    window.location.hash = "#ask";
+    vi.mocked(fetchSession).mockResolvedValue({ state: "ready", user: { username: "lingjiu" } });
+    vi.mocked(fetchHealth).mockResolvedValue({ status: "ok", api: "ok", database: "ok", worker: "ok" });
+    vi.mocked(fetchNow).mockResolvedValue({
+      items: [{ id: "event-1", title: "可选择的 Event", overview: "Overview", state: "developing", display_time: "2026-01-01T00:30:00Z", updated_at: "2026-01-01T00:30:00Z", why_it_matters: "Why", new_claim_count: 0, conflict_count: 0, topics: [], saved: false }],
+      next_cursor: null,
+      window_stats: { raw_information_count: 1, event_count: 1, relevant_event_count: 1, window_started_at: "2026-01-01T00:00:00Z", window_ended_at: "2026-01-01T01:00:00Z" },
+    });
+
+    renderApp();
+
+    expect(await screen.findByRole("heading", { name: "观澜能帮忙做什么" })).toBeInTheDocument();
+    const sidebar = screen.getByRole("complementary", { name: "Primary navigation" });
+    expect(sidebar).toContainElement(screen.getByRole("heading", { name: "Event 列表" }));
+    expect(sidebar).toContainElement(await screen.findByRole("checkbox", { name: "选择 可选择的 Event" }));
   });
 });
