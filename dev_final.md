@@ -21,7 +21,8 @@
 
 - `infoscope`：MQTT Display Contract 的唯一权威源，拥有 Schema、canonical fixture、版本升级和破坏性变更。
 - `infoscope-display`：只按批准基线 vendoring canonical fixture，记录上游 immutable commit SHA 与 SHA-256；不得建立第二份权威 Schema。
-- PR #45 在 Contract 审查和测试完成前不得合并。
+- MQTT Contract 若未来重新推进，仍须在独立 PR 完成审查和测试后合并；已关闭的
+  PR #45 不作为本轮应用端 Demo Freeze 的门禁。
 
 ---
 
@@ -30,7 +31,7 @@
 严格按以下顺序推进，不因 UI 修改跳过运行时可靠性：
 
 ```text
-F0  MQTT Display Contract v1 收口
+F0  MQTT Display Contract v1（已退出本轮应用端收口）
 ↓
 F1  Demo Runtime Readiness
 ↓
@@ -47,7 +48,8 @@ F4  Final Demo Freeze
 
 ## 2. F0 — MQTT Display Contract v1
 
-当前 PR：`feat/integration-mqtt-contract` / GitHub PR #45。
+状态：Alan 已明确关闭并忽略 GitHub PR #45。本节保留长期 Contract 所有权与安全
+边界，供未来独立重启该工作时使用；F1–F4 与 PR #70 不再等待 PR #45。
 
 必须保持：
 
@@ -62,7 +64,8 @@ F4  Final Demo Freeze
 - A1 终端只消费标题，不得根据 `state` 过滤、排序、着色、显示状态图标或拒绝未知但 Schema 合法的值。
 - 若不采用 opaque 语义，则必须把 `state` 冻结为明确 enum 并增加拒绝测试；不得保持语义模糊。
 
-PR #45 完成后，Lingjiu 才能在硬件仓库开始 A1.1 fixture vendoring 与 simulator/host tests。
+未来若重新创建 MQTT Contract PR，Lingjiu 只能在该独立 PR 完成后开始对应 fixture
+vendoring 与 simulator/host tests。
 
 ---
 
