@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Protocol
 from uuid import UUID, uuid4, uuid5
 
@@ -164,8 +164,14 @@ def frozen_queue_indices(size: int) -> list[int]:
 
 
 class BackwriteRepository:
-    def __init__(self, database: AsyncSession) -> None:
+    def __init__(
+        self,
+        database: AsyncSession,
+        *,
+        stale_after: timedelta = timedelta(minutes=15),
+    ) -> None:
         self.database = database
+        self.stale_after = stale_after
 
     async def create_or_reuse_cycle(
         self,
@@ -257,6 +263,7 @@ class BackwriteRepository:
         return cycle, inserted
 
     async def prepare_next_item(self, cycle_id: UUID) -> PreparedBackwriteItem | None:
+        await self.recover_stale_items(cycle_id)
         cycle = (
             await self.database.execute(
                 select(BackwriteCycle).where(BackwriteCycle.id == cycle_id).with_for_update()
@@ -301,6 +308,65 @@ class BackwriteRepository:
         self.database.add(run)
         await self.database.commit()
         return PreparedBackwriteItem(cycle, item, run)
+
+    async def recover_stale_items(self, cycle_id: UUID) -> list[BackwriteItem]:
+        """Fail-closed items abandoned by a lost worker and make retries durable.
+
+        A worker can disappear after claiming an item but before its exception
+        handler gets a chance to audit it.  Without this recovery, the cycle
+        remains permanently active in ``researching``/``reconciling`` and no
+        later worker can claim the queue.  Recovery only touches items whose
+        ``updated_at`` is older than the configured lease and records a
+        dedicated stable error on their reconciliation run.
+        """
+        cutoff = datetime.now(UTC) - self.stale_after
+        stale = list(
+            (
+                await self.database.execute(
+                    select(BackwriteItem)
+                    .where(
+                        BackwriteItem.cycle_id == cycle_id,
+                        BackwriteItem.status.in_(("researching", "reconciling")),
+                        BackwriteItem.updated_at < cutoff,
+                    )
+                    .order_by(BackwriteItem.queue_position)
+                    .with_for_update(skip_locked=True)
+                )
+            ).scalars()
+        )
+        if not stale:
+            return []
+        finished = datetime.now(UTC)
+        for item in stale:
+            run = (
+                await self.database.execute(
+                    select(BackwriteReconciliationRun)
+                    .where(
+                        BackwriteReconciliationRun.item_id == item.id,
+                        BackwriteReconciliationRun.attempt == item.attempt_count,
+                        BackwriteReconciliationRun.status == "running",
+                    )
+                    .with_for_update()
+                )
+            ).scalar_one_or_none()
+            if run is not None:
+                run.status = "failed"
+                run.error_code = "BACKWRITE_WORKER_LOST"
+                run.finished_at = finished
+            item.error_code = "BACKWRITE_WORKER_LOST"
+            if item.attempt_count < item.max_attempts:
+                item.status = "pending"
+                item.finished_at = None
+            else:
+                item.status = "failed"
+                item.finished_at = finished
+        cycle = await self.database.get(BackwriteCycle, cycle_id)
+        if cycle is None:
+            raise BackwriteError("BACKWRITE_CYCLE_NOT_FOUND")
+        await self.database.flush()
+        await self._finalize_cycle(cycle)
+        await self.database.commit()
+        return stale
 
     async def attach_research_request(self, item_id: UUID, request_id: UUID) -> None:
         item = await self.database.get(BackwriteItem, item_id)
