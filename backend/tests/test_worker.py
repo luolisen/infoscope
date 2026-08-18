@@ -11,6 +11,7 @@ from infoscope.worker.main import (
     _run_queue_lanes,
     _run_serial_queue_group,
     process_ask_queue_once,
+    process_event_localization_queue_once,
     run,
 )
 
@@ -371,3 +372,25 @@ async def test_core_queue_group_keeps_order_after_one_stage_fails() -> None:
 
     assert processed is True
     assert calls == ["personalization", "brief", "maintenance"]
+
+
+@pytest.mark.parametrize(
+    ("status", "processed"),
+    [("running", False), ("completed", True), ("failed", True)],
+)
+async def test_localization_queue_backs_off_when_run_cannot_progress(
+    status: str,
+    processed: bool,
+) -> None:
+    localize = AsyncMock(return_value=SimpleNamespace(status=status))
+    with (
+        patch("infoscope.worker.main.session_factory", lambda: _QueueSession(None)),
+        patch(
+            "infoscope.worker.main.EventLocalizationRepository.localization_needed",
+            AsyncMock(return_value=True),
+        ),
+        patch("infoscope.worker.main.localize_events_once", localize),
+    ):
+        assert await process_event_localization_queue_once() is processed
+
+    localize.assert_awaited_once_with()

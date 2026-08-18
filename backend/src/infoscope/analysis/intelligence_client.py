@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections.abc import Callable
 from typing import Any, TypeVar
 
 import httpx
@@ -27,6 +28,7 @@ from infoscope.analysis.ask_schemas import (
     AskFinalizationInput,
     AskFinalizationModelPayload,
     AskFinalizationResponse,
+    public_answer_references_internal_uuid,
 )
 from infoscope.analysis.backwrite_prompt import (
     BACKWRITE_RECONCILIATION_SYSTEM_PROMPT,
@@ -166,6 +168,7 @@ class DeepSeekIntelligenceClient:
             system=ASK_COMPARISON_SYSTEM_PROMPT,
             user=build_ask_comparison_prompt(value),
             payload_type=AskComparisonPayload,
+            payload_validator=lambda payload: self._validate_public_answer(payload.answer, value),
         )
         return AskComparisonResponse(
             payload=payload,
@@ -194,6 +197,7 @@ class DeepSeekIntelligenceClient:
             system=ASK_FINALIZATION_SYSTEM_PROMPT,
             user=build_ask_finalization_prompt(value),
             payload_type=AskFinalizationModelPayload,
+            payload_validator=lambda payload: self._validate_public_answer(payload.answer, value),
         )
         return AskFinalizationResponse(
             payload=payload,
@@ -268,6 +272,7 @@ class DeepSeekIntelligenceClient:
         output_limit: int | None = None,
         schema_error: str = "ANALYSIS_SCHEMA_INVALID",
         output_error: str = "ANALYSIS_SCHEMA_INVALID",
+        payload_validator: Callable[[PayloadT], None] | None = None,
     ) -> tuple[PayloadT, str, TokenUsage]:
         last_error = "ANALYSIS_REQUEST_FAILED"
         for attempt in range(self.config.max_retries + 1):
@@ -297,13 +302,16 @@ class DeepSeekIntelligenceClient:
                 response = await self._post(request_payload)
                 if not response.is_success:
                     raise AnalysisError("ANALYSIS_REQUEST_REJECTED")
-                return self._parse(
+                result = self._parse(
                     response.json(),
                     payload_type,
                     output_limit=output_limit,
                     schema_error=schema_error,
                     output_error=output_error,
                 )
+                if payload_validator is not None:
+                    payload_validator(result[0])
+                return result
             except (httpx.HTTPError, json.JSONDecodeError) as error:
                 last_error = "ANALYSIS_REQUEST_FAILED"
                 if attempt >= self.config.max_retries:
@@ -387,7 +395,19 @@ class DeepSeekIntelligenceClient:
                     "sources, or any alternate field. For an answerable decision, answer is a "
                     "non-empty string, missing_facts is [], and all five ID arrays are present "
                     "even when empty. Copy only Backend-supplied IDs and preserve event_ids "
-                    "order. Return one complete replacement JSON object only."
+                    "order. Put citations only in those arrays: the human-readable answer must "
+                    "never contain internal IDs, UUID fragments, internal labels, or "
+                    "provider/prompt metadata. Return one complete replacement JSON object only."
+                )
+            if payload_type is AskFinalizationModelPayload:
+                return (
+                    "The previous response violated the strict Ask Finalization schema. "
+                    "Regenerate from the original input with exactly these keys: "
+                    "schema_version, ask_id, answer, event_ids, claim_ids, timeline_entry_ids, "
+                    "conflict_ids, evidence_signal_ids. Copy IDs only into their structured "
+                    "arrays. The human-readable answer must never contain internal IDs, UUID "
+                    "fragments, internal labels, or provider/prompt metadata. Return one "
+                    "complete replacement JSON object only."
                 )
             if payload_type is BackwriteReconciliationPayload:
                 return (
@@ -417,6 +437,11 @@ class DeepSeekIntelligenceClient:
         if error_code in {"ANALYSIS_EMPTY_RESPONSE", "ANALYSIS_INVALID_JSON"}:
             return "Return one complete, valid JSON object only, with no prose or code fences."
         return None
+
+    @staticmethod
+    def _validate_public_answer(answer: str | None, source: BaseModel) -> None:
+        if answer is not None and public_answer_references_internal_uuid(answer, source):
+            raise AnalysisError("ANALYSIS_SCHEMA_INVALID")
 
     def _parse(
         self,

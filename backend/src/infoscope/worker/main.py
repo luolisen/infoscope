@@ -811,8 +811,8 @@ async def process_event_localization_queue_once() -> bool:
     async with session_factory() as database:
         if not await EventLocalizationRepository(database).localization_needed():
             return False
-    await localize_events_once()
-    return True
+    run = await localize_events_once()
+    return run.status in {"completed", "failed"}
 
 
 async def _derived_artifact(source_artifact_id: UUID, artifact_type: str) -> PipelineArtifact:

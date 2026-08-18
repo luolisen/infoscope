@@ -174,6 +174,23 @@ class EventLocalizationRepository:
 
     async def runnable_batch_ids(self, run_id: UUID) -> list[UUID]:
         stale_cutoff = self.clock() - self.stale_after
+        recovered = await self.database.execute(
+            update(EventLocalizationBatch)
+            .where(
+                EventLocalizationBatch.run_id == run_id,
+                EventLocalizationBatch.status == "running",
+                EventLocalizationBatch.attempt_count
+                >= EventLocalizationBatch.max_attempts,
+                EventLocalizationBatch.updated_at < stale_cutoff,
+            )
+            .values(
+                status="failed",
+                error_code="EVENT_LOCALIZATION_WORKER_LOST",
+                finished_at=self.clock(),
+            )
+        )
+        if recovered.rowcount:
+            await self.database.commit()
         return list(
             (
                 await self.database.execute(

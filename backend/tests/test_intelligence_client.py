@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 from uuid import uuid4
 
 import httpx
@@ -57,6 +58,66 @@ def test_ask_comparison_repair_prompt_rejects_invented_citation_fields() -> None
     assert instruction is not None
     assert "timeline_entry_ids" in instruction
     assert "Never output status, citations, cited_ids" in instruction
+    assert "human-readable answer must never contain internal IDs" in instruction
+
+
+async def test_ask_public_answer_internal_uuid_fragment_is_retried() -> None:
+    ask_id = uuid4()
+    event_id = uuid4()
+    source = AskComparisonPayload(
+        ask_id=ask_id,
+        decision="answerable",
+        answer="Safe source answer.",
+        event_ids=[event_id],
+        claim_ids=[],
+        timeline_entry_ids=[],
+        conflict_ids=[],
+        evidence_signal_ids=[],
+        missing_facts=[],
+        rationale="Test source.",
+    )
+    documents = [
+        source.model_copy(
+            update={"answer": f"A leaked reference {ask_id.hex[:8]}."}
+        ).model_dump(mode="json"),
+        source.model_copy(update={"answer": "A safe public answer."}).model_dump(mode="json"),
+    ]
+    requests: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(json.loads(request.content))
+        payload = documents.pop(0)
+        return httpx.Response(
+            200,
+            request=request,
+            json={
+                "model": "test-model",
+                "choices": [
+                    {"finish_reason": "stop", "message": {"content": json.dumps(payload)}}
+                ],
+                "usage": {"total_tokens": 12},
+            },
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as transport:
+        client = DeepSeekIntelligenceClient(
+            client=transport,
+            config=replace(_config(), max_retries=1),
+        )
+        payload, _model, _usage = await client._request(
+            system="Return json.",
+            user="Return json.",
+            payload_type=AskComparisonPayload,
+            payload_validator=lambda candidate: client._validate_public_answer(
+                candidate.answer, source
+            ),
+        )
+
+    assert payload.answer == "A safe public answer."
+    assert len(requests) == 2
+    assert "human-readable answer must never contain internal IDs" in requests[1]["messages"][1][
+        "content"
+    ]
 
 
 def test_backwrite_repair_prompt_requires_explicit_null_and_rationale() -> None:

@@ -12,10 +12,12 @@ AI Answer is not Evidence. Never create IDs, facts, Events, Claims, Timeline ent
 Signals, and never change any state.
 
 Return exactly one JSON object with schema_version ask_finalization.v1. Copy ask_id and the ordered
-event_ids exactly. Provide a grounded answer and cite only supplied Claim, Timeline, Conflict, and
-Evidence Signal IDs. Do not return updated_event_ids; Backend derives them from the canonical
-reconciliation artifact. Never expose private source identities or infer masked provenance. Return
-JSON only."""
+event_ids exactly. Provide a grounded answer and put citations only in the structured Claim,
+Timeline, Conflict, and Evidence Signal ID arrays. The human-readable answer must never contain
+internal IDs or ID fragments, internal labels such as claim/event/signal/artifact/run IDs, or
+provider/prompt metadata. Do not return updated_event_ids; Backend derives them from the canonical
+reconciliation artifact. Never expose private source identities or infer masked provenance.
+Return JSON only."""
 
 
 def build_ask_finalization_prompt(value: AskFinalizationInput) -> str:

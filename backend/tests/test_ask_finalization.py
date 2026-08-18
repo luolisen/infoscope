@@ -95,6 +95,17 @@ def test_finalization_rejects_unknown_references_and_changed_event_order() -> No
     with pytest.raises(AskFinalizationError, match="ASK_FINALIZATION_OUTPUT_INVALID"):
         AskFinalizationRepository.validate_model_output(changed, value)
 
+    changed = response.payload.model_copy(
+        update={
+            "answer": (
+                "The answer references "
+                f"{value.source_comparison_artifact_id.hex[:8]}."
+            )
+        }
+    )
+    with pytest.raises(AskFinalizationError, match="ASK_FINALIZATION_PUBLIC_ANSWER_INVALID"):
+        AskFinalizationRepository.validate_model_output(changed, value)
+
 
 class _Client:
     def __init__(self, value: AskFinalizationInput) -> None:

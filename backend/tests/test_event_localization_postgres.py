@@ -295,3 +295,69 @@ async def test_fresh_running_batch_is_not_reclaimed_by_competing_worker() -> Non
             )
             await database.execute(delete(Event).where(Event.id == event_id))
             await database.commit()
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_stale_exhausted_running_batch_fails_the_run() -> None:
+    run_id = uuid4()
+    batch_id = uuid4()
+    now = datetime.now(UTC)
+    try:
+        async with session_factory() as database:
+            database.add(
+                EventLocalizationRun(
+                    id=run_id,
+                    locale="zh-CN",
+                    input_hash="d" * 64,
+                    status="running",
+                    active_slot=1,
+                    provider="ai_ping",
+                    model="DeepSeek-V4-Flash-0731",
+                    batch_size=10,
+                    batch_concurrency=2,
+                    total_event_count=1,
+                    batch_count=1,
+                    completed_batch_count=0,
+                    failed_batch_count=0,
+                    started_at=now,
+                )
+            )
+            await database.flush()
+            database.add(
+                EventLocalizationBatch(
+                    id=batch_id,
+                    run_id=run_id,
+                    batch_index=0,
+                    event_ids=[uuid4()],
+                    input_hash="e" * 64,
+                    status="running",
+                    attempt_count=3,
+                    max_attempts=3,
+                    started_at=now,
+                )
+            )
+            await database.commit()
+
+        async with session_factory() as database:
+            repository = EventLocalizationRepository(
+                database,
+                clock=lambda: now + timedelta(minutes=16),
+            )
+            assert await repository.runnable_batch_ids(run_id) == []
+            run = await repository.refresh_run(run_id)
+            batch = await database.get(EventLocalizationBatch, batch_id)
+
+            assert batch is not None
+            assert batch.status == "failed"
+            assert batch.error_code == "EVENT_LOCALIZATION_WORKER_LOST"
+            assert run.status == "failed"
+            assert run.error_code == "EVENT_LOCALIZATION_WORKER_LOST"
+    finally:
+        async with session_factory() as database:
+            await database.execute(
+                delete(EventLocalizationBatch).where(EventLocalizationBatch.id == batch_id)
+            )
+            await database.execute(
+                delete(EventLocalizationRun).where(EventLocalizationRun.id == run_id)
+            )
+            await database.commit()

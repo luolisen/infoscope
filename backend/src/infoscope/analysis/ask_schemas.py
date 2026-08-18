@@ -1,16 +1,57 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime
 from hashlib import sha256
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from infoscope.analysis.intelligence_schemas import BaseAnalysisContent
 from infoscope.analysis.schemas import StrictModel, TokenUsage
 from infoscope.integrations.research.schemas import PublicSafeProvenance, ResearchEvent
+
+_FULL_UUID_PATTERN = re.compile(
+    r"(?i)(?<![0-9a-f])[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![0-9a-f])"
+)
+_LABELED_INTERNAL_ID_PATTERN = re.compile(
+    r"(?i)\b(?:claim|timeline(?:\s+entry)?|conflict|signal|evidence|artifact|run|prompt)"
+    r"(?:[\s_-]*id)?\s*[:#=()（）-]*\s*[0-9a-f]{8,32}\b"
+)
+_HEX_FRAGMENT_PATTERN = re.compile(r"(?i)(?<![0-9a-f])[0-9a-f]{8,32}(?![0-9a-f])")
+
+
+def validate_public_answer_syntax(value: str) -> str:
+    """Reject internal identifier notation from model-authored public answer text."""
+    if _FULL_UUID_PATTERN.search(value) or _LABELED_INTERNAL_ID_PATTERN.search(value):
+        raise ValueError("public answer must not contain internal identifiers")
+    return value
+
+
+def public_answer_references_internal_uuid(answer: str, source: Any) -> bool:
+    """Match UUID fragments in an answer only against IDs present in the frozen model input."""
+
+    known: set[str] = set()
+
+    def collect(value: Any) -> None:
+        if isinstance(value, UUID):
+            known.add(value.hex)
+        elif isinstance(value, BaseModel):
+            collect(value.model_dump())
+        elif isinstance(value, dict):
+            for item in value.values():
+                collect(item)
+        elif isinstance(value, (list, tuple, set)):
+            for item in value:
+                collect(item)
+
+    collect(source)
+    return any(
+        any(fragment.lower() in identifier for identifier in known)
+        for fragment in _HEX_FRAGMENT_PATTERN.findall(answer)
+    )
 
 
 class AskRequestSpec(StrictModel):
@@ -126,7 +167,7 @@ class AskComparisonPayload(StrictModel):
         if value is None:
             return None
         normalized = value.strip()
-        return normalized or None
+        return validate_public_answer_syntax(normalized) if normalized else None
 
     @field_validator("rationale")
     @classmethod
@@ -532,7 +573,7 @@ class AskFinalizationModelPayload(StrictModel):
         normalized = value.strip()
         if not normalized:
             raise ValueError("model answer must not be blank")
-        return normalized
+        return validate_public_answer_syntax(normalized)
 
     @field_validator(
         "event_ids", "claim_ids", "timeline_entry_ids", "conflict_ids", "evidence_signal_ids"

@@ -26,7 +26,7 @@ describe("AskPanel", () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<QueryClientProvider client={queryClient}><AskPanel onClearSelection={() => undefined} selectedEvents={[{ id: "event-1", title: "Event" }]} /></QueryClientProvider>);
 
-    fireEvent.change(screen.getByLabelText("Grok 实时搜索"), { target: { value: "on" } });
+    fireEvent.change(screen.getByLabelText("Grok 增强搜索"), { target: { value: "on" } });
     fireEvent.change(screen.getByLabelText("你的问题"), { target: { value: "What changed?" } });
     fireEvent.click(screen.getByRole("button", { name: "发送问题" }));
 
