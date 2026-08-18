@@ -227,7 +227,7 @@ describe("App", () => {
 
     renderApp();
 
-    expect(await screen.findByRole("heading", { name: "观澜能帮忙做什么" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "观澜能帮你做什么？" })).toBeInTheDocument();
     const sidebar = screen.getByRole("complementary", { name: "Primary navigation" });
     expect(sidebar).toContainElement(screen.getByRole("heading", { name: "Event 列表" }));
     const checkbox = await screen.findByRole("checkbox", { name: "选择 可选择的 Event" });
