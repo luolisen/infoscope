@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
 from uuid import UUID, uuid4, uuid5
@@ -146,6 +146,18 @@ class PreparedBackwriteItem:
     cycle: BackwriteCycle
     item: BackwriteItem
     run: BackwriteReconciliationRun
+    cycle_id: UUID = field(init=False)
+    item_id: UUID = field(init=False)
+    event_id: UUID = field(init=False)
+    run_id: UUID = field(init=False)
+
+    def __post_init__(self) -> None:
+        # A rollback expires ORM instances. Freeze identifiers while the
+        # claimed rows are loaded so audit paths never lazy-load expired state.
+        object.__setattr__(self, "cycle_id", self.cycle.id)
+        object.__setattr__(self, "item_id", self.item.id)
+        object.__setattr__(self, "event_id", self.item.event_id)
+        object.__setattr__(self, "run_id", self.run.id)
 
 
 def frozen_queue_indices(size: int) -> list[int]:
@@ -424,8 +436,8 @@ class BackwriteRepository:
         if request.status not in {ResearchStatus.SUCCEEDED.value, ResearchStatus.PARTIAL.value}:
             raise BackwriteError("BACKWRITE_RESEARCH_FAILED")
         payload = BackwriteResearchArtifactPayload(
-            item_id=prepared.item.id,
-            event_id=prepared.item.event_id,
+            item_id=prepared.item_id,
+            event_id=prepared.event_id,
             research_request_id=request.id,
             research_status=request.status,
             results=results,
@@ -433,13 +445,13 @@ class BackwriteRepository:
         artifact = (
             await self.database.execute(
                 select(BackwriteResearchArtifact).where(
-                    BackwriteResearchArtifact.item_id == prepared.item.id
+                    BackwriteResearchArtifact.item_id == prepared.item_id
                 )
             )
         ).scalar_one_or_none()
         if artifact is None:
             artifact = BackwriteResearchArtifact(
-                item_id=prepared.item.id,
+                item_id=prepared.item_id,
                 research_request_id=request.id,
                 schema_version=payload.schema_version,
                 payload=payload.model_dump(mode="json"),
@@ -453,7 +465,7 @@ class BackwriteRepository:
                 raise BackwriteError("BACKWRITE_RESEARCH_ARTIFACT_INVALID") from error
             if existing != payload or artifact.research_request_id != request.id:
                 raise BackwriteError("BACKWRITE_RESEARCH_ARTIFACT_CONFLICT")
-        item = await self.database.get(BackwriteItem, prepared.item.id)
+        item = await self.database.get(BackwriteItem, prepared.item_id)
         if item is None:
             raise BackwriteError("BACKWRITE_ITEM_NOT_FOUND")
         if item.source_artifact_id not in {None, artifact.id}:
@@ -481,8 +493,8 @@ class BackwriteRepository:
         value: BackwriteReconciliationInput,
     ) -> BackwriteItem:
         output = BackwriteReconciliationPayload(
-            item_id=prepared.item.id,
-            event_id=prepared.item.event_id,
+            item_id=prepared.item_id,
+            event_id=prepared.event_id,
             decision="no_change",
             event_update=None,
             unassigned_signal_ids=[],
@@ -527,7 +539,7 @@ class BackwriteRepository:
         item = (
             await self.database.execute(
                 select(BackwriteItem)
-                .where(BackwriteItem.id == prepared.item.id)
+                .where(BackwriteItem.id == prepared.item_id)
                 .with_for_update()
                 .execution_options(populate_existing=True)
             )
@@ -535,7 +547,7 @@ class BackwriteRepository:
         run = (
             await self.database.execute(
                 select(BackwriteReconciliationRun)
-                .where(BackwriteReconciliationRun.id == prepared.run.id)
+                .where(BackwriteReconciliationRun.id == prepared.run_id)
                 .with_for_update()
                 .execution_options(populate_existing=True)
             )
@@ -647,13 +659,13 @@ class BackwriteRepository:
         await self.database.rollback()
         item = (
             await self.database.execute(
-                select(BackwriteItem).where(BackwriteItem.id == prepared.item.id).with_for_update()
+                select(BackwriteItem).where(BackwriteItem.id == prepared.item_id).with_for_update()
             )
         ).scalar_one()
         run = (
             await self.database.execute(
                 select(BackwriteReconciliationRun)
-                .where(BackwriteReconciliationRun.id == prepared.run.id)
+                .where(BackwriteReconciliationRun.id == prepared.run_id)
                 .with_for_update()
             )
         ).scalar_one()
@@ -1238,10 +1250,10 @@ class BackwriteRunner:
                 ResearchRequestSpec(
                     idempotency_key=uuid5(
                         BACKWRITE_RESEARCH_NAMESPACE,
-                        f"{prepared.item.id}:backwrite_research.v1",
+                        f"{prepared.item_id}:backwrite_research.v1",
                     ),
                     trigger=ResearchTrigger.BACKWRITE_ENRICHMENT,
-                    source_event_ids=[prepared.item.event_id],
+                    source_event_ids=[prepared.event_id],
                     research_questions=[BACKWRITE_RESEARCH_QUESTION],
                     missing_fact_descriptions=[],
                     allowed_source_kinds=[
@@ -1250,7 +1262,7 @@ class BackwriteRunner:
                     ],
                 )
             )
-            await self.repository.attach_research_request(prepared.item.id, request.id)
+            await self.repository.attach_research_request(prepared.item_id, request.id)
             if request.status not in {
                 ResearchStatus.SUCCEEDED.value,
                 ResearchStatus.PARTIAL.value,
@@ -1268,8 +1280,8 @@ class BackwriteRunner:
                 request=request,
                 results=results,
             )
-            value = await self.repository.input_snapshot(prepared.item.id)
-            await self.repository.store_input_hash(prepared.item.id, value)
+            value = await self.repository.input_snapshot(prepared.item_id)
+            await self.repository.store_input_hash(prepared.item_id, value)
             if not value.canonical_signals:
                 await self.repository.persist_no_change(prepared, value)
                 return
@@ -1299,7 +1311,7 @@ class BackwriteRunner:
             # its frozen max_attempts is reached.
             logger.exception(
                 "unexpected backwrite item failure item_id=%s error_type=%s",
-                prepared.item.id,
+                prepared.item_id,
                 type(error).__name__,
             )
             try:
@@ -1311,7 +1323,7 @@ class BackwriteRunner:
             except Exception:
                 logger.exception(
                     "backwrite failure audit persistence failed item_id=%s",
-                    prepared.item.id,
+                    prepared.item_id,
                 )
                 raise
 

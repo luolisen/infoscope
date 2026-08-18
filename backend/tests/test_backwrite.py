@@ -84,6 +84,46 @@ def test_frozen_queue_alternates_edges_without_duplicates() -> None:
     assert sorted(frozen_queue_indices(11)) == list(range(11))
 
 
+def test_prepared_item_freezes_identifiers_before_session_rollback() -> None:
+    cycle_id = uuid4()
+    item_id = uuid4()
+    event_id = uuid4()
+    run_id = uuid4()
+    item = BackwriteItem(
+        id=item_id,
+        cycle_id=cycle_id,
+        event_id=event_id,
+        snapshot_position=0,
+        queue_position=0,
+        max_attempts=3,
+    )
+    prepared = PreparedBackwriteItem(
+        BackwriteCycle(
+            id=cycle_id,
+            user_id=uuid4(),
+            idempotency_key=uuid4(),
+            input_hash="0" * 64,
+            schema_version="backwrite_snapshot.v1",
+            status="running",
+            snapshot_payload={},
+            item_count=1,
+        ),
+        item,
+        BackwriteReconciliationRun(
+            id=run_id,
+            item_id=item_id,
+            attempt=1,
+            status="running",
+            started_at=datetime.now(UTC),
+        ),
+    )
+
+    assert prepared.cycle_id == cycle_id
+    assert prepared.item_id == item_id
+    assert prepared.event_id == event_id
+    assert prepared.run_id == run_id
+
+
 def test_snapshot_hash_preserves_backend_order_and_rejects_duplicates() -> None:
     user_id = uuid4()
     event_ids = [uuid4(), uuid4()]

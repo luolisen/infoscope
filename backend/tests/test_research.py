@@ -660,6 +660,30 @@ def test_private_provenance_is_blocked_before_research() -> None:
         ResearchRepository._evidence(signal)
 
 
+def test_research_evidence_uses_a_bounded_visible_projection() -> None:
+    signal = Signal(
+        id=uuid4(),
+        raw_information_id=uuid4(),
+        signal_index=0,
+        title=None,
+        normalized_text="a" * 20_001,
+        published_at=None,
+        source_type="research",
+        evidence_visibility="public",
+        public_provenance={
+            "source_kind": "web_page",
+            "canonical_url": "https://example.com/report",
+        },
+        content_hash="a" * 64,
+    )
+
+    evidence = ResearchRepository._evidence(signal)
+
+    assert len(evidence.sanitized_text) == 20_000
+    assert evidence.sanitized_text.endswith("…")
+    assert signal.normalized_text == "a" * 20_001
+
+
 async def test_zero_candidate_research_is_canonical_success() -> None:
     payload = _payload()
     request = SimpleNamespace(
