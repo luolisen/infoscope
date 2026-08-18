@@ -29,7 +29,7 @@ export function NowShell({ selectedEvents, onToggleEventSelection }: NowShellPro
   const activeFilterIndex = stateFilters.findIndex((filter) => filter.value === stateFilter);
   return <main className="main-content" id="now">
     <p className="editorial-label">NOW</p>
-    <header className="now-header"><h1>此刻，什么值得关注。</h1><p>Raw {window_stats.raw_information_count} 条 · 因子 {window_stats.signal_count} 个 · Event {window_stats.event_count} 个</p></header>
+    <header className="now-header"><h1>此刻，什么值得关注。</h1><p>本轮新增 Raw {window_stats.raw_information_count} 条 · 因子 {window_stats.signal_count} 个 · 当前 Event {window_stats.relevant_event_count} 个</p></header>
     {items.length > 0 && <div aria-label="按 Event 状态筛选" className="now-state-filter" role="toolbar" style={{ "--state-filter-index": activeFilterIndex } as CSSProperties}>
       <span aria-hidden="true" className="now-state-filter__indicator" />
       {stateFilters.map((filter) => <button aria-pressed={filter.value === stateFilter} key={filter.value} onClick={() => setStateFilter(filter.value)} type="button">{filter.label}</button>)}

@@ -485,7 +485,7 @@ Flash / Pro / Kimi / Qwen ...
 ### 6.1 Grok 联网 Research 渠道
 
 - 本轮模型生成渠道固定使用 AI Ping，已确认剩余额度足够；POK 只登记为未来 failback，本轮不得探测、调用或自动切换至 POK，以免引入额外变量。
-- Grok 只可作为 Ask Research 与 Event Backwrite 的外部检索来源，不能直接写入 Event、Claim、Timeline、Conflict 或 Base Analysis。
+- Grok 只可作为用户在 ASK composer 中主动开启的 X/实时 Research 补充来源；不得用于 Maintenance、自动 Event Backwrite、Personalization 或 Brief，也不能直接写入 Event、Claim、Timeline、Conflict 或 Base Analysis。
 - 渠道必须完整兼容 OpenAI Responses 语义：`POST /v1/responses`、服务端 `web_search` 工具调用，以及可审计的 citations/source URLs；仅能列出模型或仅兼容 Chat Completions 不算可用。
 - `grok-build-0.1`、`grok-4.5` 等模型名本身不代表联网能力；接入前必须用真实搜索请求验证工具调用与来源 URL。
 - 搜索结果仍必须进入既有 Research Request → Raw → Normalize → Signal → canonical deduplication → Reconciliation 流程；前端可见术语继续写作 `Signal`，中文产品定义为“因子”。
@@ -494,10 +494,18 @@ Flash / Pro / Kimi / Qwen ...
 - 本机 Sub2API/Grok Build 反代当前探测结果为：模型列表可用，但最小 Responses 与 `web_search` Responses 均返回 `Service temporarily unavailable`；在通过上述能力探测前不进入正式配置。
 - 官方 Grok Build CLI 1.0.5 已通过独立能力探测：`grok-4.6` 的 `streaming-json` 明确产生 completed X Search 工具事件，查询 `from:githubstatus` / Latest，并返回可核验的 `x.com` 原帖 URL、发布时间和正文；该 CLI 可进入下一独立切片。
 - 正式接入使用专用 `GrokXResearchCollector`，定位为 X/实时信息补充源，而不是默认模型或事实写入器。Collector 必须只消费 Backend 构建的 public-safe 查询，不接收 Raw、private_sanitized Evidence、Profile、账户数据、完整 Ask 历史或内部 provenance。
+- ASK 输入框内部提供轻量下拉菜单，选项文案为 `开启 Grok`，默认关闭。开关按单次 Ask 冻结并持久化，提交后不可被下一轮选择覆盖；未开启时不得调用 Grok CLI，历史详情不得暴露该内部执行配置。
 - Collector 必须解析有上限的 `streaming-json`，至少验证一次目标 X Search/Web Search 工具调用成功、最终输出满足严格 Schema、每个候选为规范化 `https://x.com/<account>/status/<id>` URL，并记录查询、检索时间、模型、CLI 版本和 token/cost usage；不得记录 OAuth、Cookie、会话令牌、思维文本或完整模型流水。
 - X 结果必须作为公开 Raw 独立持久化，随后经过 Normalize → Signal → canonical deduplication → Reconciliation；模型输出不能直接成为 Claim、Timeline、Conflict、Base Analysis 或 Event 更新。
 - CLI 不可用、未实际调用搜索工具、输出超限、URL/时间/正文不一致或没有可审计来源时，该补充源 fail-closed；原 Research 主链可继续，不能将补充源失败伪装为成功来源。
 - Grok 接入必须位于 PR #70 完成后的独立 `feat/research-grok-x`，避免扩大 Demo Freeze 的回滚与审查单元。
+
+### 6.2 Ask 历史详情
+
+- 历史列表项必须可选择；选择后在 ASK 主区域展示该轮完整问题、公开回答、状态、Event 数量和是否补充 Event，历史浮层保持可切换。
+- 提供 `新建提问` 返回 composer；查看历史不得改变当前 Event 选择、创建新 Ask 或重新触发 Polling/Research。
+- 不显示内部 ID、Prompt、模型/provider、token、artifact、Research rationale、Evidence/provenance 或内部错误码。
+- Event 名称若要展示，必须来自 Ask 创建时保存的有序标题快照；不得用当前 Event 标题回填历史，也不得向用户显示裸 UUID。
 
 ---
 
