@@ -26,12 +26,12 @@ describe("AskPanel", () => {
 
     render(<QueryClientProvider client={queryClient}><AskPanel onClearSelection={() => undefined} selectedEvents={[{ id: "event-1", title: "Frozen event title" }]} /></QueryClientProvider>);
 
-    expect(screen.queryByText(/researching the current event record/i)).not.toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Question"), { target: { value: "What changed?" } });
-    fireEvent.click(screen.getByRole("button", { name: "Ask Infoscope" }));
+    expect(screen.queryByText(/正在整理相关信息/)).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("你的问题"), { target: { value: "What changed?" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送问题" }));
 
-    expect(await screen.findByText(/researching the current event record/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Ask in progress" })).toBeDisabled();
+    expect(await screen.findByText(/正在整理相关信息/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "处理中" })).toBeDisabled();
     expect(screen.getByText(/Frozen event title/)).toBeInTheDocument();
   });
 
@@ -41,12 +41,12 @@ describe("AskPanel", () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
     render(<QueryClientProvider client={queryClient}><AskPanel onClearSelection={() => undefined} selectedEvents={[{ id: "event-1", title: "Selected event" }]} /></QueryClientProvider>);
-    fireEvent.change(screen.getByLabelText("Question"), { target: { value: "What changed?" } });
-    fireEvent.click(screen.getByRole("button", { name: "Ask Infoscope" }));
+    fireEvent.change(screen.getByLabelText("你的问题"), { target: { value: "What changed?" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送问题" }));
 
-    expect(await screen.findByText(/could not check this ask/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Ask in progress" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Retry status check" })).toBeInTheDocument();
+    expect(await screen.findByText(/无法检查该 Ask/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "处理中" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "重试状态检查" })).toBeInTheDocument();
   });
 
   it("polls the accepted Ask and refreshes NOW and updated event details on completion", async () => {
@@ -61,8 +61,8 @@ describe("AskPanel", () => {
     const invalidate = vi.spyOn(queryClient, "invalidateQueries");
 
     render(<QueryClientProvider client={queryClient}><AskPanel onClearSelection={() => undefined} selectedEvents={[{ id: "event-1", title: "Selected event" }]} /></QueryClientProvider>);
-    fireEvent.change(screen.getByLabelText("Question"), { target: { value: "What changed?" } });
-    fireEvent.click(screen.getByRole("button", { name: "Ask Infoscope" }));
+    fireEvent.change(screen.getByLabelText("你的问题"), { target: { value: "What changed?" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送问题" }));
 
     expect(await screen.findByText("Current answer")).toBeInTheDocument();
     expect(screen.getByText(/Selected event/)).toBeInTheDocument();
@@ -79,13 +79,13 @@ describe("AskPanel", () => {
     });
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const view = render(<QueryClientProvider client={queryClient}><AskPanel onClearSelection={() => undefined} selectedEvents={[{ id: "event-1", title: "Original event" }]} /></QueryClientProvider>);
-    fireEvent.change(screen.getByLabelText("Question"), { target: { value: "What changed?" } });
-    fireEvent.click(screen.getByRole("button", { name: "Ask Infoscope" }));
+    fireEvent.change(screen.getByLabelText("你的问题"), { target: { value: "What changed?" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送问题" }));
     expect(await screen.findByText("Current answer")).toBeInTheDocument();
 
     view.rerender(<QueryClientProvider client={queryClient}><AskPanel onClearSelection={() => undefined} selectedEvents={[{ id: "event-2", title: "Next event" }]} /></QueryClientProvider>);
     expect(screen.getByText(/Original event/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Ask another question" }));
+    fireEvent.click(screen.getByRole("button", { name: "再问一个问题" }));
 
     expect(screen.getByText(/Next event/)).toBeInTheDocument();
     expect(screen.queryByText("Current answer")).not.toBeInTheDocument();

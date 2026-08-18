@@ -5,6 +5,7 @@ import { SaveButton } from "./SaveButton";
 
 type EventDetailProps = {
   eventId: string;
+  onAsk?: () => void;
   onBack: () => void;
   selectedEvents: { id: string; title: string }[];
   onToggleEventSelection: (event: { id: string; title: string }) => void;
@@ -20,7 +21,7 @@ function formatTime(value: string | null) {
   }).format(new Date(value));
 }
 
-export function EventDetail({ eventId, onBack, selectedEvents, onToggleEventSelection }: EventDetailProps) {
+export function EventDetail({ eventId, onAsk = () => undefined, onBack, selectedEvents, onToggleEventSelection }: EventDetailProps) {
   const detail = useQuery({
     queryKey: eventDetailQueryKey(eventId),
     queryFn: () => fetchEventDetail(eventId),
@@ -46,6 +47,7 @@ export function EventDetail({ eventId, onBack, selectedEvents, onToggleEventSele
         <h1>{event.title}</h1>
         <p className="detail-overview">{event.overview}</p>
         <p className="event-meta">Updated {formatTime(event.updated_at)} · Display time {formatTime(event.display_time)}</p>
+        <button className="detail-ask-button" onClick={() => { if (!selectedEvents.some((selected) => selected.id === event.id)) onToggleEventSelection({ id: event.id, title: event.title }); onAsk(); }} type="button">询问这个事件</button>
         <button className="text-button detail-select" disabled={!selectedEvents.some((selected) => selected.id === event.id) && selectedEvents.length === 8} onClick={() => onToggleEventSelection({ id: event.id, title: event.title })} type="button">{selectedEvents.some((selected) => selected.id === event.id) ? "Remove from Ask selection" : "Add to Ask selection"}</button>
         <SaveButton eventId={event.id} saved={event.saved} />
       </header>
