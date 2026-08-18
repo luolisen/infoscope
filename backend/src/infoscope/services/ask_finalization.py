@@ -21,6 +21,7 @@ from infoscope.analysis.ask_schemas import (
     AskFinalizationModelPayload,
     AskFinalizationResponse,
     ask_finalization_input_hash,
+    public_answer_references_internal_uuid,
 )
 from infoscope.analysis.client import AnalysisError
 from infoscope.models import (
@@ -270,6 +271,11 @@ class AskFinalizationRepository:
     ) -> None:
         if payload.ask_id != value.ask_id or payload.event_ids != value.selected_event_ids:
             raise AskFinalizationError("ASK_FINALIZATION_OUTPUT_INVALID")
+        if public_answer_references_internal_uuid(payload.answer, value):
+            raise AskFinalizationError(
+                "ASK_FINALIZATION_PUBLIC_ANSWER_INVALID",
+                retryable=True,
+            )
         maps = (
             (payload.claim_ids, {x.claim_id for event in value.events for x in event.claims}),
             (

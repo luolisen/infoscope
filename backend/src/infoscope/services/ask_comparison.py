@@ -17,6 +17,7 @@ from infoscope.analysis.ask_schemas import (
     AskEventInput,
     AskRequestSpec,
     ask_input_hash,
+    public_answer_references_internal_uuid,
 )
 from infoscope.analysis.client import AnalysisError
 from infoscope.integrations.research.client import ResearchRuntimeError
@@ -324,6 +325,10 @@ class AskComparisonRunner:
             raise AskComparisonError("ASK_OUTPUT_REQUEST_MISMATCH")
         if payload.event_ids != input_snapshot.selected_event_ids:
             raise AskComparisonError("ASK_OUTPUT_EVENT_ORDER_INVALID")
+        if payload.answer is not None and public_answer_references_internal_uuid(
+            payload.answer, input_snapshot
+        ):
+            raise AskComparisonError("ASK_OUTPUT_PUBLIC_ANSWER_INVALID")
         claim_events = {
             claim.claim_id: event.event_id
             for event in input_snapshot.events

@@ -98,6 +98,14 @@ def test_request_and_output_schemas_enforce_order_uniqueness_and_limits() -> Non
     with pytest.raises(ValidationError):
         AskComparisonPayload.model_validate(document)
 
+    document = _response(value).payload.model_dump()
+    document["answer"] = "The fact changed (claim c44d430d)."
+    with pytest.raises(
+        ValidationError,
+        match="public answer must not contain internal identifiers",
+    ):
+        AskComparisonPayload.model_validate(document)
+
 
 def test_input_hash_excludes_ask_id_but_preserves_selection_order() -> None:
     event_ids = [uuid4(), uuid4()]
@@ -124,6 +132,12 @@ def test_output_validation_rejects_changed_event_order_and_unknown_ids() -> None
 
     changed = payload.model_copy(update={"claim_ids": [uuid4()]})
     with pytest.raises(AskComparisonError, match="ASK_OUTPUT_REFERENCE_INVALID"):
+        AskComparisonRunner._validate_output(changed, value)
+
+    changed = payload.model_copy(
+        update={"answer": f"The answer references {value.ask_id.hex[:8]}."}
+    )
+    with pytest.raises(AskComparisonError, match="ASK_OUTPUT_PUBLIC_ANSWER_INVALID"):
         AskComparisonRunner._validate_output(changed, value)
 
 

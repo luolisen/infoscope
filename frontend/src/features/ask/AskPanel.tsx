@@ -85,7 +85,7 @@ export function AskPanel({ selectedEvents, onClearSelection, workspace = false }
       <form className="ask-form" onSubmit={submit}>
         <label className="visually-hidden" htmlFor="ask-question">你的问题</label>
         <textarea disabled={askId !== null} id="ask-question" maxLength={2000} onChange={(event) => setQuestion(event.target.value)} placeholder="你想了解什么？" required value={question} />
-        <label className="ask-grok-toggle"><span>实时搜索</span><select aria-label="Grok 实时搜索" disabled={askId !== null} onChange={(event) => setGrokEnabled(event.target.value === "on")} value={grokEnabled ? "on" : "off"}><option value="off">关闭</option><option value="on">开启 Grok</option></select></label>
+        <label className="ask-grok-toggle"><span>增强搜索</span><select aria-label="Grok 增强搜索" disabled={askId !== null} onChange={(event) => setGrokEnabled(event.target.value === "on")} value={grokEnabled ? "on" : "off"}><option value="off">关闭</option><option value="on">开启 Grok</option></select></label>
         {(question.trim().length > 0 || create.isPending || isActive) && <button aria-busy={create.isPending || isActive} aria-label={isActive ? "处理中" : "发送问题"} className={`auth-submit ask-send-button${create.isPending || isActive ? " ask-send-button--busy" : ""}`} disabled={create.isPending || askId !== null || question.trim().length === 0 || selectedEvents.length === 0} title={isActive ? "处理中" : "发送问题"} type="submit"><SendIcon className="action-icon" /></button>}
       </form>
       {create.isError && <p className="auth-error" role="alert">无法开始 Ask，请稍后重试。</p>}

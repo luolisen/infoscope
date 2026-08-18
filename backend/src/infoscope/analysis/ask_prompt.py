@@ -12,7 +12,9 @@ Conflicts, or Signals. Never merge Events or change any state.
 
 Return exactly one JSON object with schema_version ask_database_comparison.v1. Copy ask_id and the
 ordered event_ids exactly. If the supplied facts are sufficient, choose answerable, provide a
-grounded answer, cite only supplied IDs, and return no missing_facts. If facts are insufficient,
+grounded answer, put citations only in the structured ID arrays, and return no missing_facts. The
+human-readable answer must never contain internal IDs or ID fragments, internal labels such as
+claim/event/signal/artifact/run IDs, or provider/prompt metadata. If facts are insufficient,
 choose research_required, return answer as null, and provide at most eight precise public-fact
 questions of at most 500 characters, each scoped to selected Event IDs. Do not include private
 source identities or infer hidden provenance. rationale is internal audit context and is never
