@@ -323,6 +323,85 @@ async def test_cancelled_attempt_is_persisted_as_retryable_failure() -> None:
 
 
 @pytest.mark.asyncio
+async def test_terminal_failure_acknowledges_exact_queue_marker(monkeypatch) -> None:
+    requested_at = datetime(2026, 8, 18, tzinfo=UTC)
+    user_id = uuid4()
+    run = SimpleNamespace(
+        id=uuid4(),
+        user_id=user_id,
+        status="running",
+        attempt_count=3,
+        max_attempts=3,
+        captured_update_requested_at=requested_at,
+        active_slot=1,
+        error_code=None,
+        finished_at=None,
+    )
+    user = SimpleNamespace(
+        id=user_id,
+        personalization_update_requested_at=requested_at,
+    )
+    database = SimpleNamespace(
+        rollback=AsyncMock(),
+        get=AsyncMock(return_value=user),
+        commit=AsyncMock(),
+    )
+    repository = PersonalizationRepository(database)
+    monkeypatch.setattr(repository, "_locked_run", AsyncMock(return_value=run))
+
+    result = await repository.persist_failure(
+        run.id,
+        "ANALYSIS_UPSTREAM_UNAVAILABLE",
+        retryable=True,
+    )
+
+    assert result.status == "failed"
+    assert result.active_slot is None
+    assert user.personalization_update_requested_at is None
+    database.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_reused_terminal_failure_is_acknowledged_without_new_attempt() -> None:
+    value = PersonalizationInput(user_id=uuid4(), profile=_profile(), events=[_event()])
+    run = SimpleNamespace(
+        id=uuid4(),
+        status="failed",
+        attempt_count=3,
+        max_attempts=3,
+    )
+    acknowledged = False
+
+    class Repository:
+        async def input_snapshot(self, _user_id):
+            return value
+
+        async def create_or_reuse(self, _value, *, max_attempts):
+            assert max_attempts == 3
+            return run
+
+        async def acknowledge_terminal_failure(self, _run):
+            nonlocal acknowledged
+            acknowledged = True
+
+        async def start_attempt(self, _run_id):
+            raise AssertionError("terminal run must not start another attempt")
+
+    class NoModel:
+        async def personalize(self, _value):
+            raise AssertionError("terminal run must not call the model")
+
+    result = await PersonalizationRunner(  # type: ignore[arg-type]
+        Repository(),
+        NoModel(),
+        max_attempts=3,
+    ).run_user(value.user_id)
+
+    assert result.status == "failed"
+    assert acknowledged is True
+
+
+@pytest.mark.asyncio
 async def test_personalization_batches_and_combines_complete_ordered_output() -> None:
     events = [
         _event(display_time=datetime(2026, 8, 16, 10 - index, tzinfo=UTC))

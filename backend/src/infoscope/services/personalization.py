@@ -456,6 +456,18 @@ class PersonalizationRepository:
         run.active_slot = None if terminal else 1
         run.error_code = error_code[:128]
         run.finished_at = self.clock() if terminal else None
+        if terminal:
+            user = await self.database.get(User, run.user_id)
+            if (
+                user is not None
+                and user.personalization_update_requested_at
+                == run.captured_update_requested_at
+            ):
+                # The durable queue marker represented this exact input. Once
+                # its frozen retry budget is exhausted it must not starve all
+                # later users forever; a later Scope/fact update creates a new
+                # marker and a new input hash.
+                user.personalization_update_requested_at = None
         await self.database.commit()
         return run
 
@@ -467,6 +479,16 @@ class PersonalizationRepository:
             return
         current = await self.input_snapshot(run.user_id)
         if canonical_hash(current) == run.input_hash:
+            user.personalization_update_requested_at = None
+            await self.database.commit()
+
+    async def acknowledge_terminal_failure(self, run: PersonalizationRun) -> None:
+        if run.status != "failed":
+            return
+        user = await self.database.get(User, run.user_id)
+        if user is None:
+            return
+        if user.personalization_update_requested_at == run.captured_update_requested_at:
             user.personalization_update_requested_at = None
             await self.database.commit()
 
@@ -668,6 +690,9 @@ class PersonalizationRunner:
         run = await self.repository.create_or_reuse(value, max_attempts=self.max_attempts)
         if run.status == "completed":
             await self.repository.acknowledge_reused(run)
+            return run
+        if run.status == "failed" or run.attempt_count >= run.max_attempts:
+            await self.repository.acknowledge_terminal_failure(run)
             return run
         run = await self.repository.start_attempt(run.id)
         run_id = run.id
