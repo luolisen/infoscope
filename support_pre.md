@@ -12,18 +12,41 @@
 
 Hacker News 继续使用现有 `https://hnrss.org/frontpage`，不同时接入 `https://news.ycombinator.com/rss`，避免重复采集。
 
-本次另有 8 个公开频道准备加入 `News` 文件夹：
+### News 文件夹当前快照
+
+2026-08-19 通过 Telegram MTProto API 只读解析，`News` 文件夹当前包含 17 个公开群组 / 频道：
+
+1. CoinMarketCap Announcements：`@CoinMarketCapAnnouncements`
+2. Breaking Alert 全球快报：`@GlobalFinance_ZH`
+3. 吴说区块链 新闻与深度：`@wublock`
+4. TechFlow 深潮：`@TechFlowDaily`
+5. BlockBeats：`@theblockbeats`
+6. Tesla特斯拉 AI & FSD News：`@Tesla_share`
+7. PANews Web3：`@ChannelPANews`
+8. Glassnode：`@glassnode`
+9. SoSoValue News Bot 中文：`@sosovaluenewsbot_CN`
+10. Odaily资讯速递：`@Odaily_News`
+11. Foresight News：`@foresightnews`
+12. 敏感经济信息分享：`@pelosi3`
+13. A股销金窟：`@hejzl_xjk`
+14. 金色财经新闻频道：`@jinse2017`
+15. Binance Announcements：`@binance_announcements`
+16. 经济信息联播：`@eco_cn`
+17. PANews 编辑部 Web3 资讯严选：`@PANewsSelected`
+
+### 本次文件夹新增项
+
+批准的 8 个公开频道中，`@wublock` 已存在于 `News` 文件夹，因此实际只需新增以下 7 个：
 
 - NewsTrade.AI：`https://t.me/NewsTradeAI`
 - FinancialJuice：`https://t.me/financialjuice`
 - Wu Blockchain News：`https://t.me/wublockchainenglish`
-- 吴说区块链：`https://t.me/wublock`
 - Watcher Guru：`https://t.me/WatcherGuru`
 - Yummy：`https://t.me/GodlyNews1`
 - GitHub Trends：`https://t.me/githubtrending`
 - Tree News：`https://t.me/TreeNewsFeed`
 
-这 8 个频道只是本次文件夹新增项，不构成 TG News 的完整来源清单。后续采集范围始终由 `News` 文件夹的实时 include / exclude 结果决定。
+批准的频道列表不构成 TG News 的完整来源清单。后续采集范围始终由 `News` 文件夹的实时 include / exclude 结果决定。
 
 ## 后续支持来源
 
@@ -64,7 +87,6 @@ Anthropic 当前未提供已核验可用的原生 RSS Endpoint，后续只能在
 - Bitcoin Magazine：`https://bitcoinmagazine.com/`
 - 10x Research Telegram：`https://t.me/tenxresearch`
 - 财经慢报 Telegram：`https://t.me/Financial_Express`
-- PANews Telegram：`https://t.me/ChannelPANews`
 - WhaleBot Alerts Telegram：`https://t.me/WhaleBotAlerts`
 
 付费墙、授权限制或不稳定页面不得通过绕过访问控制的方式采集。无稳定 canonical URL 的市场快讯只能进入 discovery，不能单独确认事实。

@@ -49,10 +49,26 @@ Telegram 信息源集合由本机 Telegram 中标题严格等于 `News` 的文�
 
 | 频道 | 地址 | 主要范围 |
 | --- | --- | --- |
+| CoinMarketCap Announcements | `https://t.me/CoinMarketCapAnnouncements` | 加密市场与平台公告 |
+| Breaking Alert 全球快报 | `https://t.me/GlobalFinance_ZH` | 全球财经与突发新闻 |
+| 吴说区块链 | `https://t.me/wublock` | 亚洲加密市场中文资讯 |
+| TechFlow 深潮 | `https://t.me/TechFlowDaily` | 加密、Web3 与行业研究 |
+| BlockBeats | `https://t.me/theblockbeats` | 加密市场与区块链新闻 |
+| Tesla特斯拉 AI & FSD News | `https://t.me/Tesla_share` | Tesla、AI 与自动驾驶 |
+| PANews Web3 | `https://t.me/ChannelPANews` | Web3 与加密市场新闻 |
+| Glassnode | `https://t.me/glassnode` | 链上数据与市场分析 |
+| SoSoValue News Bot 中文 | `https://t.me/sosovaluenewsbot_CN` | 加密 ETF、资金流与市场数据 |
+| Odaily资讯速递 | `https://t.me/Odaily_News` | Web3 与加密快讯 |
+| Foresight News | `https://t.me/foresightnews` | Web3 新闻与行业研究 |
+| 敏感经济信息分享 | `https://t.me/pelosi3` | 宏观、市场与政策信息 |
+| A股销金窟 | `https://t.me/hejzl_xjk` | A 股、复盘与财经时讯 |
+| 金色财经新闻频道 | `https://t.me/jinse2017` | 区块链与加密市场新闻 |
+| Binance Announcements | `https://t.me/binance_announcements` | Binance 官方公告 |
+| 经济信息联播 | `https://t.me/eco_cn` | 中文宏观与财经资讯 |
+| PANews 编辑部 Web3 资讯严选 | `https://t.me/PANewsSelected` | Web3 编辑精选 |
 | NewsTrade.AI | `https://t.me/NewsTradeAI` | X 市场新闻聚合与来源线索 |
 | FinancialJuice | `https://t.me/financialjuice` | 宏观、美股与实时市场快讯 |
 | Wu Blockchain News | `https://t.me/wublockchainenglish` | 亚洲加密市场英文资讯 |
-| 吴说区块链 | `https://t.me/wublock` | 亚洲加密市场中文资讯 |
 | Watcher Guru | `https://t.me/WatcherGuru` | 加密、宏观与美股快讯 |
 | Yummy | `https://t.me/GodlyNews1` | 中文 AI、科技与数码资讯 |
 | GitHub Trends | `https://t.me/githubtrending` | GitHub Trending 与开源项目 |
@@ -93,7 +109,6 @@ Telegram 信息源集合由本机 Telegram 中标题严格等于 `News` 的文�
 - [Bitcoin Magazine](https://bitcoinmagazine.com/)
 - [10x Research](https://t.me/tenxresearch)
 - [财经慢报](https://t.me/Financial_Express)
-- [PANews Telegram](https://t.me/ChannelPANews)
 - [WhaleBot Alerts](https://t.me/WhaleBotAlerts)
 
 ## AI 与科技频道
