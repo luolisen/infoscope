@@ -3,13 +3,13 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-from collections.abc import Sequence
-from datetime import UTC, datetime
+from collections.abc import Callable, Sequence
+from datetime import UTC, datetime, timedelta
 from typing import Protocol
 from uuid import UUID
 
 from pydantic import ValidationError
-from sqlalchemy import func, select, text, update
+from sqlalchemy import and_, func, or_, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -56,8 +56,16 @@ def collection_hash(items: Sequence[EventLocalizationItem]) -> str:
 
 
 class EventLocalizationRepository:
-    def __init__(self, database: AsyncSession) -> None:
+    def __init__(
+        self,
+        database: AsyncSession,
+        *,
+        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        stale_after: timedelta = timedelta(minutes=15),
+    ) -> None:
         self.database = database
+        self.clock = clock
+        self.stale_after = stale_after
 
     async def snapshot(self, *, lock: bool = False) -> list[EventLocalizationItem]:
         query = select(Event).order_by(Event.id)
@@ -165,14 +173,21 @@ class EventLocalizationRepository:
         return run
 
     async def runnable_batch_ids(self, run_id: UUID) -> list[UUID]:
+        stale_cutoff = self.clock() - self.stale_after
         return list(
             (
                 await self.database.execute(
                     select(EventLocalizationBatch.id)
                     .where(
                         EventLocalizationBatch.run_id == run_id,
-                        EventLocalizationBatch.status.in_(["pending", "running", "failed"]),
                         EventLocalizationBatch.attempt_count < EventLocalizationBatch.max_attempts,
+                        or_(
+                            EventLocalizationBatch.status.in_(["pending", "failed"]),
+                            and_(
+                                EventLocalizationBatch.status == "running",
+                                EventLocalizationBatch.updated_at < stale_cutoff,
+                            ),
+                        ),
                     )
                     .order_by(EventLocalizationBatch.batch_index)
                 )
@@ -219,6 +234,11 @@ class EventLocalizationRepository:
             )
         ).scalar_one_or_none()
         if batch is None or batch.status == "completed":
+            raise EventLocalizationError("EVENT_LOCALIZATION_BATCH_NOT_RUNNABLE")
+        if (
+            batch.status == "running"
+            and batch.updated_at >= self.clock() - self.stale_after
+        ):
             raise EventLocalizationError("EVENT_LOCALIZATION_BATCH_NOT_RUNNABLE")
         if batch.attempt_count >= batch.max_attempts:
             raise EventLocalizationError("EVENT_LOCALIZATION_MAX_ATTEMPTS_REACHED")
@@ -455,10 +475,12 @@ class EventLocalizationRunner:
             return await EventLocalizationRepository(database).refresh_run(run.id)
 
     async def _process_batch(self, batch_id: UUID) -> None:
+        claimed = False
         try:
             async with self.factory() as database:
                 repository = EventLocalizationRepository(database)
                 batch, value = await repository.claim_batch(batch_id)
+                claimed = True
                 artifact = await repository.reusable_artifact(batch.input_hash)
             if artifact is None:
                 response = await self.client.localize(value)
@@ -479,6 +501,8 @@ class EventLocalizationRunner:
             )
         except (AnalysisError, EventLocalizationError, ValidationError, ValueError) as error:
             error_code = getattr(error, "error_code", "EVENT_LOCALIZATION_OUTPUT_INVALID")
+            if not claimed and error_code == "EVENT_LOCALIZATION_BATCH_NOT_RUNNABLE":
+                return
             async with self.factory() as database:
                 await EventLocalizationRepository(database).fail_batch(batch_id, error_code)
 
