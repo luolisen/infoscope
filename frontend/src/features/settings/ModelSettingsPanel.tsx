@@ -45,28 +45,27 @@ export function ModelSettingsPanel() {
       {query.isError && <p className="auth-error" role="alert">无法加载模型设置，请刷新后重试。</p>}
       {query.data !== undefined && draft !== null && (
         <form className="model-settings-form" onSubmit={(event) => { event.preventDefault(); update.mutate(draft); }}>
-          <label className="model-select-row">
-            <span>模型来源</span>
-            <select
-              aria-label="模型来源"
-              disabled={update.isPending}
-              onChange={(event) => selectSource(event.target.value as ModelSelection["source_id"])}
-              value={draft.source_id}
-            >
-              {query.data.sources.map((source) => <option disabled={!source.available} key={source.id} value={source.id}>{source.label}</option>)}
-            </select>
-          </label>
-          <label className="model-select-row">
-            <span>模型</span>
-            <select
-              aria-label="模型"
-              disabled={update.isPending}
-              onChange={(event) => setDraftOverride({ ...draft, model_id: event.target.value as ModelSelection["model_id"] })}
-              value={draft.model_id}
-            >
-              {selectedSource?.models.map((model) => <option disabled={!model.available} key={model.id} value={model.id}>{model.label}</option>)}
-            </select>
-          </label>
+          <fieldset className="model-selection-group">
+            <legend>模型来源</legend>
+            {query.data.sources.map((source) => (
+              <label className={`model-selection-row${draft.source_id === source.id ? " model-selection-row--selected" : ""}`} key={source.id}>
+                <span><strong>{source.label}</strong><small>{source.available ? "可用" : "服务端未配置"}</small></span>
+                <input checked={draft.source_id === source.id} disabled={!source.available || update.isPending} name="model-source" onChange={() => selectSource(source.id)} type="radio" value={source.id} />
+              </label>
+            ))}
+          </fieldset>
+          <fieldset className="model-selection-group">
+            <legend>可用模型</legend>
+            {selectedSource?.models.map((model) => {
+              const experimental = model.id.toLowerCase().includes("qwen");
+              return (
+                <label className={`model-selection-row${draft.model_id === model.id ? " model-selection-row--selected" : ""}`} key={model.id}>
+                  <span><strong>{model.label}</strong><small>{!model.available ? "服务端未配置" : experimental ? "实验性；不作为现场默认" : "可用"}</small></span>
+                  <input checked={draft.model_id === model.id} disabled={!model.available || update.isPending} name="model-id" onChange={() => setDraftOverride({ ...draft, model_id: model.id })} type="radio" value={model.id} />
+                </label>
+              );
+            })}
+          </fieldset>
           <button className="auth-submit" disabled={!dirty || update.isPending} type="submit">
             {update.isPending ? "保存中…" : "保存模型"}
           </button>
