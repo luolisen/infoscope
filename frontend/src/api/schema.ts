@@ -409,6 +409,11 @@ export interface components {
         AskCreateRequest: {
             /** Event Ids */
             event_ids: string[];
+            /**
+             * Grok Enabled
+             * @default false
+             */
+            grok_enabled: boolean;
             /** Question */
             question: string;
         };

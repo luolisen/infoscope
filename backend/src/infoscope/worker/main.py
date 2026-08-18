@@ -22,6 +22,7 @@ from infoscope.config import get_settings
 from infoscope.db import close_database, ping_database, session_factory
 from infoscope.integrations.research.client import OpenClawResearchClient
 from infoscope.integrations.research.fetcher import DirectHTTPSResearchFetcher
+from infoscope.integrations.research.grok import GrokBuildConfig, GrokBuildResearchClient
 from infoscope.integrations.research.health import AgentReachHealthChecker
 from infoscope.integrations.research.runtime import (
     research_capability_checker,
@@ -452,13 +453,28 @@ async def run_ask_research_bridge_once(ask_id: UUID) -> None:
         async with session_factory() as database:
             acquisition = AcquisitionRepository(database)
             research_repository = ResearchRepository(database)
+            ask_request = await database.get(AskRequest, ask_id)
+            use_grok = bool(ask_request and ask_request.grok_enabled)
+            grok_client = (
+                GrokBuildResearchClient(
+                    GrokBuildConfig(
+                        executable=settings.research_grok_executable,
+                        model=settings.research_grok_model,
+                        timeout_seconds=settings.research_grok_timeout_seconds,
+                    )
+                )
+                if use_grok
+                else None
+            )
             research_runner = ResearchRunner(
                 repository=research_repository,
                 acquisition=acquisition,
-                client=OpenClawResearchClient(config),
-                fetcher=DirectHTTPSResearchFetcher(client),
+                client=grok_client or OpenClawResearchClient(config),
+                fetcher=grok_client or DirectHTTPSResearchFetcher(client),
                 max_attempts=settings.research_max_attempts,
-                health_checker=AgentReachHealthChecker(
+                health_checker=None
+                if use_grok
+                else AgentReachHealthChecker(
                     settings.research_agent_reach_executable,
                     state_dir=settings.resolved_research_openclaw_state_dir,
                 ),

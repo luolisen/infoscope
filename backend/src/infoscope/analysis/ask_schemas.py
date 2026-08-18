@@ -17,6 +17,7 @@ class AskRequestSpec(StrictModel):
     user_id: UUID
     question: str = Field(min_length=1, max_length=2000)
     selected_event_ids: list[UUID] = Field(min_length=1, max_length=8)
+    grok_enabled: bool = False
 
     @field_validator("question")
     @classmethod
@@ -47,6 +48,7 @@ class AskComparisonInput(StrictModel):
     ask_id: UUID
     question: str = Field(min_length=1, max_length=2000)
     selected_event_ids: list[UUID] = Field(min_length=1, max_length=8)
+    grok_enabled: bool = False
     events: list[AskEventInput] = Field(min_length=1, max_length=8)
 
     @field_validator("question")
@@ -197,6 +199,7 @@ def ask_input_hash(value: AskComparisonInput) -> str:
     document = {
         "question": value.question,
         "selected_event_ids": [str(item) for item in value.selected_event_ids],
+        "grok_enabled": value.grok_enabled,
         "events": [item.model_dump(mode="json") for item in value.events],
     }
     encoded = json.dumps(

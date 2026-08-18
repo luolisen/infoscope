@@ -16,10 +16,11 @@ type AskPanelProps = {
 export function AskPanel({ selectedEvents, onClearSelection, workspace = false }: AskPanelProps) {
   const queryClient = useQueryClient();
   const [question, setQuestion] = useState("");
+  const [grokEnabled, setGrokEnabled] = useState(false);
   const [askId, setAskId] = useState<string | null>(null);
   const [submittedEvents, setSubmittedEvents] = useState<{ id: string; title: string }[] | null>(null);
   const refreshedAskId = useRef<string | null>(null);
-  const create = useMutation({ mutationFn: ({ eventIds, text }: { eventIds: string[]; text: string }) => createAsk(eventIds, text) });
+  const create = useMutation({ mutationFn: ({ eventIds, text, useGrok }: { eventIds: string[]; text: string; useGrok: boolean }) => createAsk(eventIds, text, useGrok) });
   const ask = useQuery({
     queryKey: askId === null ? ["ask", "idle"] : askQueryKey(askId),
     queryFn: () => fetchAsk(askId!),
@@ -53,11 +54,12 @@ export function AskPanel({ selectedEvents, onClearSelection, workspace = false }
     const text = question.trim();
     if (text.length === 0 || create.isPending || askId !== null) return;
 
-    create.mutate({ eventIds: selectedEvents.map((eventToAsk) => eventToAsk.id), text }, {
+    create.mutate({ eventIds: selectedEvents.map((eventToAsk) => eventToAsk.id), text, useGrok: grokEnabled }, {
       onSuccess: (accepted) => {
         setAskId(accepted.ask_id);
         setSubmittedEvents(selectedEvents);
         setQuestion("");
+        setGrokEnabled(false);
         refreshedAskId.current = null;
         void queryClient.invalidateQueries({ queryKey: askHistoryQueryKey });
       },
@@ -83,6 +85,7 @@ export function AskPanel({ selectedEvents, onClearSelection, workspace = false }
       <form className="ask-form" onSubmit={submit}>
         <label className="visually-hidden" htmlFor="ask-question">你的问题</label>
         <textarea disabled={askId !== null} id="ask-question" maxLength={2000} onChange={(event) => setQuestion(event.target.value)} placeholder="你想了解什么？" required value={question} />
+        <label className="ask-grok-toggle"><span>实时搜索</span><select aria-label="Grok 实时搜索" disabled={askId !== null} onChange={(event) => setGrokEnabled(event.target.value === "on")} value={grokEnabled ? "on" : "off"}><option value="off">关闭</option><option value="on">开启 Grok</option></select></label>
         {(question.trim().length > 0 || create.isPending || isActive) && <button aria-busy={create.isPending || isActive} aria-label={isActive ? "处理中" : "发送问题"} className={`auth-submit ask-send-button${create.isPending || isActive ? " ask-send-button--busy" : ""}`} disabled={create.isPending || askId !== null || question.trim().length === 0 || selectedEvents.length === 0} title={isActive ? "处理中" : "发送问题"} type="submit"><SendIcon className="action-icon" /></button>}
       </form>
       {create.isError && <p className="auth-error" role="alert">无法开始 Ask，请稍后重试。</p>}

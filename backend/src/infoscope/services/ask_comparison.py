@@ -52,6 +52,7 @@ class AskComparisonRepository:
         ask_id: UUID,
         question: str,
         selected_event_ids: list[UUID],
+        grok_enabled: bool = False,
     ) -> AskComparisonInput:
         try:
             snapshot = await ResearchRepository(self.database).fact_snapshot(
@@ -85,6 +86,7 @@ class AskComparisonRepository:
             ask_id=ask_id,
             question=question,
             selected_event_ids=selected_event_ids,
+            grok_enabled=grok_enabled,
             events=[
                 AskEventInput(
                     **events_by_id[event_id].model_dump(),
@@ -116,6 +118,7 @@ class AskComparisonRepository:
             user_id=spec.user_id,
             question=spec.question,
             status="pending",
+            grok_enabled=spec.grok_enabled,
             stage="comparing",
             input_hash=input_hash,
             max_attempts=max_attempts,
@@ -259,6 +262,7 @@ class AskComparisonRunner:
             ask_id=ask_id,
             question=spec.question,
             selected_event_ids=spec.selected_event_ids,
+            grok_enabled=spec.grok_enabled,
         )
         request = await self.repository.create_request(
             spec,
@@ -284,6 +288,7 @@ class AskComparisonRunner:
                     ask_id=request.id,
                     question=request.question,
                     selected_event_ids=selected_event_ids,
+                    grok_enabled=request.grok_enabled,
                 )
             if ask_input_hash(input_snapshot) != request.input_hash:
                 raise AskComparisonError("ASK_INPUT_CHANGED")
