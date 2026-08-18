@@ -6,14 +6,21 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from infoscope.integrations.research.client import ResearchRuntimeError
+from infoscope.integrations.research.fetcher import (
+    FetchedResearchSource,
+    ResearchFetchError,
+    normalize_text,
+)
 from infoscope.integrations.research.schemas import (
     ResearchDiscovery,
     ResearchDiscoveryResponse,
     ResearchRequestPayload,
     RuntimeUsage,
 )
+from infoscope.models import ResearchSourceKind
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +89,94 @@ class GrokBuildResearchClient:
         if len(stdout) > self.config.max_stdout_bytes or process.returncode != 0:
             raise ResearchRuntimeError("RESEARCH_RUNTIME_FAILED")
         return self._parse_stream(stdout, payload)
+
+    async def fetch(self, source_kind, validated) -> FetchedResearchSource:
+        """Fetch an X post through Grok's verified web_fetch tool."""
+        prompt = (
+            "Use the built-in web fetch tool to open this exact public X URL. Do not use memory. "
+            "Return one JSON object with schema_version grok_x_fetch.v1, source_url, title, "
+            "published_at (RFC3339 or null), and sanitized public post text. No Markdown. "
+            f"source_url={validated.canonical_url}"
+        )
+        environment = {"PATH": os.environ.get("PATH", os.defpath)}
+        with TemporaryDirectory(prefix="infoscope-grok-fetch-") as raw_workdir:
+            workdir = Path(raw_workdir)
+            argv = (
+                self.config.executable,
+                "--cwd", str(workdir), "--model", self.config.model,
+                "--sandbox", "workspace", "--always-approve", "--no-subagents",
+                "--max-turns", "4", "--output-format", "streaming-json", "-p", prompt,
+            )
+            try:
+                process = await asyncio.create_subprocess_exec(
+                    *argv, cwd=workdir, env=environment,
+                    stdin=asyncio.subprocess.DEVNULL,
+                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, _stderr = await asyncio.wait_for(
+                    process.communicate(), timeout=self.config.timeout_seconds
+                )
+            except FileNotFoundError as error:
+                raise ResearchFetchError("RESEARCH_RUNTIME_UNAVAILABLE") from error
+            except TimeoutError as error:
+                process.kill()
+                await process.wait()
+                raise ResearchFetchError("RESEARCH_RUNTIME_TIMEOUT") from error
+        if process.returncode != 0 or len(stdout) > self.config.max_stdout_bytes:
+            raise ResearchFetchError("RESEARCH_FETCH_FAILED")
+        try:
+            lines = stdout.decode("utf-8", errors="strict").splitlines()
+        except UnicodeDecodeError as error:
+            raise ResearchFetchError("RESEARCH_RUNTIME_PROTOCOL_INVALID") from error
+        tool_used = False
+        fetched_content: str | None = None
+        fetched_url: str | None = None
+        for line in lines:
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if event.get("type") == "tool_call_update":
+                raw = event.get("rawOutput")
+                name = raw.get("name", "") if isinstance(raw, dict) else ""
+                raw_type = raw.get("type", "") if isinstance(raw, dict) else ""
+                normalized_name = name.lower().replace("_", "")
+                normalized_raw_type = str(raw_type).lower().replace("_", "")
+                normalized_tool_name = str(event.get("toolName", "")).lower().replace(" ", "")
+                tool_used = (
+                    tool_used
+                    or "webfetch" in normalized_name
+                    or "webfetch" in normalized_raw_type
+                    or "webfetch" in normalized_tool_name
+                )
+                if normalized_raw_type == "webfetch" and isinstance(raw, dict):
+                    content = raw.get("Content")
+                    if isinstance(content, dict):
+                        candidate_url = content.get("url")
+                        candidate_text = content.get("content")
+                        if isinstance(candidate_url, str) and isinstance(candidate_text, str):
+                            fetched_url = candidate_url
+                            fetched_content = candidate_text
+        if not tool_used:
+            raise ResearchFetchError("GROK_FETCH_TOOL_NOT_USED")
+        try:
+            if fetched_url != validated.canonical_url or fetched_content is None:
+                raise ValueError("source URL mismatch")
+            text = normalize_text(fetched_content)
+            if not text or len(text.encode("utf-8")) > 200_000:
+                raise ValueError("empty or oversized text")
+            title = text.split("\n", 1)[0][:512] or None
+        except (TypeError, ValueError) as error:
+            raise ResearchFetchError("GROK_FETCH_SCHEMA_INVALID") from error
+        return FetchedResearchSource(
+            source_kind=ResearchSourceKind.WEB_PAGE,
+            canonical_url=validated.canonical_url,
+            title=title,
+            published_at=None,
+            normalized_text=text,
+            fetcher_name="grok_build_x",
+            fetcher_version="grok-build-cli-v1",
+        )
 
     @staticmethod
     def _prompt(payload: ResearchRequestPayload) -> str:
@@ -163,3 +258,17 @@ class GrokBuildResearchClient:
             except (json.JSONDecodeError, ValueError):
                 continue
         raise ValueError("no valid research discovery JSON")
+
+    @staticmethod
+    def _parse_json_text(value: str) -> dict[str, object]:
+        decoder = json.JSONDecoder()
+        for index in range(len(value) - 1, -1, -1):
+            if value[index] != "{":
+                continue
+            try:
+                document, _end = decoder.raw_decode(value[index:])
+            except json.JSONDecodeError:
+                continue
+            if isinstance(document, dict):
+                return document
+        raise ValueError("no valid JSON")

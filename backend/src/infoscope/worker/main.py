@@ -455,21 +455,22 @@ async def run_ask_research_bridge_once(ask_id: UUID) -> None:
             research_repository = ResearchRepository(database)
             ask_request = await database.get(AskRequest, ask_id)
             use_grok = bool(ask_request and ask_request.grok_enabled)
+            grok_client = (
+                GrokBuildResearchClient(
+                    GrokBuildConfig(
+                        executable=settings.research_grok_executable,
+                        model=settings.research_grok_model,
+                        timeout_seconds=settings.research_grok_timeout_seconds,
+                    )
+                )
+                if use_grok
+                else None
+            )
             research_runner = ResearchRunner(
                 repository=research_repository,
                 acquisition=acquisition,
-                client=(
-                    GrokBuildResearchClient(
-                        GrokBuildConfig(
-                            executable=settings.research_grok_executable,
-                            model=settings.research_grok_model,
-                            timeout_seconds=settings.research_grok_timeout_seconds,
-                        )
-                    )
-                    if use_grok
-                    else OpenClawResearchClient(config)
-                ),
-                fetcher=DirectHTTPSResearchFetcher(client),
+                client=grok_client or OpenClawResearchClient(config),
+                fetcher=grok_client or DirectHTTPSResearchFetcher(client),
                 max_attempts=settings.research_max_attempts,
                 health_checker=None
                 if use_grok
