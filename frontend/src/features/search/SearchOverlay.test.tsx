@@ -19,6 +19,19 @@ describe("SearchOverlay", () => {
     expect(searchEvents).not.toHaveBeenCalled();
   });
 
+  it("traps Tab focus inside the dialog", () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={queryClient}><SearchOverlay onClose={() => undefined} open /></QueryClientProvider>);
+
+    const close = screen.getByRole("button", { name: "关闭搜索" });
+    const submit = screen.getByRole("button", { name: "搜索" });
+    submit.focus();
+    fireEvent.keyDown(window, { key: "Tab" });
+    expect(document.activeElement).toBe(close);
+    fireEvent.keyDown(window, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(submit);
+  });
+
   it("submits normalized text to the generated Search endpoint and links results", async () => {
     vi.mocked(searchEvents).mockResolvedValue({ next_cursor: null, items: [{ id: "event-1", title: "Matching event", overview: "Overview", state: "developing", display_time: "2026-08-16T13:00:00Z", updated_at: "2026-08-16T13:00:00Z", why_it_matters: "Why", new_claim_count: 0, conflict_count: 0, topics: [], saved: false }] });
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
