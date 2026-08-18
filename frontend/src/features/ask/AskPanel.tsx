@@ -75,7 +75,7 @@ export function AskPanel({ selectedEvents, onClearSelection, workspace = false }
       {!workspace && <h2 id="ask-heading">询问观澜</h2>}
       <p className="ask-selection">{displayEvents.length === 0 ? "请选择至少一个 Event" : `${displayEvents.length} 个 Event：${displayEvents.map((eventToAsk) => eventToAsk.title).join(" · ")}.`} {!isActive && displayEvents.length > 0 && <button className="text-button" onClick={onClearSelection} type="button">清除选择</button>}</p>
       <form className="ask-form" onSubmit={submit}>
-        <label htmlFor="ask-question">你的问题</label>
+        <label className="visually-hidden" htmlFor="ask-question">你的问题</label>
         <textarea disabled={askId !== null} id="ask-question" maxLength={2000} onChange={(event) => setQuestion(event.target.value)} placeholder="你想了解什么？" required value={question} />
         {(question.trim().length > 0 || create.isPending || isActive) && <button aria-busy={create.isPending || isActive} aria-label={isActive ? "处理中" : "发送问题"} className={`auth-submit ask-send-button${create.isPending || isActive ? " ask-send-button--busy" : ""}`} disabled={create.isPending || askId !== null || question.trim().length === 0 || selectedEvents.length === 0} title={isActive ? "处理中" : "发送问题"} type="submit"><SendIcon className="action-icon" /></button>}
       </form>

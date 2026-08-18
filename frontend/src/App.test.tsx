@@ -154,8 +154,11 @@ describe("App", () => {
     expect(sidebar).toContainElement(screen.getByRole("heading", { name: "Event 列表" }));
     const checkbox = await screen.findByRole("checkbox", { name: "选择 可选择的 Event" });
     expect(sidebar).toContainElement(checkbox);
+    expect(sidebar).toHaveTextContent("0 / 8");
     fireEvent.click(checkbox);
     expect(checkbox).toBeChecked();
     expect(checkbox.closest("label")).toHaveClass("ask-event-option--selected");
+    expect(checkbox.closest("label")).toHaveTextContent("01");
+    expect(sidebar).toHaveTextContent("1 / 8");
   });
 });
