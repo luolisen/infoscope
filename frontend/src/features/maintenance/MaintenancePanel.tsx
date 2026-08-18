@@ -50,7 +50,7 @@ export function MaintenancePanel() {
       {status.isPending && <p className="maintenance-state" role="status">正在加载 Maintenance 状态…</p>}
       {status.isError && <p className="auth-error" role="alert">无法加载 Maintenance 状态，请刷新后重试。</p>}
       {status.data !== undefined && (
-        <section className="maintenance-status" aria-label="Maintenance status">
+        <section className="maintenance-status" aria-label="Maintenance 状态">
           <p className="editorial-label">STATUS / {status.data.status.toUpperCase()}</p>
           {status.data.status === "idle" && <p>当前没有运行中的 Maintenance 周期。</p>}
           {status.data.status === "running" && <p role="status">Maintenance 正在运行{status.data.phase === null ? "" : `：${status.data.phase}`}。</p>}

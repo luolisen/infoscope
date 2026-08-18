@@ -22,11 +22,11 @@ export function App() {
   const sessionQuery = useQuery({ queryKey: sessionQueryKey, queryFn: fetchSession });
 
   if (sessionQuery.isPending) {
-    return <main className="state-page"><p>Checking your session…</p></main>;
+    return <main className="state-page"><p>正在检查登录状态…</p></main>;
   }
 
   if (sessionQuery.isError) {
-    return <main className="state-page"><p role="alert">We could not check your session. Please refresh and try again.</p></main>;
+    return <main className="state-page"><p role="alert">无法检查登录状态，请刷新后重试。</p></main>;
   }
 
   if (sessionQuery.data.state === "anonymous") {
@@ -106,8 +106,8 @@ function ReadyApp() {
       <header className="topbar">
         <a className="wordmark" href="/" aria-label="Infoscope home">IS</a>
         <span className="meta">{healthQuery.isSuccess ? "SYSTEM / ONLINE" : "SYSTEM / CHECKING"}</span>
-        <button className="search-trigger" onClick={() => setSearchOpen(true)} ref={searchTriggerRef} type="button" aria-label="Search, shortcut Command K">
-          <span>Search</span>
+        <button className="search-trigger" onClick={() => setSearchOpen(true)} ref={searchTriggerRef} type="button" aria-label="搜索，快捷键 Command K">
+          <span>搜索</span>
           <kbd>⌘K</kbd>
         </button>
       </header>

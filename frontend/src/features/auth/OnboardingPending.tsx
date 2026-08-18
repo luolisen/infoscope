@@ -33,8 +33,8 @@ export function OnboardingPending({ editExisting = false, onComplete }: Onboardi
     },
   });
 
-  if (onboarding.isPending) return <main className="state-page"><p>Preparing your view…</p></main>;
-  if (onboarding.isError || !onboarding.data) return <main className="state-page"><p role="alert">We could not load onboarding.</p></main>;
+  if (onboarding.isPending) return <main className="state-page"><p>正在准备你的视野…</p></main>;
+  if (onboarding.isError || !onboarding.data) return <main className="state-page"><p role="alert">无法加载设置，请稍后重试。</p></main>;
 
   const data = onboarding.data;
   const currentAnswers = answers ?? (editExisting ? data.answers : emptyAnswers);
@@ -56,17 +56,17 @@ export function OnboardingPending({ editExisting = false, onComplete }: Onboardi
     else setAnswers({ ...currentAnswers, focus_ids: toggle(currentAnswers.focus_ids, id as components["schemas"]["FocusId"]) });
   }
   function next() {
-    if (selected.length === 0) { setLocalError("Select at least one option to continue."); return; }
+    if (selected.length === 0) { setLocalError("请至少选择一项后继续。"); return; }
     if (step === "scope") { setStep(requiresMarkets ? "markets" : "focus"); return; }
     if (step === "markets") { setStep("focus"); return; }
     save.mutate({ ...currentAnswers, investment_market_ids: requiresMarkets ? currentAnswers.investment_market_ids : [] });
   }
-  const apiError = save.error instanceof OnboardingError && save.error.code === "INVALID_ONBOARDING_SELECTION" ? "Your selections need updating. Please review them." : save.isError ? "We could not save your view. Please try again." : null;
+  const apiError = save.error instanceof OnboardingError && save.error.code === "INVALID_ONBOARDING_SELECTION" ? "选择已发生变化，请检查后重试。" : save.isError ? "无法保存你的视野，请稍后重试。" : null;
   return <main className="onboarding-page"><section className="onboarding-step" key={step}>
     <p className="editorial-label">{label}</p><h1>{title}</h1>
     <div className="choice-list">{options.map((option) => <button aria-pressed={selected.includes(option.id as never)} key={option.id} onClick={() => choose(option.id)} type="button"><span>{option.label}</span><span aria-hidden="true">{selected.includes(option.id as never) ? "×" : "+"}</span></button>)}</div>
     {(localError || apiError) && <p className="auth-error" role="alert">{localError ?? apiError}</p>}
-    <div className="onboarding-actions">{step !== "scope" && <button className="text-button" onClick={() => setStep(step === "focus" ? (requiresMarkets ? "markets" : "scope") : "scope")} type="button">Back</button>}<button className="auth-submit" disabled={save.isPending} onClick={next} type="button">{step === "focus" ? (editExisting ? "Save view" : "Establish view") : "Continue"}</button></div>
+    <div className="onboarding-actions">{step !== "scope" && <button className="text-button" onClick={() => setStep(step === "focus" ? (requiresMarkets ? "markets" : "scope") : "scope")} type="button">返回</button>}<button className="auth-submit" disabled={save.isPending} onClick={next} type="button">{step === "focus" ? (editExisting ? "保存视野" : "建立视野") : "继续"}</button></div>
     {hint && <p className={`onboarding-hint${editExisting && data.completed && step === "scope" ? " onboarding-hint--deferred" : ""}`}>{hint}</p>}
   </section></main>;
 }
