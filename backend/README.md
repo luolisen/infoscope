@@ -443,6 +443,19 @@ Ask, Maintenance, Personalization, and Brief queues in one native worker process
 ./scripts/demo.sh stop
 ```
 
+The local Demo reuses the controlled PostgreSQL fact layer; it never seeds fake
+Events or stores credentials in the repository. Before a final Demo run, verify
+that the layer and user-level snapshots are reproducible with:
+
+```bash
+uv run --project backend --no-sync python scripts/prepare_demo_data.py \
+  --username "$INFOSCOPE_DEMO_USERNAME" --require-complete
+```
+
+The command prints only aggregate counts and onboarding state. It does not print
+passwords, API keys, Raw content, Evidence text, provenance, or artifact
+payloads. A non-zero result is a fail-closed readiness failure.
+
 Runtime logs and PID files stay under ignored `.state/demo/`. The API binds to `127.0.0.1:8000`
 by default; set `INFOSCOPE_API_PORT` to change it. The script intentionally leaves PostgreSQL
 running on stop. Research still requires the pinned OpenClaw config and the fixed
