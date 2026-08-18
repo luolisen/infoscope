@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -69,6 +70,29 @@ class AskFailedResponse(BaseModel):
     status: Literal["failed"]
     result: None = None
     error: ErrorDetail
+
+
+class AskHistoryItem(BaseModel):
+    """Owner-only, public summary of one independent Ask round.
+
+    This deliberately excludes prompts, model metadata, artifact IDs and
+    evidence/provenance.  ``answer`` is the already-public Ask answer and is
+    present only after a completed round.
+    """
+
+    ask_id: UUID
+    status: Literal["pending", "running", "completed", "failed"]
+    question: str
+    event_ids: list[UUID]
+    created_at: datetime
+    finished_at: datetime | None = None
+    answer: str | None = None
+    updated_event_ids: list[UUID] = Field(default_factory=list)
+
+
+class AskHistoryResponse(BaseModel):
+    items: list[AskHistoryItem]
+    next_cursor: str | None
 
 
 AskStatusResponse = Annotated[
