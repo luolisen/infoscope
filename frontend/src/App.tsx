@@ -48,7 +48,7 @@ function ReadyApp() {
   const searchTriggerRef = useRef<HTMLButtonElement>(null);
   const navigationRef = useRef<HTMLElement>(null);
   const navigationLinks = useRef<Record<string, HTMLAnchorElement | null>>({});
-  const [activeIndicator, setActiveIndicator] = useState({ top: 0, height: 0, visible: false });
+  const [activeIndicator, setActiveIndicator] = useState({ top: 0, left: 0, height: 0, width: 0, visible: false });
   const eventId = locationHash.match(/^#event\/([^/]+)$/)?.[1];
   const isSettings = locationHash === "#settings";
   const isScope = locationHash === "#scope";
@@ -65,7 +65,15 @@ function ReadyApp() {
       if (!active || !nav) return;
       const navRect = nav.getBoundingClientRect();
       const linkRect = active.getBoundingClientRect();
-      setActiveIndicator({ top: linkRect.top - navRect.top, height: linkRect.height, visible: true });
+      const mobile = window.matchMedia?.("(max-width: 640px)").matches
+        ?? window.innerWidth <= 640;
+      setActiveIndicator({
+        top: mobile ? navRect.height - 2 : linkRect.top - navRect.top,
+        left: mobile ? linkRect.left - navRect.left : -12,
+        height: mobile ? 2 : linkRect.height,
+        width: mobile ? linkRect.width : 3,
+        visible: true,
+      });
     };
     updateIndicator();
     window.addEventListener("resize", updateIndicator);
@@ -114,7 +122,7 @@ function ReadyApp() {
 
       <aside className="sidebar" aria-label="Primary navigation">
         <nav ref={navigationRef}>
-          <span aria-hidden="true" className="navigation-indicator" style={{ height: activeIndicator.height, opacity: activeIndicator.visible ? 1 : 0, transform: `translateY(${activeIndicator.top}px)` }} />
+          <span aria-hidden="true" className="navigation-indicator" style={{ height: activeIndicator.height, left: activeIndicator.left, opacity: activeIndicator.visible ? 1 : 0, top: activeIndicator.top, width: activeIndicator.width }} />
           <ul className="navigation-list">
             {primaryNavigation.map((item) => (
               <li key={item}>

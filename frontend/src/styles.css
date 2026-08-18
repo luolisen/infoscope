@@ -33,7 +33,7 @@ kbd { border: 1px solid #bac2c3; border-radius: .2rem; padding: .1rem .35rem; co
 .sidebar { border-right: 1px solid #bac2c3; padding: 1.5rem; }
 .content-column { min-width: 0; }
 .sidebar nav { position: relative; }
-.navigation-indicator { background: #7b8586; left: -.75rem; pointer-events: none; position: absolute; top: 0; transition: opacity 180ms ease, transform 220ms ease, height 180ms ease; width: 3px; }
+.navigation-indicator { background: #7b8586; pointer-events: none; position: absolute; transition: opacity 180ms ease, top 220ms ease, left 220ms ease, height 180ms ease, width 180ms ease; }
 .navigation-list { list-style: none; margin: 0; padding: 0; }
 .navigation-list--secondary { border-top: 1px solid #bac2c3; margin-top: 2rem; padding-top: 1rem; }
 .navigation-list a { display: block; padding: .55rem 0; color: #667375; font-size: .77rem; font-weight: 650; letter-spacing: .08em; text-decoration: none; }
@@ -58,7 +58,7 @@ kbd { border: 1px solid #bac2c3; border-radius: .2rem; padding: .1rem .35rem; co
   .navigation-list--secondary { border-left: 1px solid #bac2c3; border-top: 0; margin: 0; padding: 0 0 0 1rem; }
   .navigation-list a { padding: .45rem 0; }
   .navigation-list a[aria-current="page"] { border-bottom: 2px solid #20666a; border-left: 0; margin-left: 0; padding-left: 0; }
-  .navigation-indicator { background: #20666a; bottom: 0; height: 2px !important; left: 0; top: auto; transform: translateX(0); width: 2.5rem; }
+  .navigation-indicator { background: #20666a; }
   .main-content { padding: 2rem 1.25rem 4rem; }
 }
 
