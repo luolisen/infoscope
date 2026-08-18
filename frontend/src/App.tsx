@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchHealth } from "./api/health";
 import { fetchSession, sessionQueryKey } from "./api/session";
 import { AuthScreen } from "./features/auth/AuthScreen";
-import { AskPanel } from "./features/ask/AskPanel";
+import { AskWorkspace } from "./features/ask/AskWorkspace";
 import { BriefPage } from "./features/brief/BriefPage";
 import { ArchivePage } from "./features/archive/ArchivePage";
 import { EventDetail } from "./features/events/EventDetail";
@@ -13,7 +13,7 @@ import { NowShell } from "./features/now/NowShell";
 import { SearchOverlay } from "./features/search/SearchOverlay";
 import { SettingsPage } from "./features/settings/SettingsPage";
 
-const primaryNavigation = ["NOW", "BRIEF", "ARCHIVE"];
+const primaryNavigation = ["NOW", "ASK", "BRIEF", "ARCHIVE"];
 const settingsNavigation = ["SCOPE", "SETTINGS"];
 
 type SelectedEvent = { id: string; title: string };
@@ -50,6 +50,7 @@ function ReadyApp() {
   const isScope = locationHash === "#scope";
   const isBrief = locationHash === "#brief";
   const isArchive = locationHash === "#archive";
+  const isAsk = locationHash === "#ask";
 
   const toggleEventSelection = (eventToToggle: SelectedEvent) => {
     setSelectedEvents((events) => {
@@ -91,7 +92,7 @@ function ReadyApp() {
           <ul className="navigation-list">
             {primaryNavigation.map((item) => (
               <li key={item}>
-                <a aria-current={(item === "NOW" && !isSettings && !isScope && !isBrief && !isArchive) || (item === "BRIEF" && isBrief) || (item === "ARCHIVE" && isArchive) ? "page" : undefined} href={`#${item.toLowerCase()}`}>
+                <a aria-current={(item === "NOW" && !isSettings && !isScope && !isAsk && !isBrief && !isArchive) || (item === "ASK" && isAsk) || (item === "BRIEF" && isBrief) || (item === "ARCHIVE" && isArchive) ? "page" : undefined} href={`#${item.toLowerCase()}`}>
                   {item}
                 </a>
               </li>
@@ -106,8 +107,7 @@ function ReadyApp() {
       </aside>
 
       <div className="content-column">
-        {isSettings ? <SettingsPage /> : isScope ? <OnboardingPending editExisting onComplete={() => { window.location.hash = "#now"; }} /> : isBrief ? <BriefPage /> : isArchive ? <ArchivePage /> : eventId === undefined ? <NowShell onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} /> : <EventDetail eventId={eventId} onBack={() => { window.location.hash = ""; }} onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} />}
-        {!isSettings && !isScope && !isBrief && !isArchive && <AskPanel onClearSelection={() => setSelectedEvents([])} selectedEvents={selectedEvents} />}
+        {isSettings ? <SettingsPage /> : isScope ? <OnboardingPending editExisting onComplete={() => { window.location.hash = "#now"; }} /> : isAsk ? <AskWorkspace onClearSelection={() => setSelectedEvents([])} onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} /> : isBrief ? <BriefPage /> : isArchive ? <ArchivePage /> : eventId === undefined ? <NowShell onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} /> : <EventDetail eventId={eventId} onAsk={() => { window.location.hash = "#ask"; }} onBack={() => { window.location.hash = ""; }} onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} />}
       </div>
       <SearchOverlay onClose={() => setSearchOpen(false)} open={searchOpen} />
     </div>

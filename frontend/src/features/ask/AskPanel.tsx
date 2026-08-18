@@ -9,9 +9,10 @@ import { nowQueryKey } from "../../api/now";
 type AskPanelProps = {
   selectedEvents: { id: string; title: string }[];
   onClearSelection: () => void;
+  workspace?: boolean;
 };
 
-export function AskPanel({ selectedEvents, onClearSelection }: AskPanelProps) {
+export function AskPanel({ selectedEvents, onClearSelection, workspace = false }: AskPanelProps) {
   const queryClient = useQueryClient();
   const [question, setQuestion] = useState("");
   const [askId, setAskId] = useState<string | null>(null);
@@ -39,7 +40,7 @@ export function AskPanel({ selectedEvents, onClearSelection }: AskPanelProps) {
   const isActive = askId !== null && !isTerminal;
   const displayEvents = askId === null ? selectedEvents : submittedEvents ?? selectedEvents;
 
-  if (displayEvents.length === 0) return null;
+  if (displayEvents.length === 0 && !workspace) return null;
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -68,21 +69,21 @@ export function AskPanel({ selectedEvents, onClearSelection }: AskPanelProps) {
   }
 
   return (
-    <section className="ask-panel" aria-labelledby="ask-heading">
-      <p className="editorial-label">ASK</p>
-      <h2 id="ask-heading">Compare the selected events</h2>
-      <p className="ask-selection">{displayEvents.length} selected event{displayEvents.length === 1 ? "" : "s"}: {displayEvents.map((eventToAsk) => eventToAsk.title).join(" · ")}. {!isActive && <button className="text-button" onClick={onClearSelection} type="button">Clear selection</button>}</p>
+    <section className={`ask-panel${workspace ? " ask-panel--workspace" : ""}`} aria-labelledby="ask-heading">
+      {!workspace && <p className="editorial-label">ASK</p>}
+      {!workspace && <h2 id="ask-heading">询问观澜</h2>}
+      <p className="ask-selection">{displayEvents.length === 0 ? "请选择至少一个 Event" : `${displayEvents.length} 个 Event：${displayEvents.map((eventToAsk) => eventToAsk.title).join(" · ")}.`} {!isActive && displayEvents.length > 0 && <button className="text-button" onClick={onClearSelection} type="button">清除选择</button>}</p>
       <form className="ask-form" onSubmit={submit}>
-        <label htmlFor="ask-question">Question</label>
-        <textarea disabled={askId !== null} id="ask-question" maxLength={2000} onChange={(event) => setQuestion(event.target.value)} placeholder="What do you want to understand?" required value={question} />
-        <button className="auth-submit" disabled={create.isPending || askId !== null || question.trim().length === 0} type="submit">{create.isPending ? "Starting Ask…" : isActive ? "Ask in progress" : "Ask Infoscope"}</button>
+        <label htmlFor="ask-question">你的问题</label>
+        <textarea disabled={askId !== null} id="ask-question" maxLength={2000} onChange={(event) => setQuestion(event.target.value)} placeholder="你想了解什么？" required value={question} />
+        <button className="auth-submit" disabled={create.isPending || askId !== null || question.trim().length === 0 || selectedEvents.length === 0} type="submit">{create.isPending ? "正在准备…" : isActive ? "处理中" : "发送问题"}</button>
       </form>
-      {create.isError && <p className="auth-error" role="alert">We could not start this Ask. Please try again.</p>}
-      {isActive && <p className="ask-progress" role="status">Researching the current event record…</p>}
-      {ask.isError && <><p className="auth-error" role="alert">We could not check this Ask. Please try again.</p><button className="text-button" onClick={() => { void ask.refetch(); }} type="button">Retry status check</button></>}
+      {create.isError && <p className="auth-error" role="alert">无法开始 Ask，请稍后重试。</p>}
+      {isActive && <p className="ask-progress" role="status">正在整理相关信息…</p>}
+      {ask.isError && <><p className="auth-error" role="alert">无法检查该 Ask，请稍后重试。</p><button className="text-button" onClick={() => { void ask.refetch(); }} type="button">重试状态检查</button></>}
       {failed !== null && <p className="auth-error" role="alert">{failed.message}</p>}
-      {completed !== null && <div className="ask-result"><p className="editorial-label">ANSWER</p><p>{completed.answer}</p>{completed.updated_event_ids.length > 0 && <p className="ask-updated" role="status">事件信息已补充。NOW and the updated event details have been refreshed.</p>}</div>}
-      {isTerminal && <button className="text-button ask-another" onClick={startAnotherAsk} type="button">Ask another question</button>}
+      {completed !== null && <div className="ask-result"><p className="editorial-label">回答</p><p>{completed.answer}</p>{completed.updated_event_ids.length > 0 && <p className="ask-updated" role="status">事件信息已补充，NOW 与事件详情已刷新。</p>}</div>}
+      {isTerminal && <button className="text-button ask-another" onClick={startAnotherAsk} type="button">再问一个问题</button>}
     </section>
   );
 }

@@ -15,7 +15,7 @@ describe("SearchOverlay", () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<QueryClientProvider client={queryClient}><SearchOverlay onClose={() => undefined} open /></QueryClientProvider>);
 
-    expect(screen.queryByText("Searching…")).not.toBeInTheDocument();
+    expect(screen.queryByText("搜索中…")).not.toBeInTheDocument();
     expect(searchEvents).not.toHaveBeenCalled();
   });
 
@@ -24,8 +24,8 @@ describe("SearchOverlay", () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<QueryClientProvider client={queryClient}><SearchOverlay onClose={() => undefined} open /></QueryClientProvider>);
 
-    fireEvent.change(screen.getByPlaceholderText("Search your event history"), { target: { value: "  AI\n model " } });
-    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    fireEvent.change(screen.getByPlaceholderText("搜索历史 Event"), { target: { value: "  AI\n model " } });
+    fireEvent.click(screen.getByRole("button", { name: "搜索" }));
 
     expect(await screen.findByRole("link", { name: "Matching event" })).toHaveAttribute("href", "#event/event-1");
     expect(searchEvents).toHaveBeenCalledWith("AI model", null);
@@ -38,10 +38,10 @@ describe("SearchOverlay", () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<QueryClientProvider client={queryClient}><SearchOverlay onClose={() => undefined} open /></QueryClientProvider>);
 
-    fireEvent.change(screen.getByPlaceholderText("Search your event history"), { target: { value: "AI" } });
-    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    fireEvent.change(screen.getByPlaceholderText("搜索历史 Event"), { target: { value: "AI" } });
+    fireEvent.click(screen.getByRole("button", { name: "搜索" }));
     await screen.findByRole("link", { name: "First" });
-    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+    fireEvent.click(screen.getByRole("button", { name: "加载更多" }));
 
     await screen.findByRole("link", { name: "Second" });
     expect(searchEvents).toHaveBeenLastCalledWith("AI", "opaque-cursor");
@@ -54,13 +54,13 @@ describe("SearchOverlay", () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<QueryClientProvider client={queryClient}><SearchOverlay onClose={() => undefined} open /></QueryClientProvider>);
 
-    fireEvent.change(screen.getByPlaceholderText("Search your event history"), { target: { value: "AI" } });
-    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    fireEvent.change(screen.getByPlaceholderText("搜索历史 Event"), { target: { value: "AI" } });
+    fireEvent.click(screen.getByRole("button", { name: "搜索" }));
     await screen.findByRole("link", { name: "First page result" });
-    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+    fireEvent.click(screen.getByRole("button", { name: "加载更多" }));
 
-    expect(await screen.findByText("We could not load more results.")).toBeInTheDocument();
+    expect(await screen.findByText("无法加载更多结果。")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "First page result" })).toBeInTheDocument();
-    expect(screen.queryByText("We could not search your event history.")).not.toBeInTheDocument();
+    expect(screen.queryByText("暂时无法搜索历史 Event。")).not.toBeInTheDocument();
   });
 });
