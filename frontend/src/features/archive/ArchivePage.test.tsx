@@ -51,7 +51,7 @@ describe("ArchivePage", () => {
     await screen.findByRole("link", { name: "First page event" });
     fireEvent.click(screen.getByRole("button", { name: "加载更多" }));
 
-    expect(await screen.findByText("无法加载更多 Archive Event。")).toBeInTheDocument();
+    expect(await screen.findByText("无法加载更多历史 Event。")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "First page event" })).toBeInTheDocument();
     expect(screen.queryByText("无法加载 Archive，请稍后重试。")).not.toBeInTheDocument();
   });

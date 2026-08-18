@@ -6,11 +6,11 @@ export function BriefPage() {
   const brief = useQuery({ queryKey: briefLatestQueryKey, queryFn: fetchLatestBrief });
 
   if (brief.isPending) {
-    return <main className="main-content brief-page"><p className="editorial-label">BRIEF / LOADING</p><p>正在准备 Brief…</p></main>;
+    return <main className="main-content brief-page"><p className="editorial-label">BRIEF / 加载中</p><p>正在准备 Brief…</p></main>;
   }
 
   if (brief.isError) {
-    return <main className="main-content brief-page"><p className="editorial-label">BRIEF / UNAVAILABLE</p><p role="alert">无法加载 Brief，请稍后重试。</p></main>;
+    return <main className="main-content brief-page"><p className="editorial-label">BRIEF / 不可用</p><p role="alert">无法加载 Brief，请稍后重试。</p></main>;
   }
 
   const { generated_at: generatedAt, items } = brief.data;
@@ -22,7 +22,7 @@ export function BriefPage() {
     <main className="main-content brief-page" id="brief">
       <p className="editorial-label">BRIEF</p>
       <header className="brief-header"><h1>当前视野，一览。</h1><p>生成于 {generatedAt}</p></header>
-      <section aria-label="Latest Brief" className="brief-list">
+    <section aria-label="最新 Brief" className="brief-list">
         {items.map((item) => (
           <article className="brief-item" key={item.event_id}>
             <h2><a href={`#event/${item.event_id}`}>{item.title}</a></h2>

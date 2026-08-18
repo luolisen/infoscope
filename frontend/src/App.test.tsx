@@ -48,10 +48,10 @@ describe("App", () => {
 
     renderApp();
 
-    expect(await screen.findByRole("heading", { name: /establish your view/i })).toBeInTheDocument();
-    expect(screen.getByLabelText("Username")).toBeInTheDocument();
-    expect(screen.getByLabelText("Password")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Submit log in" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "建立你的视野。" })).toBeInTheDocument();
+    expect(screen.getByLabelText("用户名")).toBeInTheDocument();
+    expect(screen.getByLabelText("密码")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "提交登录" })).toBeInTheDocument();
   });
 
   it("shows the editorial app shell and health success state", async () => {
@@ -65,9 +65,9 @@ describe("App", () => {
 
     renderApp();
 
-    expect(await screen.findByRole("heading", { name: /what matters now/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "此刻，什么值得关注。" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "NOW" })).toHaveAttribute("aria-current", "page");
-    expect(await screen.findByText(/nothing requires your attention/i)).toBeInTheDocument();
+    expect(await screen.findByText(/暂时没有需要关注的内容/)).toBeInTheDocument();
   });
 
   it("returns focus to the search trigger after Escape closes the overlay", async () => {
@@ -76,7 +76,7 @@ describe("App", () => {
     vi.mocked(fetchNow).mockResolvedValue({ items: [], next_cursor: null, window_stats: { raw_information_count: 0, event_count: 0, relevant_event_count: 0, window_started_at: "2026-01-01T00:00:00Z", window_ended_at: "2026-01-01T01:00:00Z" } });
 
     renderApp();
-    const trigger = await screen.findByRole("button", { name: "Search, shortcut Command K" });
+    const trigger = await screen.findByRole("button", { name: "搜索，快捷键 Command K" });
     fireEvent.click(trigger);
     expect(screen.getByRole("dialog", { name: "搜索 Event" })).toBeInTheDocument();
     fireEvent.keyDown(window, { key: "Escape" });

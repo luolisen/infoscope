@@ -37,7 +37,7 @@ export function ModelSettingsPanel() {
 
   return (
     <section className="model-settings" aria-labelledby="model-settings-heading">
-      <p className="editorial-label">MODEL SOURCE</p>
+      <p className="editorial-label">模型来源</p>
       <h1 id="model-settings-heading">选择模型来源</h1>
       <p className="settings-intro">此偏好用于 Personalization、Brief 与 Ask；共享 Event 事实继续使用服务器默认模型。</p>
 

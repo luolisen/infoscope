@@ -49,7 +49,7 @@ describe("EventDetail", () => {
     expect(screen.getAllByText("Sanitized private text")).toHaveLength(2);
     expect(screen.getAllByText("Public supporting text")).toHaveLength(3);
     expect(screen.getAllByText("First claim")).toHaveLength(2);
-    expect(screen.getByRole("link", { name: /open public source/i })).toHaveAttribute("href", "https://example.test/source");
+    expect(screen.getByRole("link", { name: /打开公开来源/ })).toHaveAttribute("href", "https://example.test/source");
     expect(screen.getByText(/Public desk/)).toBeInTheDocument();
     expect(screen.queryByText(/telegram\.me|invite|username/i)).not.toBeInTheDocument();
   });
@@ -57,12 +57,12 @@ describe("EventDetail", () => {
   it("renders loading, error, and empty relation states", async () => {
     vi.mocked(fetchEventDetail).mockImplementation(() => new Promise(() => undefined));
     const loading = renderDetail();
-    expect(screen.getByText(/loading the current event record/i)).toBeInTheDocument();
+    expect(screen.getByText(/正在加载当前事件记录/)).toBeInTheDocument();
     loading.unmount();
 
     vi.mocked(fetchEventDetail).mockRejectedValue(new Error("unavailable"));
     renderDetail();
-    expect(await screen.findByRole("alert")).toHaveTextContent(/could not load this event/i);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/无法加载该事件/);
     cleanup();
 
     vi.mocked(fetchEventDetail).mockResolvedValue({
@@ -71,9 +71,9 @@ describe("EventDetail", () => {
       claims: [], timeline: [], conflicts: [], evidence: [],
     });
     renderDetail();
-    expect(await screen.findByText(/no claims are available yet/i)).toBeInTheDocument();
-    expect(screen.getByText(/no timeline entries are available yet/i)).toBeInTheDocument();
-    expect(screen.getByText(/no unresolved conflicts are recorded/i)).toBeInTheDocument();
-    expect(screen.getByText(/no evidence is available yet/i)).toBeInTheDocument();
+    expect(await screen.findByText(/暂时没有主张记录/)).toBeInTheDocument();
+    expect(screen.getByText(/暂时没有时间线记录/)).toBeInTheDocument();
+    expect(screen.getByText(/暂时没有未解决的冲突/)).toBeInTheDocument();
+    expect(screen.getByText(/暂时没有证据/)).toBeInTheDocument();
   });
 });
