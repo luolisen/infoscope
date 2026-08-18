@@ -83,7 +83,7 @@ export function AskPanel({ selectedEvents, onClearSelection, workspace = false }
       {isActive && <p className="ask-progress" role="status">正在整理相关信息…</p>}
       {ask.isError && <><p className="auth-error" role="alert">无法检查该 Ask，请稍后重试。</p><button className="text-button" onClick={() => { void ask.refetch(); }} type="button">重试状态检查</button></>}
       {failed !== null && <p className="auth-error" role="alert">{failed.message}</p>}
-      {completed !== null && <div className="ask-result"><p className="editorial-label">回答</p><p>{completed.answer}</p>{completed.updated_event_ids.length > 0 && <p className="ask-updated" role="status">事件信息已补充，NOW 与事件详情已刷新。</p>}</div>}
+      {completed !== null && <div className="ask-result"><p className="editorial-label">回答</p><p>{completed.answer}</p><p className="ask-answer-boundary">分析回答，不作为 Evidence。</p>{completed.updated_event_ids.length > 0 && <p className="ask-updated" role="status">事件信息已补充，NOW 与事件详情已刷新。</p>}</div>}
       {isTerminal && <button className="text-button ask-another" onClick={startAnotherAsk} type="button">再问一个问题</button>}
     </section>
   );

@@ -65,6 +65,7 @@ describe("AskPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "发送问题" }));
 
     expect(await screen.findByText("Current answer")).toBeInTheDocument();
+    expect(screen.getByText("分析回答，不作为 Evidence。")).toBeInTheDocument();
     expect(screen.getByText(/Selected event/)).toBeInTheDocument();
     expect(screen.getByText(/事件信息已补充/)).toBeInTheDocument();
     await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ["now"] }));

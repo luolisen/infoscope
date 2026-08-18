@@ -43,6 +43,8 @@ describe("BriefPage", () => {
     renderBrief();
 
     expect(await screen.findByRole("heading", { name: /当前 Brief 没有内容/ })).toBeInTheDocument();
+    expect(screen.getByText(/生成于 2026年8月16日 13:05/)).toBeInTheDocument();
+    expect(screen.queryByText(/2026-08-16T13:05:00Z/)).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Latest Brief")).not.toBeInTheDocument();
   });
 
@@ -61,5 +63,6 @@ describe("BriefPage", () => {
     expect(titles).toEqual(["Second from Backend", "First from Backend"]);
     expect(screen.getByRole("link", { name: "Second from Backend" })).toHaveAttribute("href", "#event/event-2");
     expect(screen.getByText("First relevance")).toBeInTheDocument();
+    expect(screen.getByText("生成于 2026年8月16日 13:05")).toBeInTheDocument();
   });
 });
