@@ -482,6 +482,17 @@ Flash / Pro / Kimi / Qwen ...
 - 汉化不得修改 Evidence 原文或 provenance。
 - UI 动画不得改变请求、Polling、幂等或事务语义。
 
+### 6.1 Grok 联网 Research 渠道
+
+- 本轮模型生成渠道固定使用 AI Ping，已确认剩余额度足够；POK 只登记为未来 failback，本轮不得探测、调用或自动切换至 POK，以免引入额外变量。
+- Grok 只可作为 Ask Research 与 Event Backwrite 的外部检索来源，不能直接写入 Event、Claim、Timeline、Conflict 或 Base Analysis。
+- 渠道必须完整兼容 OpenAI Responses 语义：`POST /v1/responses`、服务端 `web_search` 工具调用，以及可审计的 citations/source URLs；仅能列出模型或仅兼容 Chat Completions 不算可用。
+- `grok-build-0.1`、`grok-4.5` 等模型名本身不代表联网能力；接入前必须用真实搜索请求验证工具调用与来源 URL。
+- 搜索结果仍必须进入既有 Research Request → Raw → Normalize → Signal → canonical deduplication → Reconciliation 流程；前端可见术语继续写作 `Signal`，中文产品定义为“因子”。
+- 来源抓取必须执行 SSRF 防护、协议 allowlist、响应体长度限制、超时和隐私过滤；不得向渠道发送账户凭据、Raw、私密来源身份/provenance 或 API Key。
+- 渠道暂时不可用、未返回来源或不支持服务端搜索时必须 fail-closed，不能退化为依赖模型记忆回答，也不能把无来源文本写入事实层。
+- 本机 Sub2API/Grok Build 反代当前探测结果为：模型列表可用，但最小 Responses 与 `web_search` Responses 均返回 `Service temporarily unavailable`；在通过上述能力探测前不进入正式配置。
+
 ---
 
 ## 7. 推荐 Branch / PR 顺序
