@@ -44,31 +44,31 @@ export function MaintenancePanel() {
   return (
     <section className="maintenance-panel" aria-labelledby="maintenance-heading">
       <p className="editorial-label">MAINTENANCE</p>
-      <h1 id="maintenance-heading">Keep the record current.</h1>
-      <p className="maintenance-intro">Maintenance runs analyze the current record in the background. This page follows the server-managed cycle; it does not calculate a schedule locally.</p>
+      <h1 id="maintenance-heading">保持事实层最新。</h1>
+      <p className="maintenance-intro">Maintenance 在后台分析当前事实层。本页面跟随服务器管理的周期，不在前端计算调度。</p>
 
-      {status.isPending && <p className="maintenance-state" role="status">Loading maintenance status…</p>}
-      {status.isError && <p className="auth-error" role="alert">We could not load maintenance status. Please refresh and try again.</p>}
+      {status.isPending && <p className="maintenance-state" role="status">正在加载 Maintenance 状态…</p>}
+      {status.isError && <p className="auth-error" role="alert">无法加载 Maintenance 状态，请刷新后重试。</p>}
       {status.data !== undefined && (
         <section className="maintenance-status" aria-label="Maintenance status">
           <p className="editorial-label">STATUS / {status.data.status.toUpperCase()}</p>
-          {status.data.status === "idle" && <p>No maintenance cycle is active.</p>}
-          {status.data.status === "running" && <p role="status">Maintenance is running{status.data.phase === null ? "" : `: ${status.data.phase}`}.</p>}
-          {status.data.status === "failed" && <p role="alert">The latest maintenance cycle failed. You can start a new cycle.</p>}
+          {status.data.status === "idle" && <p>当前没有运行中的 Maintenance 周期。</p>}
+          {status.data.status === "running" && <p role="status">Maintenance 正在运行{status.data.phase === null ? "" : `：${status.data.phase}`}。</p>}
+          {status.data.status === "failed" && <p role="alert">最近一次 Maintenance 失败，可以开始新的周期。</p>}
           <dl>
-            <div><dt>Next cycle</dt><dd>{status.data.next_cycle_at ?? "Not scheduled"}</dd></div>
-            <div><dt>Current phase</dt><dd>{status.data.phase ?? "—"}</dd></div>
+            <div><dt>下次周期</dt><dd>{status.data.next_cycle_at ?? "未安排"}</dd></div>
+            <div><dt>当前阶段</dt><dd>{status.data.phase ?? "—"}</dd></div>
           </dl>
         </section>
       )}
 
       <button className="auth-submit maintenance-start" disabled={!canStart} onClick={() => create.mutate()} type="button">
-        {create.isPending ? "Starting maintenance…" : runIsActive ? "Maintenance in progress" : "Start maintenance"}
+        {create.isPending ? "启动中…" : runIsActive ? "Maintenance 处理中" : "开始 Maintenance"}
       </button>
-      {create.isError && <p className="auth-error" role="alert">We could not start maintenance. Please try again.</p>}
-      {runId !== null && run.isPending && <p className="maintenance-state" role="status">Waiting for the maintenance run…</p>}
-      {runId !== null && run.isError && <><p className="auth-error" role="alert">We could not check this maintenance run. Please try again.</p><button className="text-button" onClick={() => { void run.refetch(); }} type="button">Retry status check</button></>}
-      {runId !== null && run.data !== undefined && <p className="maintenance-state" role="status">Run {run.data.status}{run.data.phase === null ? "" : ` / ${run.data.phase}`}.</p>}
+      {create.isError && <p className="auth-error" role="alert">无法开始 Maintenance，请稍后重试。</p>}
+      {runId !== null && run.isPending && <p className="maintenance-state" role="status">正在等待 Maintenance 周期…</p>}
+      {runId !== null && run.isError && <><p className="auth-error" role="alert">无法检查该 Maintenance 周期，请稍后重试。</p><button className="text-button" onClick={() => { void run.refetch(); }} type="button">重试状态检查</button></>}
+      {runId !== null && run.data !== undefined && <p className="maintenance-state" role="status">周期状态：{run.data.status}{run.data.phase === null ? "" : ` / ${run.data.phase}`}。</p>}
     </section>
   );
 }

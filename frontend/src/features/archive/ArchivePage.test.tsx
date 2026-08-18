@@ -19,12 +19,12 @@ describe("ArchivePage", () => {
   it("renders loading and the legal empty Archive", async () => {
     vi.mocked(fetchArchive).mockImplementation(() => new Promise(() => undefined));
     const view = renderArchive();
-    expect(screen.getByText(/opening your historical event record/i)).toBeInTheDocument();
+    expect(screen.getByText(/正在打开历史 Event/)).toBeInTheDocument();
 
     view.unmount();
     vi.mocked(fetchArchive).mockResolvedValue({ items: [], next_cursor: null });
     renderArchive();
-    expect(await screen.findByRole("heading", { name: /no historical events yet/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /还没有历史 Event/ })).toBeInTheDocument();
   });
 
   it("keeps Backend event order and links items to Event Detail", async () => {
@@ -49,10 +49,10 @@ describe("ArchivePage", () => {
     renderArchive();
 
     await screen.findByRole("link", { name: "First page event" });
-    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+    fireEvent.click(screen.getByRole("button", { name: "加载更多" }));
 
-    expect(await screen.findByText("We could not load more Archive events.")).toBeInTheDocument();
+    expect(await screen.findByText("无法加载更多 Archive Event。")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "First page event" })).toBeInTheDocument();
-    expect(screen.queryByText("We could not load Archive. Please try again.")).not.toBeInTheDocument();
+    expect(screen.queryByText("无法加载 Archive，请稍后重试。")).not.toBeInTheDocument();
   });
 });

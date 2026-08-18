@@ -32,19 +32,19 @@ describe("MaintenancePanel", () => {
 
     renderPanel();
 
-    expect(await screen.findByText("No maintenance cycle is active.")).toBeInTheDocument();
+    expect(await screen.findByText("当前没有运行中的 Maintenance 周期。")).toBeInTheDocument();
     expect(screen.getByText("2026-08-16T09:00:00Z")).toBeInTheDocument();
   });
 
   it("shows loading and error states for the maintenance status", async () => {
     vi.mocked(fetchMaintenanceStatus).mockImplementation(() => new Promise(() => undefined));
     const { view } = renderPanel();
-    expect(screen.getByText("Loading maintenance status…")).toBeInTheDocument();
+    expect(screen.getByText("正在加载 Maintenance 状态…")).toBeInTheDocument();
 
     view.unmount();
     vi.mocked(fetchMaintenanceStatus).mockRejectedValue(new Error("network unavailable"));
     renderPanel();
-    expect(await screen.findByText(/could not load maintenance status/i)).toBeInTheDocument();
+    expect(await screen.findByText(/无法加载 Maintenance 状态/)).toBeInTheDocument();
   });
 
   it("starts a run and polls its generated run identifier", async () => {
@@ -55,12 +55,12 @@ describe("MaintenancePanel", () => {
     vi.mocked(fetchMaintenanceRun).mockResolvedValue({ run_id: "run-1", status: "running", phase: "event_backwrite", started_at: "2026-08-16T08:00:00Z", finished_at: null });
 
     renderPanel();
-    await screen.findByText("No maintenance cycle is active.");
-    fireEvent.click(screen.getByRole("button", { name: "Start maintenance" }));
+    await screen.findByText("当前没有运行中的 Maintenance 周期。");
+    fireEvent.click(screen.getByRole("button", { name: "开始 Maintenance" }));
 
-    expect(await screen.findByText("Run running / event_backwrite.")).toBeInTheDocument();
+    expect(await screen.findByText("周期状态：running / event_backwrite。")).toBeInTheDocument();
     expect(fetchMaintenanceRun).toHaveBeenCalledWith("run-1");
-    expect(screen.getByRole("button", { name: "Maintenance in progress" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Maintenance 处理中" })).toBeDisabled();
   });
 
   it("refreshes the backend status after a terminal run", async () => {
@@ -71,8 +71,8 @@ describe("MaintenancePanel", () => {
     const { queryClient } = renderPanel();
     const invalidate = vi.spyOn(queryClient, "invalidateQueries");
 
-    await screen.findByText("No maintenance cycle is active.");
-    fireEvent.click(screen.getByRole("button", { name: "Start maintenance" }));
+    await screen.findByText("当前没有运行中的 Maintenance 周期。");
+    fireEvent.click(screen.getByRole("button", { name: "开始 Maintenance" }));
 
     await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ["maintenance", "status"] }));
     expect(fetchMaintenanceStatus).toHaveBeenCalledTimes(2);
