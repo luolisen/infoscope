@@ -433,7 +433,10 @@ class EventLocalizationRunner:
         batch_size: int,
         batch_concurrency: int,
         max_attempts: int,
+        stale_after: timedelta = timedelta(minutes=15),
     ) -> None:
+        if stale_after <= timedelta(0):
+            raise ValueError("stale_after must be positive")
         self.factory = factory
         self.client = client
         self.provider = provider
@@ -441,10 +444,14 @@ class EventLocalizationRunner:
         self.batch_size = batch_size
         self.batch_concurrency = batch_concurrency
         self.max_attempts = max_attempts
+        self.stale_after = stale_after
+
+    def _repository(self, database: AsyncSession) -> EventLocalizationRepository:
+        return EventLocalizationRepository(database, stale_after=self.stale_after)
 
     async def run(self) -> EventLocalizationRun:
         async with self.factory() as database:
-            repository = EventLocalizationRepository(database)
+            repository = self._repository(database)
             run = await repository.create_or_reuse(
                 provider=self.provider,
                 model=self.model,
@@ -458,7 +465,7 @@ class EventLocalizationRunner:
         semaphore = asyncio.Semaphore(self.batch_concurrency)
         while True:
             async with self.factory() as database:
-                batch_ids = await EventLocalizationRepository(database).runnable_batch_ids(run.id)
+                batch_ids = await self._repository(database).runnable_batch_ids(run.id)
             if not batch_ids:
                 break
 
@@ -468,17 +475,17 @@ class EventLocalizationRunner:
 
             await asyncio.gather(*(process(batch_id) for batch_id in batch_ids))
             async with self.factory() as database:
-                run = await EventLocalizationRepository(database).refresh_run(run.id)
+                run = await self._repository(database).refresh_run(run.id)
             if run.status in {"completed", "failed"}:
                 return run
         async with self.factory() as database:
-            return await EventLocalizationRepository(database).refresh_run(run.id)
+            return await self._repository(database).refresh_run(run.id)
 
     async def _process_batch(self, batch_id: UUID) -> None:
         claimed = False
         try:
             async with self.factory() as database:
-                repository = EventLocalizationRepository(database)
+                repository = self._repository(database)
                 batch, value = await repository.claim_batch(batch_id)
                 claimed = True
                 artifact = await repository.reusable_artifact(batch.input_hash)
@@ -504,7 +511,7 @@ class EventLocalizationRunner:
             if not claimed and error_code == "EVENT_LOCALIZATION_BATCH_NOT_RUNNABLE":
                 return
             async with self.factory() as database:
-                await EventLocalizationRepository(database).fail_batch(batch_id, error_code)
+                await self._repository(database).fail_batch(batch_id, error_code)
 
     async def _persist_success_with_retry(
         self,
@@ -517,7 +524,7 @@ class EventLocalizationRunner:
         for attempt in range(3):
             try:
                 async with self.factory() as database:
-                    await EventLocalizationRepository(database).persist_success(
+                    await self._repository(database).persist_success(
                         batch_id,
                         value,
                         response,

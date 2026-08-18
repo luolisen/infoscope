@@ -718,6 +718,9 @@ async def localize_events_once() -> EventLocalizationRun:
             batch_size=settings.event_localization_batch_size,
             batch_concurrency=settings.event_localization_batch_concurrency,
             max_attempts=settings.event_localization_max_attempts,
+            stale_after=timedelta(
+                seconds=max(settings.analysis_timeout_seconds + 60, 300)
+            ),
         ).run()
     logger.info(
         "event localization run status run_id=%s status=%s completed=%d failed=%d total=%d",
