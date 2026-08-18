@@ -122,6 +122,9 @@ kbd { border: 1px solid #bac2c3; border-radius: .2rem; padding: .1rem .35rem; co
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }
 }
 
+.save-button { margin-top: 0; }
+.save-button--saved { background: #20666a; color: #f5f6f5; }
+
 @media (max-width: 640px) {
   .auth-preview__body { grid-template-columns: 1fr; }
   .auth-preview aside { display: none; }

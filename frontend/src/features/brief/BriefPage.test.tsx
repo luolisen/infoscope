@@ -24,25 +24,25 @@ describe("BriefPage", () => {
   it("renders loading and error states", async () => {
     vi.mocked(fetchLatestBrief).mockImplementation(() => new Promise(() => undefined));
     const view = renderBrief();
-    expect(screen.getByText("Preparing your current Brief…")).toBeInTheDocument();
+    expect(screen.getByText("正在准备 Brief…")).toBeInTheDocument();
 
     view.unmount();
     vi.mocked(fetchLatestBrief).mockRejectedValue(new Error("network unavailable"));
     renderBrief();
-    expect(await screen.findByText(/could not load your brief/i)).toBeInTheDocument();
+    expect(await screen.findByText(/无法加载 Brief/)).toBeInTheDocument();
   });
 
   it("treats null generated_at with no items as a legal empty Brief", async () => {
     vi.mocked(fetchLatestBrief).mockResolvedValue({ generated_at: null, items: [] });
     renderBrief();
-    expect(await screen.findByRole("heading", { name: /your brief is waiting/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /Brief 正在等待/ })).toBeInTheDocument();
   });
 
   it("treats a generated deterministic-empty Brief as an empty state", async () => {
     vi.mocked(fetchLatestBrief).mockResolvedValue({ generated_at: "2026-08-16T13:05:00Z", items: [] });
     renderBrief();
 
-    expect(await screen.findByRole("heading", { name: /nothing is in your current brief/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /当前 Brief 没有内容/ })).toBeInTheDocument();
     expect(screen.queryByLabelText("Latest Brief")).not.toBeInTheDocument();
   });
 

@@ -78,7 +78,7 @@ describe("App", () => {
 
     renderApp();
 
-    expect(await screen.findByRole("heading", { name: /keep the record current/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /保持事实层最新/ })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "SETTINGS" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "NOW" })).not.toHaveAttribute("aria-current");
   });
@@ -91,7 +91,7 @@ describe("App", () => {
 
     renderApp();
 
-    expect(await screen.findByRole("heading", { name: /your brief is waiting/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /Brief 正在等待/ })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "BRIEF" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "NOW" })).not.toHaveAttribute("aria-current");
   });
