@@ -38,14 +38,14 @@ export function ModelSettingsPanel() {
   return (
     <section className="model-settings" aria-labelledby="model-settings-heading">
       <p className="editorial-label">MODEL SOURCE</p>
-      <h1 id="model-settings-heading">Choose how intelligence is generated.</h1>
-      <p className="settings-intro">This preference applies to your Personalization, Brief and Ask requests. Shared Event facts continue to use the server default.</p>
+      <h1 id="model-settings-heading">选择模型来源</h1>
+      <p className="settings-intro">此偏好用于 Personalization、Brief 与 Ask；共享 Event 事实继续使用服务器默认模型。</p>
 
-      {query.isPending && <p role="status">Loading model settings…</p>}
-      {query.isError && <p className="auth-error" role="alert">We could not load model settings. Please refresh and try again.</p>}
+      {query.isPending && <p role="status">正在加载模型设置…</p>}
+      {query.isError && <p className="auth-error" role="alert">无法加载模型设置，请刷新后重试。</p>}
       {query.data !== undefined && draft !== null && (
         <form className="model-settings-form" onSubmit={(event) => { event.preventDefault(); update.mutate(draft); }}>
-          <label>
+          <label className="model-select-row">
             <span>模型来源</span>
             <select
               aria-label="模型来源"
@@ -56,7 +56,7 @@ export function ModelSettingsPanel() {
               {query.data.sources.map((source) => <option disabled={!source.available} key={source.id} value={source.id}>{source.label}</option>)}
             </select>
           </label>
-          <label>
+          <label className="model-select-row">
             <span>模型</span>
             <select
               aria-label="模型"
@@ -68,10 +68,10 @@ export function ModelSettingsPanel() {
             </select>
           </label>
           <button className="auth-submit" disabled={!dirty || update.isPending} type="submit">
-            {update.isPending ? "Saving…" : "Save model"}
+            {update.isPending ? "保存中…" : "保存模型"}
           </button>
-          {update.isSuccess && !dirty && <p className="settings-success" role="status">Model preference saved.</p>}
-          {update.isError && <p className="auth-error" role="alert">We could not save this model. Check that it is configured on the server.</p>}
+          {update.isSuccess && !dirty && <p className="settings-success" role="status">模型偏好已保存。</p>}
+          {update.isError && <p className="auth-error" role="alert">无法保存该模型，请确认服务器已配置。</p>}
         </form>
       )}
     </section>

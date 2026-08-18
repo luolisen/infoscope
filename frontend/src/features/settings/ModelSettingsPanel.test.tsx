@@ -73,23 +73,23 @@ describe("ModelSettingsPanel", () => {
     fireEvent.change(source, { target: { value: "ai_ping" } });
     expect(model).toHaveValue("DeepSeek-V4-Flash-0731");
     fireEvent.change(model, { target: { value: "Qwen3.8-Max" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save model" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存模型" }));
 
     await waitFor(() => expect(vi.mocked(updateModelSettings).mock.calls[0]?.[0]).toEqual({
       source_id: "ai_ping",
       model_id: "Qwen3.8-Max",
     }));
-    expect(await screen.findByText("Model preference saved.")).toBeInTheDocument();
+    expect(await screen.findByText("模型偏好已保存。")).toBeInTheDocument();
   });
 
   it("shows loading and fail-closed load errors", async () => {
     vi.mocked(fetchModelSettings).mockImplementation(() => new Promise(() => undefined));
     const view = renderPanel();
-    expect(screen.getByText("Loading model settings…")).toBeInTheDocument();
+    expect(screen.getByText("正在加载模型设置…")).toBeInTheDocument();
 
     view.unmount();
     vi.mocked(fetchModelSettings).mockRejectedValue(new Error("offline"));
     renderPanel();
-    expect(await screen.findByRole("alert")).toHaveTextContent("could not load model settings");
+    expect(await screen.findByRole("alert")).toHaveTextContent("无法加载模型设置");
   });
 });
