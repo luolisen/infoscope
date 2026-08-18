@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import logging
 import signal
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID, uuid4, uuid5
@@ -107,6 +108,7 @@ from infoscope.services.window_analysis import WindowAnalysisRunner, WindowRunRe
 from infoscope.services.worker_health import record_worker_heartbeat, remove_worker_heartbeat
 
 logger = logging.getLogger("infoscope.worker")
+QueueProcessor = Callable[[], Awaitable[bool]]
 
 
 async def _run_heartbeat(
@@ -123,6 +125,62 @@ async def _run_heartbeat(
                 await record_worker_heartbeat(worker_id, process_started_at)
             except Exception:
                 logger.exception("worker heartbeat update failed worker_id=%s", worker_id)
+
+
+async def _process_queue_once(name: str, processor: QueueProcessor) -> bool:
+    try:
+        return await processor()
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        logger.exception("%s queue stage failed", name)
+        return False
+
+
+async def _run_serial_queue_group(
+    processors: tuple[tuple[str, QueueProcessor], ...],
+) -> bool:
+    processed = False
+    for name, processor in processors:
+        processed = await _process_queue_once(name, processor) or processed
+    return processed
+
+
+async def _run_queue_lane(
+    name: str,
+    processor: QueueProcessor,
+    stop: asyncio.Event,
+    poll_seconds: float,
+) -> None:
+    while not stop.is_set():
+        processed = await _process_queue_once(name, processor)
+        if processed:
+            continue
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=poll_seconds)
+        except TimeoutError:
+            continue
+
+
+async def _run_queue_lanes(
+    processors: tuple[tuple[str, QueueProcessor], ...],
+    stop: asyncio.Event,
+    poll_seconds: float,
+) -> None:
+    tasks = [
+        asyncio.create_task(
+            _run_queue_lane(name, processor, stop, poll_seconds),
+            name=f"infoscope-queue-{name}",
+        )
+        for name, processor in processors
+    ]
+    try:
+        await stop.wait()
+    finally:
+        stop.set()
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 async def collect_trendradar_once() -> None:
@@ -1021,6 +1079,37 @@ async def run(
     for signal_name in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(signal_name, stop.set)
 
+    single_run_requested = any(
+        (
+            once,
+            collect_trendradar,
+            collect_telegram,
+            normalize,
+            retry_normalization,
+            deduplicate,
+            analyze_windows,
+            retry_window_run is not None,
+            replay_window_run is not None,
+            reconcile_windows,
+            reconstruct_window_artifact is not None,
+            extract_claims_artifact is not None,
+            reconstruct_timeline_artifact is not None,
+            analyze_conflicts_artifact is not None,
+            analyze_base_artifact is not None,
+            research_request_file is not None,
+            retry_research_request is not None,
+            ask_comparison_request_file is not None,
+            retry_ask_comparison is not None,
+            ask_research_bridge is not None,
+            ask_event_reconciliation is not None,
+            ask_finalization is not None,
+            backwrite_snapshot_file is not None,
+            personalize_user is not None,
+            generate_brief_user is not None,
+            localize_events,
+        )
+    )
+
     try:
         is_queue_worker = any(
             (
@@ -1043,6 +1132,37 @@ async def run(
                     heartbeat_stop,
                 )
             )
+        if is_queue_worker and not single_run_requested:
+            await ping_database()
+            queue_lanes: list[tuple[str, QueueProcessor]] = []
+            if process_ask_queue:
+                queue_lanes.append(("Ask", process_ask_queue_once))
+            if process_event_localization_queue:
+                queue_lanes.append(
+                    ("Event localization", process_event_localization_queue_once)
+                )
+            core_processors: list[tuple[str, QueueProcessor]] = []
+            if process_personalization_queue:
+                core_processors.append(
+                    ("Personalization", process_personalization_queue_once)
+                )
+            if process_brief_queue:
+                core_processors.append(("Brief", process_brief_queue_once))
+            if process_maintenance_queue:
+                core_processors.append(("Maintenance", process_maintenance_queue_once))
+            if core_processors:
+                frozen_core_processors = tuple(core_processors)
+
+                async def process_core_queue_once() -> bool:
+                    return await _run_serial_queue_group(frozen_core_processors)
+
+                queue_lanes.append(("Core background", process_core_queue_once))
+            await _run_queue_lanes(
+                tuple(queue_lanes),
+                stop,
+                settings.worker_poll_seconds,
+            )
+            return
         while not stop.is_set():
             ask_processed = False
             localization_processed = False
@@ -1119,34 +1239,7 @@ async def run(
             if backwrite_snapshot_file is not None:
                 await run_backwrite_snapshot_once(backwrite_snapshot_file)
             logger.info("worker heartbeat")
-            if (
-                once
-                or collect_trendradar
-                or collect_telegram
-                or normalize
-                or retry_normalization
-                or deduplicate
-                or analyze_windows
-                or retry_window_run is not None
-                or replay_window_run is not None
-                or reconcile_windows
-                or reconstruct_window_artifact is not None
-                or extract_claims_artifact is not None
-                or reconstruct_timeline_artifact is not None
-                or analyze_conflicts_artifact is not None
-                or analyze_base_artifact is not None
-                or research_request_file is not None
-                or retry_research_request is not None
-                or ask_comparison_request_file is not None
-                or retry_ask_comparison is not None
-                or ask_research_bridge is not None
-                or ask_event_reconciliation is not None
-                or ask_finalization is not None
-                or backwrite_snapshot_file is not None
-                or personalize_user is not None
-                or generate_brief_user is not None
-                or localize_events
-            ):
+            if single_run_requested:
                 return
             if ask_processed or localization_processed:
                 continue

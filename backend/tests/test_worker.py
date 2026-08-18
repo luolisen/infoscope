@@ -6,7 +6,13 @@ from uuid import uuid4
 
 import pytest
 
-from infoscope.worker.main import _run_heartbeat, process_ask_queue_once, run
+from infoscope.worker.main import (
+    _run_heartbeat,
+    _run_queue_lanes,
+    _run_serial_queue_group,
+    process_ask_queue_once,
+    run,
+)
 
 
 async def test_heartbeat_runs_independently_until_stopped() -> None:
@@ -310,3 +316,58 @@ async def test_persisted_ask_stage_routes_to_exactly_one_worker(stage: str, targ
         dispatch.assert_awaited_once_with(retry_request_id=ask_id)
     else:
         dispatch.assert_awaited_once_with(ask_id)
+
+
+async def test_queue_lanes_keep_ask_responsive_while_background_work_waits() -> None:
+    stop = asyncio.Event()
+    background_started = asyncio.Event()
+    ask_seen = asyncio.Event()
+
+    async def background() -> bool:
+        background_started.set()
+        await asyncio.sleep(1)
+        return False
+
+    async def ask() -> bool:
+        await background_started.wait()
+        ask_seen.set()
+        stop.set()
+        return False
+
+    await asyncio.wait_for(
+        _run_queue_lanes(
+            (("Maintenance", background), ("Ask", ask)),
+            stop,
+            0.01,
+        ),
+        timeout=0.5,
+    )
+
+    assert ask_seen.is_set()
+
+
+async def test_core_queue_group_keeps_order_after_one_stage_fails() -> None:
+    calls: list[str] = []
+
+    async def personalization() -> bool:
+        calls.append("personalization")
+        raise RuntimeError("model unavailable")
+
+    async def brief() -> bool:
+        calls.append("brief")
+        return True
+
+    async def maintenance() -> bool:
+        calls.append("maintenance")
+        return False
+
+    processed = await _run_serial_queue_group(
+        (
+            ("Personalization", personalization),
+            ("Brief", brief),
+            ("Maintenance", maintenance),
+        )
+    )
+
+    assert processed is True
+    assert calls == ["personalization", "brief", "maintenance"]
