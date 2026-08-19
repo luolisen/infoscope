@@ -18,6 +18,12 @@
 - **ARCHIVE / Search**：访问历史 Event、已保存内容并进行站内搜索。
 - **SCOPE / SETTINGS**：配置关注范围、焦点和模型来源。
 
+## Infoscope Display（ISD）
+
+[Infoscope Display（ISD）](https://github.com/SCOUT-Infoscope/infoscope-display) 是 Infoscope 的硬件展示功能与设备端呈现方式，并非一套独立产品。它使用独立仓库，是为了隔离硬件、固件和设备端依赖，避免这些工程内容污染 Infoscope 主仓库。
+
+Infoscope 主仓库负责产品事实层、API，以及 `contracts/mqtt/` 中唯一权威的 MQTT Display Contract；ISD 只消费经过冻结的合同与 canonical fixture，在设备端呈现 Event。ISD 不维护第二份权威 Schema，vendoring fixture 时必须记录对应的上游 immutable commit SHA 与 SHA-256。
+
 事实处理遵循固定管线：
 
 ```text
