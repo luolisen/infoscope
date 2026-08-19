@@ -477,6 +477,38 @@ async def test_failed_large_model_request_is_split_and_merged_under_same_batch()
     assert response.payload.unassigned_signal_ids == [signal.id for signal in stored_signals]
 
 
+async def test_fifty_signal_request_is_proactively_split_into_twenty_five() -> None:
+    raw = _raw()
+    stored_signals = [_signal(raw) for _ in range(50)]
+    client = FakeClient()
+    runner = WindowAnalysisRunner(
+        acquisition=FakeAcquisition(raw, stored_signals),  # type: ignore[arg-type]
+        pipeline=FakePipeline(),  # type: ignore[arg-type]
+        client=client,
+    )
+    window = type("Window", (), {
+        "start": datetime(2026, 8, 16, 9, tzinfo=UTC),
+        "end": datetime(2026, 8, 16, 10, tzinfo=UTC),
+    })()
+    signals = [
+        AnalysisSignal(
+            signal_id=signal.id,
+            title=signal.title,
+            text=signal.normalized_text,
+            published_at=signal.published_at,
+            source_type=signal.source_type,
+            evidence_visibility=signal.evidence_visibility,
+            public_provenance=signal.public_provenance,
+        )
+        for signal in stored_signals
+    ]
+
+    response = await runner._analyze_resilient(window=window, signals=signals)  # noqa: SLF001
+
+    assert client.batch_sizes == [25, 25]
+    assert len(response.payload.signal_analyses) == 50
+
+
 def _terminal_run(
     *,
     status: PipelineRunStatus,

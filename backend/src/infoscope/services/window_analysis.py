@@ -453,6 +453,12 @@ class WindowAnalysisRunner:
         window: LogicalWindow,
         signals: list[AnalysisSignal],
     ) -> AnalysisResponse:
+        if len(signals) > 25:
+            return await self._analyze_split(
+                window=window,
+                signals=signals,
+                reason="WINDOW_BATCH_PROACTIVE_SPLIT",
+            )
         try:
             return await self._analyze(window=window, signals=signals)
         except AnalysisError as error:
@@ -466,60 +472,67 @@ class WindowAnalysisRunner:
             }
             if len(signals) <= 10 or error.error_code not in split_errors:
                 raise
-            split_at = len(signals) // 2
-            parts = (signals[:split_at], signals[split_at:])
-            logger.warning(
-                "pipeline batch request splitting pipeline=%s window_start=%s window_end=%s "
-                "signals=%d parts=%s error_code=%s",
-                PIPELINE_NAME,
-                window.start.isoformat(),
-                window.end.isoformat(),
-                len(signals),
-                [len(part) for part in parts],
-                error.error_code,
+            return await self._analyze_split(
+                window=window,
+                signals=signals,
+                reason=error.error_code,
             )
-            responses = [
-                await self._analyze_resilient(window=window, signals=part)
-                for part in parts
-            ]
-            providers = {response.provider for response in responses}
-            models = {response.model for response in responses}
-            if len(providers) != 1 or len(models) != 1:
-                raise WindowAnalysisError("ANALYSIS_MODEL_CHANGED") from error
-            return AnalysisResponse(
-                payload=WindowAnalysisPayload(
-                    signal_analyses=[
-                        item
-                        for response in responses
-                        for item in response.payload.signal_analyses
-                    ],
-                    clusters=[
-                        cluster.model_copy(
-                            update={"cluster_key": f"split-{part_index}-{cluster.cluster_key}"}
-                        )
-                        for part_index, response in enumerate(responses)
-                        for cluster in response.payload.clusters
-                    ],
-                    unassigned_signal_ids=[
-                        signal_id
-                        for response in responses
-                        for signal_id in response.payload.unassigned_signal_ids
-                    ],
+
+    async def _analyze_split(
+        self,
+        *,
+        window: LogicalWindow,
+        signals: list[AnalysisSignal],
+        reason: str,
+    ) -> AnalysisResponse:
+        split_at = len(signals) // 2
+        parts = (signals[:split_at], signals[split_at:])
+        logger.warning(
+            "pipeline batch request splitting pipeline=%s window_start=%s window_end=%s "
+            "signals=%d parts=%s reason=%s",
+            PIPELINE_NAME,
+            window.start.isoformat(),
+            window.end.isoformat(),
+            len(signals),
+            [len(part) for part in parts],
+            reason,
+        )
+        responses = [
+            await self._analyze_resilient(window=window, signals=part)
+            for part in parts
+        ]
+        providers = {response.provider for response in responses}
+        models = {response.model for response in responses}
+        if len(providers) != 1 or len(models) != 1:
+            raise WindowAnalysisError("ANALYSIS_MODEL_CHANGED")
+        return AnalysisResponse(
+            payload=WindowAnalysisPayload(
+                signal_analyses=[
+                    item for response in responses for item in response.payload.signal_analyses
+                ],
+                clusters=[
+                    cluster.model_copy(
+                        update={"cluster_key": f"split-{part_index}-{cluster.cluster_key}"}
+                    )
+                    for part_index, response in enumerate(responses)
+                    for cluster in response.payload.clusters
+                ],
+                unassigned_signal_ids=[
+                    signal_id
+                    for response in responses
+                    for signal_id in response.payload.unassigned_signal_ids
+                ],
+            ),
+            provider=responses[0].provider,
+            model=responses[0].model,
+            token_usage=TokenUsage(
+                prompt_tokens=sum(response.token_usage.prompt_tokens for response in responses),
+                completion_tokens=sum(
+                    response.token_usage.completion_tokens for response in responses
                 ),
-                provider=responses[0].provider,
-                model=responses[0].model,
-                token_usage=TokenUsage(
-                    prompt_tokens=sum(
-                        response.token_usage.prompt_tokens for response in responses
-                    ),
-                    completion_tokens=sum(
-                        response.token_usage.completion_tokens for response in responses
-                    ),
-                    total_tokens=sum(
-                        response.token_usage.total_tokens for response in responses
-                    ),
-                ),
-            )
+                total_tokens=sum(response.token_usage.total_tokens for response in responses),
+            ),
+        )
 
     async def _analyze_batches(
         self,
