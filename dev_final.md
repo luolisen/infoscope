@@ -1,6 +1,6 @@
 # Infoscope（观澜）最终开发交接 / dev_final.md
 
-> 状态：0.1 Demo 可用；ASK 对话体验 PR 待审查
+> 状态：0.1 Demo 可用；PR #77 / #78 已合并；进入质量与路演收尾
 > 快照时间：2026-08-19（Asia/Shanghai）
 > 适用仓库：`SCOUT-Infoscope/infoscope`
 > 本文件只写当前执行状态与下一步；长期产品合同见 `plan_final.md`。
@@ -17,8 +17,9 @@ git status --short
 git branch --show-current
 git fetch origin --prune
 git log -5 --oneline --decorate
-gh pr view 77 --repo SCOUT-Infoscope/infoscope \
-  --json state,headRefName,headRefOid,baseRefOid,mergeStateStatus,url
+gh pr view 77 --repo SCOUT-Infoscope/infoscope --json state,mergedAt,mergeCommit,url
+gh pr view 78 --repo SCOUT-Infoscope/infoscope --json state,mergedAt,mergeCommit,url
+git ls-remote origin refs/heads/main
 ./scripts/demo.sh status
 ```
 
@@ -41,17 +42,14 @@ tech_final.md
 
 | 项目 | 值 |
 | --- | --- |
-| 当前 branch | `codex/ask-chat-experience` |
-| 当前功能提交 | `8dc3796`（文档提交会继续前进） |
-| Open PR | GitHub PR #77 `feat(ask): add conversational workspace` |
-| PR 状态 | OPEN、CLEAN |
-| PR base | `origin/main` at `f44c357` |
+| 当前正式 main | `origin/main` at `1e31b16` |
+| PR #77 | MERGED，merge commit `f7ab462` |
+| PR #78 | MERGED，merge commit `1e31b16` |
+| 当前文档收尾 branch | `codex/readme-positioning-handoff`（head 会继续前进） |
 | 可用版本 tag | `0.1` at `97fd66f` |
 | Demo | API running、Worker running |
 
-注意：worktree 的本地 `main` 曾落后于 `origin/main`。新聊天创建后续分支时应以最新 `origin/main` 为基线，不要盲信未 fetch 的本地 `main`。
-
-PR #77 当前不应由文档生成任务自动合并。完成审查或收到 Alan 明确合并指令后再 Squash Merge。
+PR #77 与 PR #78 都是已完成历史，不得继续把它们当作待审查、待合并任务。新任务先 fetch，并以最新 `origin/main` 建立新的 `codex/*` 分支。
 
 ---
 
@@ -80,15 +78,15 @@ http://127.0.0.1:8000/
 
 注意：在某些一次性自动化 shell 中，宿主会在命令返回后回收后台子进程。无人值守启动时应让 Demo 运行在持续终端会话中，并在返回用户前再次执行 `./scripts/demo.sh status` 和 health 检查。
 
-当前最近一次完整检查：
+2026-08-19 最近一次安全自检：
 
-- Backend：297 passed，12 skipped。
-- Frontend：37 passed。
-- Frontend production build：通过。
-- OpenAPI generation check：通过。
-- ASK 浏览器验收：通过。
+- Backend 不连接 Demo 数据库的定向测试：65 passed，1 个 deprecation warning。
+- Frontend：38 passed；lint、typecheck、production build 通过。
+- Ruff、OpenAPI generation check、`git diff --check` 通过。
+- API、数据库与 Worker health 通过。
+- 完整 PostgreSQL 集成套件本轮未重跑：现有测试会连接本机 Demo 数据库；应先使用隔离 test database。
 
-这些数字是 2026-08-19 的快照；新提交后必须重新运行检查，不能把历史结果当当前结果。
+这些数字只属于该次自检。新提交后必须重新验证，不能把历史结果当当前结果。
 
 ---
 
@@ -179,15 +177,15 @@ http://127.0.0.1:8000/
 
 ---
 
-## 4. PR #77：ASK 对话体验
+## 4. 已合并交付：PR #77 / #78
 
-PR #77 已实现：
+PR #77 已合并并交付：
 
 - ASK 成为与 NOW 同级的一级页面。
 - Event Detail 使用“询问这个事件”按钮携带上下文进入 ASK。
 - 左侧 Event 列表整行选择；隐藏默认 checkbox，选中后加深并出现左侧指示条。
 - 最多选择 8 个 Event。
-- 空状态居中“观澜能帮忙做什么”。
+- 空状态居中“观澜能帮你做什么？”。
 - 提交后 composer 下沉并固定在工作区底部。
 - 用户问题显示在右侧，观澜回答显示在左侧。
 - 对话区独立滚动，composer 不覆盖最新回答。
@@ -200,55 +198,49 @@ PR #77 已实现：
 - 只有确实执行 Research/Reconciliation 的 Ask 才显示相应阶段。
 - 不公开模型私有 Chain-of-Thought。
 
-本 PR 的最后实现提交：
+PR #78 随后已合并并交付：
+
+- 仅询问称呼的本地入口。
+- Settings 中不持久化 Profile 的“演示demo”。
+- AI Ping `DeepSeek-V4-Pro` 与运行时模型覆盖。
+- 新来源采集、Window Analysis cache 与并发恢复能力。
+- README 和产品定位收尾从 PR #78 合并后的 `main` 继续。
+
+权威合并点：
 
 ```text
-8dc3796 fix(ask): show auditable processing stages
+PR #77 -> f7ab462
+PR #78 -> 1e31b16
 ```
-
-文档提交后 head 会变化；以 `gh pr view 77` 的 `headRefOid` 为准。
 
 ---
 
 ## 5. 下一步严格顺序
 
-### D1 — 审查 PR #77
-
-检查重点：
-
-1. `AskProgress.stages` 与 `AskHistoryItem.process_stages` 是否只暴露公开阶段。
-2. direct path 不得虚构 Research/Reconciliation。
-3. research path 必须在存在 reconciliation artifact 时显示完整阶段。
-4. owner-only history 不泄露 Prompt、provider/model、artifact ID、Evidence/provenance。
-5. composer、history、Event rail 在常见 viewport 不互相遮挡。
-6. Generated OpenAPI/TypeScript 与 Backend 一致。
-
-审查后运行：
-
-```bash
-./scripts/check.sh
-git diff --check
-```
-
-### D2 — 按明确指令合并
-
-只有审查通过且 Alan 明确要求合并时：
-
-```bash
-gh pr merge 77 --repo SCOUT-Infoscope/infoscope --squash
-```
-
-不要在没有新指令时自动合并。
-
-### D3 — 合并后验证 main
+### D1 — 从最新 main 开始
 
 ```bash
 git fetch origin --prune
-git switch main
-git pull --ff-only origin main
-./scripts/check.sh
-./scripts/demo.sh restart
+git switch -c codex/<task-name> origin/main
+```
+
+不得继续向 PR #77、PR #78 的历史 head 堆叠新功能。
+
+### D2 — 质量收尾
+
+当前优先级：
+
+1. 冻结 README 的目标用户、具体问题与用户结果。
+2. 更新过期交接快照，避免新聊天重复处理已合并 PR。
+3. 为 NOW、BRIEF、ARCHIVE、ASK Event rail 等错误态补真实重试入口。
+4. 使用隔离 test database 跑完整 PostgreSQL 集成套件。
+5. 冻结三分钟 `NOW → Event Detail → ASK` 路演与截图/录屏备用。
+
+### D3 — Demo 验证
+
+```bash
 ./scripts/demo.sh status
+curl -fsS http://127.0.0.1:8000/api/v1/health
 ```
 
 真实浏览器至少验证：
@@ -263,9 +255,11 @@ Save → Archive → Search
 Settings → Maintenance status
 ```
 
-### D4 — 创建下一任务
+涉及真实 Provider 的 ASK/Research 测试必须遵守既有数据授权；路演优先准备无需 Grok 的 direct Ask。
 
-所有新建议必须单独建 `codex/*` branch 和 PR。不得继续在已合并 PR branch 堆叠无关功能。
+### D4 — 提交下一任务
+
+每个质量修复使用独立 `codex/*` branch 和 PR；完成检查后再按明确指令合并。
 
 ---
 
@@ -346,9 +340,10 @@ test(scope): summary
 
 ```text
 请接管 /Users/alan/.codex/worktrees/88dd/infoscope。
-先只读核验 Git、PR #77 和 Demo 状态，并完整阅读
+先只读核验 Git、当前开放 PR、PR #77 / #78 的已合并状态和 Demo 状态，并完整阅读
 plan_final.md、dev_final.md、style_final.md、tech_final.md。
 以 contracts/openapi.json、Backend Schema、migration 和代码为实现事实源。
 保护 .env/.state/数据库备份，不输出任何 key。
-先报告当前状态，再执行我接下来的需求；未经明确指令不要合并 PR。
+不要把 PR #77 或 PR #78 当作待办；先报告当前状态，再执行我接下来的需求。
+未经明确指令不要合并新的 PR。
 ```
