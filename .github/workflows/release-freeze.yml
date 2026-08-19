@@ -1,0 +1,27 @@
+name: Release freeze gate
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+jobs:
+  release-freeze:
+    name: Release freeze gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Enforce frozen release scope
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: ./scripts/check_release_freeze.sh "$BASE_SHA" "$HEAD_SHA" "$PR_TITLE" "$PR_LABELS"
+      - name: Run complete regression suite
+        run: ./scripts/check.sh
