@@ -83,6 +83,7 @@ describe("App", () => {
     expect(await screen.findByRole("heading", { name: "此刻，什么值得关注。" })).toBeInTheDocument();
     expect(screen.queryByText(/SYSTEM \/ (ONLINE|CHECKING)/)).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "NOW" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByText("Lingjiu", { selector: ".sidebar-user" })).toBeInTheDocument();
     expect(screen.getByText("当前已有 Raw 0 条 · 因子 0 个 · 当前 Event 0 个"))
       .toBeInTheDocument();
     expect(await screen.findByText(/暂时没有需要关注的内容/)).toBeInTheDocument();
