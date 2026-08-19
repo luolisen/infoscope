@@ -38,10 +38,10 @@ export function App() {
     return <OnboardingPending />;
   }
 
-  return <ReadyApp />;
+  return <ReadyApp displayName={sessionQuery.data.user?.display_name ?? ""} />;
 }
 
-function ReadyApp() {
+function ReadyApp({ displayName }: { displayName: string }) {
   const [demoStage, setDemoStage] = useState<"name" | "onboarding" | null>(null);
   const [locationHash, setLocationHash] = useState(() => window.location.hash);
   const [selectedEvents, setSelectedEvents] = useState<SelectedEvent[]>([]);
@@ -155,6 +155,7 @@ function ReadyApp() {
           </ul>
         </nav>
         {isAsk && <AskEventSidebar onToggleEventSelection={toggleEventSelection} selectedEvents={selectedEvents} />}
+        <p className="sidebar-user" title={displayName}>{displayName}</p>
       </aside>
 
       <div className="content-column">
