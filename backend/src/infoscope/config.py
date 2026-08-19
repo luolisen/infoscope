@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     )
     session_ttl_seconds: int = Field(default=60 * 60 * 24 * 30, gt=0)
     session_cookie_secure: bool = False
+    local_user_username: str = Field(default="demo", min_length=1, max_length=64)
     worker_poll_seconds: float = Field(default=30.0, gt=0)
     worker_heartbeat_seconds: float = Field(default=5.0, gt=0, le=60)
     worker_stale_after_seconds: float = Field(default=20.0, gt=0, le=300)
@@ -41,17 +42,22 @@ class Settings(BaseSettings):
     analysis_max_retries: int = Field(default=3, ge=0, le=10)
     analysis_max_tokens: int = Field(default=16_384, gt=0, le=384000)
     user_analysis_max_tokens: int = Field(default=16_384, gt=0, le=384000)
+    analysis_run_source_id: str | None = None
+    analysis_run_model_id: str | None = None
     dragon_api_base_url: str | None = None
     dragon_api_keys: SecretStr | None = None
     dragon_model: str = "gpt-5.5"
     aiping_api_base_url: str | None = None
     aiping_api_keys_group_1: SecretStr | None = None
     aiping_api_keys_group_2: SecretStr | None = None
+    aiping_api_keys_group_3: SecretStr | None = None
+    aiping_api_keys_group_4: SecretStr | None = None
+    aiping_api_keys_group_5: SecretStr | None = None
     window_analysis_max_windows: int = Field(default=24, gt=0, le=168)
     window_analysis_max_signals: int = Field(default=50, gt=0, le=5000)
     window_analysis_max_input_chars: int = Field(default=100_000, gt=0, le=10_000_000)
     window_analysis_max_batches: int = Field(default=64, gt=0, le=256)
-    window_analysis_batch_concurrency: int = Field(default=3, gt=0, le=8)
+    window_analysis_batch_concurrency: int = Field(default=3, gt=0, le=16)
     event_reconstruction_candidate_limit: int = Field(default=100, gt=0, le=1000)
     research_openclaw_executable: str = "openclaw"
     research_agent_reach_executable: str = "agent-reach"

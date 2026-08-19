@@ -211,6 +211,16 @@ class SelectiveFailClient(FakeClient):
         return await super().analyze(window=window, signals=signals)
 
 
+class OversizedFailClient(FakeClient):
+    async def analyze(self, *, window, signals):
+        self.batch_sizes.append(len(signals))
+        if len(signals) > 10:
+            raise AnalysisError("ANALYSIS_REQUEST_FAILED")
+        response = await super().analyze(window=window, signals=signals)
+        self.batch_sizes.pop()
+        return response
+
+
 async def test_window_artifact_is_persisted_before_checkpoint_completion() -> None:
     raw = _raw()
     pipeline = FakePipeline()
@@ -338,7 +348,7 @@ async def test_successful_batches_are_cached_when_a_later_batch_fails() -> None:
     batches = [[signal] for signal in signals]
     hashes = [f"{index:x}" * 64 for index in range(4)]
     pipeline = FakePipeline()
-    failing = SelectiveFailClient(signals[3].signal_id)
+    failing = SelectiveFailClient(signals[1].signal_id)
     runner = WindowAnalysisRunner(
         acquisition=FakeAcquisition(raw, stored_signals),  # type: ignore[arg-type]
         pipeline=pipeline,  # type: ignore[arg-type]
@@ -358,7 +368,7 @@ async def test_successful_batches_are_cached_when_a_later_batch_fails() -> None:
             window_input_hash="f" * 64,
         )
 
-    assert set(pipeline.batch_cache) == set(hashes[:3])
+    assert set(pipeline.batch_cache) == {hashes[0], hashes[2], hashes[3]}
 
     retry_client = FakeClient()
     retry_runner = WindowAnalysisRunner(
@@ -376,6 +386,173 @@ async def test_successful_batches_are_cached_when_a_later_batch_fails() -> None:
 
     assert len(responses) == 4
     assert retry_client.batch_sizes == [1]
+
+
+async def test_batch_worker_refills_capacity_before_slowest_request_finishes() -> None:
+    raw = _raw()
+    stored_signals = [_signal(raw) for _ in range(3)]
+    signals = [
+        AnalysisSignal(
+            signal_id=signal.id,
+            title=signal.title,
+            text=signal.normalized_text,
+            published_at=signal.published_at,
+            source_type=signal.source_type,
+            evidence_visibility=signal.evidence_visibility,
+            public_provenance=signal.public_provenance,
+        )
+        for signal in stored_signals
+    ]
+    slow_started = asyncio.Event()
+    release_slow = asyncio.Event()
+    third_started = asyncio.Event()
+
+    class StreamingClient(FakeClient):
+        async def analyze(self, *, window, signals):
+            if signals[0].signal_id == stored_signals[0].id:
+                slow_started.set()
+                await release_slow.wait()
+            if signals[0].signal_id == stored_signals[2].id:
+                third_started.set()
+            return await super().analyze(window=window, signals=signals)
+
+    runner = WindowAnalysisRunner(
+        acquisition=FakeAcquisition(raw, stored_signals),  # type: ignore[arg-type]
+        pipeline=FakePipeline(),  # type: ignore[arg-type]
+        client=StreamingClient(),
+        batch_concurrency=2,
+    )
+    window = type("Window", (), {
+        "start": datetime(2026, 8, 16, 9, tzinfo=UTC),
+        "end": datetime(2026, 8, 16, 10, tzinfo=UTC),
+    })()
+    task = asyncio.create_task(
+        runner._analyze_batches(  # noqa: SLF001
+            window=window,
+            batches=[[signal] for signal in signals],
+            batch_input_hashes=[f"{index:x}" * 64 for index in range(3)],
+            window_input_hash="f" * 64,
+        )
+    )
+
+    await slow_started.wait()
+    await asyncio.wait_for(third_started.wait(), timeout=1)
+    release_slow.set()
+
+    assert len(await task) == 3
+
+
+async def test_failed_large_model_request_is_split_and_merged_under_same_batch() -> None:
+    raw = _raw()
+    stored_signals = [_signal(raw) for _ in range(20)]
+    client = OversizedFailClient()
+    runner = WindowAnalysisRunner(
+        acquisition=FakeAcquisition(raw, stored_signals),  # type: ignore[arg-type]
+        pipeline=FakePipeline(),  # type: ignore[arg-type]
+        client=client,
+    )
+    window = type("Window", (), {
+        "start": datetime(2026, 8, 16, 9, tzinfo=UTC),
+        "end": datetime(2026, 8, 16, 10, tzinfo=UTC),
+    })()
+    signals = [
+        AnalysisSignal(
+            signal_id=signal.id,
+            title=signal.title,
+            text=signal.normalized_text,
+            published_at=signal.published_at,
+            source_type=signal.source_type,
+            evidence_visibility=signal.evidence_visibility,
+            public_provenance=signal.public_provenance,
+        )
+        for signal in stored_signals
+    ]
+
+    response = await runner._analyze_resilient(window=window, signals=signals)  # noqa: SLF001
+
+    assert client.batch_sizes == [20, 10, 10]
+    assert [item.signal_id for item in response.payload.signal_analyses] == [
+        signal.id for signal in stored_signals
+    ]
+    assert response.payload.unassigned_signal_ids == [signal.id for signal in stored_signals]
+
+
+async def test_fifty_signal_request_is_proactively_split_into_twenty_five() -> None:
+    raw = _raw()
+    stored_signals = [_signal(raw) for _ in range(50)]
+    client = FakeClient()
+    runner = WindowAnalysisRunner(
+        acquisition=FakeAcquisition(raw, stored_signals),  # type: ignore[arg-type]
+        pipeline=FakePipeline(),  # type: ignore[arg-type]
+        client=client,
+    )
+    window = type("Window", (), {
+        "start": datetime(2026, 8, 16, 9, tzinfo=UTC),
+        "end": datetime(2026, 8, 16, 10, tzinfo=UTC),
+    })()
+    signals = [
+        AnalysisSignal(
+            signal_id=signal.id,
+            title=signal.title,
+            text=signal.normalized_text,
+            published_at=signal.published_at,
+            source_type=signal.source_type,
+            evidence_visibility=signal.evidence_visibility,
+            public_provenance=signal.public_provenance,
+        )
+        for signal in stored_signals
+    ]
+
+    response = await runner._analyze_resilient(window=window, signals=signals)  # noqa: SLF001
+
+    assert client.batch_sizes == [25, 25]
+    assert len(response.payload.signal_analyses) == 50
+
+
+async def test_proactive_split_runs_both_halves_concurrently() -> None:
+    raw = _raw()
+    stored_signals = [_signal(raw) for _ in range(50)]
+    both_started = asyncio.Event()
+    release = asyncio.Event()
+
+    class ConcurrentSplitClient(FakeClient):
+        async def analyze(self, *, window, signals):
+            self.batch_sizes.append(len(signals))
+            if len(self.batch_sizes) == 2:
+                both_started.set()
+            await release.wait()
+            return await FakeClient().analyze(window=window, signals=signals)
+
+    runner = WindowAnalysisRunner(
+        acquisition=FakeAcquisition(raw, stored_signals),  # type: ignore[arg-type]
+        pipeline=FakePipeline(),  # type: ignore[arg-type]
+        client=ConcurrentSplitClient(),
+    )
+    window = type("Window", (), {
+        "start": datetime(2026, 8, 16, 9, tzinfo=UTC),
+        "end": datetime(2026, 8, 16, 10, tzinfo=UTC),
+    })()
+    signals = [
+        AnalysisSignal(
+            signal_id=signal.id,
+            title=signal.title,
+            text=signal.normalized_text,
+            published_at=signal.published_at,
+            source_type=signal.source_type,
+            evidence_visibility=signal.evidence_visibility,
+            public_provenance=signal.public_provenance,
+        )
+        for signal in stored_signals
+    ]
+    task = asyncio.create_task(
+        runner._analyze_resilient(window=window, signals=signals)  # noqa: SLF001
+    )
+
+    await asyncio.wait_for(both_started.wait(), timeout=1)
+    release.set()
+
+    response = await task
+    assert len(response.payload.signal_analyses) == 50
 
 
 def _terminal_run(

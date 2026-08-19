@@ -8,6 +8,7 @@ ModelId = Literal[
     "deepseek-v4-pro",
     "gpt-5.5",
     "DeepSeek-V4-Flash-0731",
+    "DeepSeek-V4-Pro",
     "Kimi-K3",
     "Qwen3.8-Max",
 ]
@@ -24,7 +25,12 @@ class ModelSelection(BaseModel):
         allowed: dict[ModelSourceId, set[ModelId]] = {
             "deepseek_official": {"deepseek-v4-flash", "deepseek-v4-pro"},
             "gpt_5_5": {"gpt-5.5"},
-            "ai_ping": {"DeepSeek-V4-Flash-0731", "Kimi-K3", "Qwen3.8-Max"},
+            "ai_ping": {
+                "DeepSeek-V4-Flash-0731",
+                "DeepSeek-V4-Pro",
+                "Kimi-K3",
+                "Qwen3.8-Max",
+            },
         }
         if self.model_id not in allowed[self.source_id]:
             raise ValueError("model_id does not belong to source_id")

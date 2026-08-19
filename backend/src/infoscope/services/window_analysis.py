@@ -447,6 +447,103 @@ class WindowAnalysisRunner:
             token_usage=TokenUsage(),
         )
 
+    async def _analyze_resilient(
+        self,
+        *,
+        window: LogicalWindow,
+        signals: list[AnalysisSignal],
+    ) -> AnalysisResponse:
+        if len(signals) > 25:
+            return await self._analyze_split(
+                window=window,
+                signals=signals,
+                reason="WINDOW_BATCH_PROACTIVE_SPLIT",
+            )
+        try:
+            return await self._analyze(window=window, signals=signals)
+        except AnalysisError as error:
+            split_errors = {
+                "ANALYSIS_REQUEST_FAILED",
+                "ANALYSIS_REQUEST_REJECTED",
+                "ANALYSIS_UPSTREAM_UNAVAILABLE",
+                "ANALYSIS_SCHEMA_INVALID",
+                "ANALYSIS_SIGNAL_COVERAGE_INVALID",
+                "ANALYSIS_TRUNCATED",
+            }
+            if len(signals) <= 10 or error.error_code not in split_errors:
+                raise
+            return await self._analyze_split(
+                window=window,
+                signals=signals,
+                reason=error.error_code,
+            )
+
+    async def _analyze_split(
+        self,
+        *,
+        window: LogicalWindow,
+        signals: list[AnalysisSignal],
+        reason: str,
+    ) -> AnalysisResponse:
+        split_at = len(signals) // 2
+        parts = (signals[:split_at], signals[split_at:])
+        logger.warning(
+            "pipeline batch request splitting pipeline=%s window_start=%s window_end=%s "
+            "signals=%d parts=%s reason=%s",
+            PIPELINE_NAME,
+            window.start.isoformat(),
+            window.end.isoformat(),
+            len(signals),
+            [len(part) for part in parts],
+            reason,
+        )
+        if reason == "WINDOW_BATCH_PROACTIVE_SPLIT":
+            responses = list(
+                await asyncio.gather(
+                    *(
+                        self._analyze_resilient(window=window, signals=part)
+                        for part in parts
+                    )
+                )
+            )
+        else:
+            responses = [
+                await self._analyze_resilient(window=window, signals=part)
+                for part in parts
+            ]
+        providers = {response.provider for response in responses}
+        models = {response.model for response in responses}
+        if len(providers) != 1 or len(models) != 1:
+            raise WindowAnalysisError("ANALYSIS_MODEL_CHANGED")
+        return AnalysisResponse(
+            payload=WindowAnalysisPayload(
+                signal_analyses=[
+                    item for response in responses for item in response.payload.signal_analyses
+                ],
+                clusters=[
+                    cluster.model_copy(
+                        update={"cluster_key": f"split-{part_index}-{cluster.cluster_key}"}
+                    )
+                    for part_index, response in enumerate(responses)
+                    for cluster in response.payload.clusters
+                ],
+                unassigned_signal_ids=[
+                    signal_id
+                    for response in responses
+                    for signal_id in response.payload.unassigned_signal_ids
+                ],
+            ),
+            provider=responses[0].provider,
+            model=responses[0].model,
+            token_usage=TokenUsage(
+                prompt_tokens=sum(response.token_usage.prompt_tokens for response in responses),
+                completion_tokens=sum(
+                    response.token_usage.completion_tokens for response in responses
+                ),
+                total_tokens=sum(response.token_usage.total_tokens for response in responses),
+            ),
+        )
+
     async def _analyze_batches(
         self,
         *,
@@ -504,7 +601,7 @@ class WindowAnalysisRunner:
                 len(batches),
                 len(batch),
             )
-            response = await self._analyze(window=window, signals=batch)
+            response = await self._analyze_resilient(window=window, signals=batch)
             self._validate_coverage(response.payload, batch)
             logger.info(
                 "pipeline batch completed pipeline=%s window_start=%s window_end=%s "
@@ -544,27 +641,61 @@ class WindowAnalysisRunner:
                 )
             await self.pipeline.persist_window_batch_cache(cache_writes)
 
-        for offset in range(0, len(missing), self.batch_concurrency):
-            indexes = missing[offset : offset + self.batch_concurrency]
-            tasks = [
-                asyncio.create_task(analyze_one(index, batches[index])) for index in indexes
-            ]
-            try:
-                completed = list(await asyncio.gather(*tasks))
-            except BaseException:
-                for task in tasks:
-                    if not task.done():
-                        task.cancel()
-                await asyncio.gather(*tasks, return_exceptions=True)
-                successful_indexes: list[int] = []
-                successful_responses: list[AnalysisResponse] = []
-                for index, task in zip(indexes, tasks, strict=True):
-                    if not task.cancelled() and task.exception() is None:
-                        successful_indexes.append(index)
-                        successful_responses.append(task.result())
-                await cache_completed(successful_indexes, successful_responses)
-                raise
-            await cache_completed(indexes, completed)
+        missing_iterator = iter(missing)
+        cache_lock = asyncio.Lock()
+        batch_failures: list[Exception] = []
+        fatal_failures: list[Exception] = []
+
+        async def analyze_worker() -> None:
+            while not fatal_failures:
+                try:
+                    index = next(missing_iterator)
+                except StopIteration:
+                    return
+                try:
+                    response = await analyze_one(index, batches[index])
+                except asyncio.CancelledError:
+                    raise
+                except (AnalysisError, WindowAnalysisError) as error:
+                    batch_failures.append(error)
+                    logger.warning(
+                        "pipeline batch failed pipeline=%s window_start=%s window_end=%s "
+                        "batch_index=%d batch_count=%d error_code=%s",
+                        PIPELINE_NAME,
+                        window.start.isoformat(),
+                        window.end.isoformat(),
+                        index,
+                        len(batches),
+                        error.error_code,
+                    )
+                    continue
+                try:
+                    # AsyncSession cannot be used concurrently. Serialize each completed cache
+                    # write while allowing the remaining model requests to stay in flight.
+                    async with cache_lock:
+                        await cache_completed([index], [response])
+                except asyncio.CancelledError:
+                    raise
+                except Exception as error:
+                    fatal_failures.append(error)
+                    return
+
+        workers = [
+            asyncio.create_task(analyze_worker())
+            for _ in range(min(self.batch_concurrency, len(missing)))
+        ]
+        try:
+            await asyncio.gather(*workers)
+        except BaseException:
+            for worker in workers:
+                if not worker.done():
+                    worker.cancel()
+            await asyncio.gather(*workers, return_exceptions=True)
+            raise
+        if fatal_failures:
+            raise fatal_failures[0]
+        if batch_failures:
+            raise batch_failures[0]
         if any(response is None for response in responses):
             raise WindowAnalysisError("WINDOW_BATCH_RESPONSE_MISSING")
         return [response for response in responses if response is not None]

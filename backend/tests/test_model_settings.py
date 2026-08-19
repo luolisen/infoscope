@@ -16,6 +16,7 @@ from infoscope.schemas.model_settings import ModelSelection, ModelSettingsRespon
 from infoscope.services.model_settings import (
     ModelSettingsService,
     analysis_config_for_selection,
+    analysis_config_for_user,
     get_model_settings_service,
     shared_fact_analysis_config,
 )
@@ -31,6 +32,9 @@ def _settings() -> Settings:
         aiping_api_base_url="https://aiping.example.com/api/v1",
         aiping_api_keys_group_1=SecretStr("aiping-one"),
         aiping_api_keys_group_2=SecretStr("aiping-two"),
+        aiping_api_keys_group_3=SecretStr("aiping-three,aiping-four"),
+        aiping_api_keys_group_4=SecretStr("aiping-five"),
+        aiping_api_keys_group_5=SecretStr("aiping-six"),
         analysis_max_tokens=16_384,
         user_analysis_max_tokens=1_024,
     )
@@ -65,16 +69,43 @@ def test_fixed_catalog_maps_each_model_to_isolated_server_credentials() -> None:
     )
 
     assert (gpt.provider, gpt.api_keys) == ("dragon", ("dragon-one",))
-    assert (kimi.provider, kimi.api_keys) == ("ai_ping", ("aiping-one",))
-    assert (qwen.provider, qwen.api_keys) == ("ai_ping", ("aiping-two",))
+    pooled_aiping_keys = (
+        "aiping-one",
+        "aiping-two",
+        "aiping-three",
+        "aiping-four",
+        "aiping-five",
+        "aiping-six",
+    )
+    assert (kimi.provider, kimi.api_keys) == ("ai_ping", pooled_aiping_keys)
+    assert (qwen.provider, qwen.api_keys) == ("ai_ping", pooled_aiping_keys)
     assert "dragon-one" not in repr(gpt)
 
     shared = shared_fact_analysis_config(settings)
     assert shared.provider == "ai_ping"
-    assert shared.model == "DeepSeek-V4-Flash-0731"
-    assert shared.api_keys == ("aiping-one",)
+    assert shared.model == "DeepSeek-V4-Pro"
+    assert shared.api_keys == pooled_aiping_keys
     assert shared.max_tokens == 16_384
     assert gpt.max_tokens == 1_024
+
+    run_override = shared_fact_analysis_config(
+        _settings().model_copy(
+            update={
+                "analysis_run_source_id": "ai_ping",
+                "analysis_run_model_id": "DeepSeek-V4-Pro",
+            }
+        )
+    )
+    assert run_override.provider == "ai_ping"
+    assert run_override.model == "DeepSeek-V4-Pro"
+    assert run_override.api_keys == (
+        "aiping-one",
+        "aiping-two",
+        "aiping-three",
+        "aiping-four",
+        "aiping-five",
+        "aiping-six",
+    )
 
 
 def test_invalid_source_model_pair_is_rejected() -> None:
@@ -87,6 +118,36 @@ def test_unconfigured_provider_fails_closed() -> None:
         analysis_config_for_selection(
             Settings(_env_file=None),
             ModelSelection(source_id="gpt_5_5", model_id="gpt-5.5"),
+        )
+
+
+@pytest.mark.asyncio
+async def test_run_override_applies_to_user_analysis_without_reading_preference() -> None:
+    settings = _settings().model_copy(
+        update={
+            "analysis_run_source_id": "ai_ping",
+            "analysis_run_model_id": "DeepSeek-V4-Pro",
+        }
+    )
+
+    config = await analysis_config_for_user(object(), uuid4(), settings)  # type: ignore[arg-type]
+
+    assert config.provider == "ai_ping"
+    assert config.model == "DeepSeek-V4-Pro"
+    assert config.api_keys == (
+        "aiping-one",
+        "aiping-two",
+        "aiping-three",
+        "aiping-four",
+        "aiping-five",
+        "aiping-six",
+    )
+
+
+def test_incomplete_run_override_fails_closed() -> None:
+    with pytest.raises(AnalysisConfigurationError, match="incomplete"):
+        shared_fact_analysis_config(
+            _settings().model_copy(update={"analysis_run_source_id": "ai_ping"})
         )
 
 
@@ -176,6 +237,8 @@ async def test_model_settings_api_exposes_catalog_without_credentials() -> None:
     ]
     assert "key" not in fetched.text.casefold()
     assert "base_url" not in fetched.text.casefold()
+    ai_ping = next(item for item in document["sources"] if item["id"] == "ai_ping")
+    assert "DeepSeek-V4-Pro" in [item["id"] for item in ai_ping["models"]]
     assert updated.status_code == 200
     assert updated.json()["selection"] == {
         "source_id": "ai_ping",

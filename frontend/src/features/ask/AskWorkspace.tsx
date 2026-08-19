@@ -21,7 +21,7 @@ export function AskWorkspace({ selectedEvents, onClearSelection }: AskWorkspaceP
       {historyItem === null ? <>
         {selectedEvents.length === 0 && <header className="ask-workspace__hero">
           <p className="editorial-label">ASK</p>
-          <h1 id="ask-workspace-heading">观澜能帮忙做什么</h1>
+          <h1 id="ask-workspace-heading">观澜能帮你做什么？</h1>
           <p>选择一个或多个 Event，再提出你想理解的问题。</p>
         </header>}
         <AskPanel onClearSelection={onClearSelection} selectedEvents={selectedEvents} workspace />

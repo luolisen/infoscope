@@ -250,9 +250,8 @@ Register
 1. 建立 User 与 Server-side Session 所需的数据库模型和 Migration。
 2. 实现 `is_session` HttpOnly Cookie。
 3. 实现 `GET /api/v1/session`。
-4. 实现 `POST /api/v1/auth/register`。
-5. 实现 `POST /api/v1/auth/login`。
-6. 实现 `POST /api/v1/auth/logout`。
+4. 实现只接收称呼的 `POST /api/v1/auth/local`，复用单一本地内部用户。
+5. 实现 `POST /api/v1/auth/logout`。
 7. 实现 Onboarding 固定 enum 与 Validation。
 8. 实现 `GET /api/v1/onboarding`。
 9. 实现 `PUT /api/v1/onboarding`。
@@ -264,7 +263,7 @@ Register
 ### Lingjiu 的顺序
 
 1. 接入 Session 状态：`anonymous`、`onboarding_required`、`ready`。
-2. 实现 Register / Login。
+2. 实现只询问“我们怎么称呼您？”的本地入口。
 3. 实现 SCOPE。
 4. 实现仅在选择 `investment` 时出现的投资市场页面。
 5. 实现 FOCUS。
@@ -275,8 +274,8 @@ Register
 
 ### 验收
 
-- 未登录用户正确进入 Login/Register。
-- 注册或登录后由 Backend 设置 `is_session`。
+- 未登录用户正确进入单一称呼入口，不出现账号或密码。
+- 本地访问成功后由 Backend 设置 `is_session`。
 - 未完成 Onboarding 时正式产品 endpoint 返回既定错误。
 - Onboarding enum、条件分支和 Validation 与冻结 Contract 一致。
 - 完成 Onboarding 后进入 Empty NOW。

@@ -12,11 +12,12 @@ const emptyAnswers: Answers = { scope_ids: [], investment_market_ids: [], focus_
 function toggle<T>(items: T[], item: T) { return items.includes(item) ? items.filter((value) => value !== item) : [...items, item]; }
 
 type OnboardingPendingProps = {
+  demoMode?: boolean;
   editExisting?: boolean;
   onComplete?: () => void;
 };
 
-export function OnboardingPending({ editExisting = false, onComplete }: OnboardingPendingProps = {}) {
+export function OnboardingPending({ demoMode = false, editExisting = false, onComplete }: OnboardingPendingProps = {}) {
   const queryClient = useQueryClient();
   const onboarding = useQuery({ queryKey: onboardingQueryKey, queryFn: fetchOnboarding });
   const [answers, setAnswers] = useState<Answers | null>(null);
@@ -59,6 +60,7 @@ export function OnboardingPending({ editExisting = false, onComplete }: Onboardi
     if (selected.length === 0) { setLocalError("请至少选择一项后继续。"); return; }
     if (step === "scope") { setStep(requiresMarkets ? "markets" : "focus"); return; }
     if (step === "markets") { setStep("focus"); return; }
+    if (demoMode) { onComplete?.(); return; }
     save.mutate({ ...currentAnswers, investment_market_ids: requiresMarkets ? currentAnswers.investment_market_ids : [] });
   }
   const apiError = save.error instanceof OnboardingError && save.error.code === "INVALID_ONBOARDING_SELECTION" ? "选择已发生变化，请检查后重试。" : save.isError ? "无法保存你的视野，请稍后重试。" : null;
@@ -66,7 +68,7 @@ export function OnboardingPending({ editExisting = false, onComplete }: Onboardi
     <p className="editorial-label">{label}</p><h1>{title}</h1>
     <div className="choice-list">{options.map((option) => <button aria-pressed={selected.includes(option.id as never)} key={option.id} onClick={() => choose(option.id)} type="button"><span>{option.label}</span><span aria-hidden="true">{selected.includes(option.id as never) ? "×" : "+"}</span></button>)}</div>
     {(localError || apiError) && <p className="auth-error" role="alert">{localError ?? apiError}</p>}
-    <div className="onboarding-actions">{step !== "scope" && <button className="text-button" onClick={() => setStep(step === "focus" ? (requiresMarkets ? "markets" : "scope") : "scope")} type="button">返回</button>}<button className="auth-submit" disabled={save.isPending} onClick={next} type="button">{step === "focus" ? (editExisting ? "保存视野" : "建立视野") : "继续"}</button></div>
+    <div className="onboarding-actions">{step !== "scope" && <button className="text-button" onClick={() => setStep(step === "focus" ? (requiresMarkets ? "markets" : "scope") : "scope")} type="button">返回</button>}<button className="auth-submit" disabled={save.isPending} onClick={next} type="button">{step === "focus" ? (demoMode ? "进入演示" : editExisting ? "保存视野" : "建立视野") : "继续"}</button></div>
     {hint && <p className={`onboarding-hint${editExisting && data.completed && step === "scope" ? " onboarding-hint--deferred" : ""}`}>{hint}</p>}
   </section></main>;
 }

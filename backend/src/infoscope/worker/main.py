@@ -94,6 +94,7 @@ from infoscope.services.maintenance import (
 from infoscope.services.model_settings import (
     analysis_config_for_selection,
     analysis_config_for_user,
+    run_model_selection,
     shared_fact_analysis_config,
 )
 from infoscope.services.normalization import NormalizationResult, NormalizationRunner
@@ -781,7 +782,8 @@ async def localize_events_once() -> EventLocalizationRun:
     settings = get_settings()
     config = analysis_config_for_selection(
         settings,
-        ModelSelection(source_id="ai_ping", model_id="DeepSeek-V4-Flash-0731"),
+        run_model_selection(settings)
+        or ModelSelection(source_id="ai_ping", model_id="DeepSeek-V4-Flash-0731"),
     )
     async with httpx.AsyncClient(trust_env=False) as client:
         run = await EventLocalizationRunner(

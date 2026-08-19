@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Cookie, Depends, Response, status
 
 from infoscope.config import Settings, get_settings
-from infoscope.schemas.auth import CredentialsRequest, SessionResponse
+from infoscope.schemas.auth import LocalAccessRequest, SessionResponse
 from infoscope.schemas.common import ErrorResponse
 from infoscope.services.auth import AuthService, get_auth_service
 
@@ -40,42 +40,21 @@ async def get_current_session(
 
 
 @router.post(
-    "/auth/register",
+    "/auth/local",
     response_model=SessionResponse,
-    status_code=status.HTTP_201_CREATED,
     responses={
-        201: {"headers": SESSION_COOKIE_HEADER},
+        200: {"headers": SESSION_COOKIE_HEADER},
         409: {"model": ErrorResponse},
         422: {"model": ErrorResponse},
     },
 )
-async def register(
-    credentials: CredentialsRequest,
+async def local_access(
+    request: LocalAccessRequest,
     response: Response,
     service: Annotated[AuthService, Depends(get_auth_service)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> SessionResponse:
-    session, token = await service.register(credentials.username, credentials.password)
-    set_session_cookie(response, token, settings)
-    return session
-
-
-@router.post(
-    "/auth/login",
-    response_model=SessionResponse,
-    responses={
-        200: {"headers": SESSION_COOKIE_HEADER},
-        401: {"model": ErrorResponse},
-        422: {"model": ErrorResponse},
-    },
-)
-async def login(
-    credentials: CredentialsRequest,
-    response: Response,
-    service: Annotated[AuthService, Depends(get_auth_service)],
-    settings: Annotated[Settings, Depends(get_settings)],
-) -> SessionResponse:
-    session, token = await service.login(credentials.username, credentials.password)
+    session, token = await service.local_access(request.display_name)
     set_session_cookie(response, token, settings)
     return session
 

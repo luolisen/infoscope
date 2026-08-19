@@ -381,9 +381,9 @@ Maintenance 全局防重入，固定推进 Window Analysis、Reconciliation、Ba
 | --- | --- |
 | Deepseek官方 | `deepseek-v4-flash`、`deepseek-v4-pro` |
 | GPT-5.5 | `gpt-5.5` |
-| AI Ping | `DeepSeek-V4-Flash-0731`、`Kimi-K3`、`Qwen3.8-Max` |
+| AI Ping | `DeepSeek-V4-Flash-0731`、`DeepSeek-V4-Pro`、`Kimi-K3`、`Qwen3.8-Max` |
 
-共享事实层固定使用部署级 `AI Ping / DeepSeek-V4-Flash-0731`，用户偏好仅作用于用户级分析路径。
+共享事实层默认使用 `AI Ping / DeepSeek-V4-Pro`，无持久偏好的用户也默认使用该模型；用户仍可为用户级分析路径保存其他偏好。一次完整更新可通过进程级覆盖统一指定模型；本轮固定为 `AI Ping / DeepSeek-V4-Pro`，且不得修改用户的持久模型偏好。AI Ping 任一模型均使用三组 key 的统一轮换池，但一次只运行一个选定模型。
 
 规则：
 
@@ -400,8 +400,7 @@ Maintenance 全局防重入，固定推进 Window Analysis、Reconciliation、Ba
 
 ```text
 GET    /session
-POST   /auth/register
-POST   /auth/login
+POST   /auth/local
 POST   /auth/logout
 
 GET    /onboarding

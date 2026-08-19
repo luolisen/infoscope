@@ -2230,7 +2230,7 @@ is_session
 
 规则：
 
-- Register / Login 成功后由 FastAPI 设置 `is_session`。
+- 本地称呼入口成功后由 FastAPI 设置 `is_session`。
 - Cookie 使用 `HttpOnly`。
 - `SameSite=Lax`。
 - `Path=/`。
@@ -2246,8 +2246,7 @@ is_session
 
 ```text
 GET  /api/v1/session
-POST /api/v1/auth/register
-POST /api/v1/auth/login
+POST /api/v1/auth/local
 GET  /api/v1/health
 ```
 
@@ -2303,7 +2302,7 @@ Authenticated：
 {
   "state": "onboarding_required",
   "user": {
-    "username": "alan"
+    "display_name": "Alan"
   }
 }
 ```
@@ -2314,46 +2313,18 @@ Authenticated：
 {
   "state": "ready",
   "user": {
-    "username": "alan"
+    "display_name": "Alan"
   }
 }
 ```
 
-### POST `/api/v1/auth/register`
+### POST `/api/v1/auth/local`
 
 Request：
 
 ```json
 {
-  "username": "alan",
-  "password": "..."
-}
-```
-
-成功：
-
-```text
-201 Created
-Set-Cookie: is_session=...
-```
-
-Response 使用 Session Response。
-
-用户名已存在：
-
-```text
-409 Conflict
-error.code = USERNAME_TAKEN
-```
-
-### POST `/api/v1/auth/login`
-
-Request：
-
-```json
-{
-  "username": "alan",
-  "password": "..."
+  "display_name": "Alan"
 }
 ```
 
@@ -2364,11 +2335,13 @@ Request：
 Set-Cookie: is_session=...
 ```
 
-失败：
+Response 使用 Session Response。
+
+本机身份并发初始化冲突：
 
 ```text
-401 Unauthorized
-error.code = INVALID_CREDENTIALS
+409 Conflict
+error.code = LOCAL_USER_CONFLICT
 ```
 
 ### POST `/api/v1/auth/logout`
