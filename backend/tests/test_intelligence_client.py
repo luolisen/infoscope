@@ -45,6 +45,8 @@ def test_personalization_repair_prompt_freezes_exact_decision_keys() -> None:
 
     assert instruction is not None
     assert "why_it_matters" in instruction
+    assert "critical, high, normal, low" in instruction
+    assert "Never translate" in instruction
     assert "trailing colon" in instruction
     assert "never omit a required key" in instruction
 
