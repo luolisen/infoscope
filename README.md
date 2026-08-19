@@ -1,6 +1,12 @@
 # Infoscope · 观澜
 
-观澜是一个个人信息情报界面：它将采集到的 Raw Information 规范化为因子（Signal），再整理为持续演化的 Event，帮助用户看到事件而不是信息流。
+观澜是为持续追踪 AI、科技、开源与投资市场变化的个人研究者设计的 Event-first 信息情报界面。
+
+这些变化通常散落在新闻、RSS、社区和即时消息中。只依赖传统信息流，研究者需要反复阅读、去重并手动拼接前因后果，仍可能错过事件的新进展、事实冲突和重要转折。
+
+观澜将采集到的 Raw Information 规范化为因子（Signal），再重构为持续演化、可追溯且可以直接提问的 Event。它帮助使用者从“今天又出现了哪些消息”，转向“事情正在怎样变化，为什么值得现在关注”。
+
+> 看见事件，而不是信息流。
 
 当前可用里程碑：`0.1`
 
@@ -49,4 +55,3 @@ cp .env.example .env
 该命令会运行后端测试与静态检查、前端 lint/typecheck/test/build，并检查 OpenAPI Generated Types 是否同步。
 
 更多产品与实现约束见 [dev.md](dev.md)、[dev_final.md](dev_final.md)、[tech.md](tech.md) 和 [style.md](style.md)。
-
