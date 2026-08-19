@@ -509,6 +509,52 @@ async def test_fifty_signal_request_is_proactively_split_into_twenty_five() -> N
     assert len(response.payload.signal_analyses) == 50
 
 
+async def test_proactive_split_runs_both_halves_concurrently() -> None:
+    raw = _raw()
+    stored_signals = [_signal(raw) for _ in range(50)]
+    both_started = asyncio.Event()
+    release = asyncio.Event()
+
+    class ConcurrentSplitClient(FakeClient):
+        async def analyze(self, *, window, signals):
+            self.batch_sizes.append(len(signals))
+            if len(self.batch_sizes) == 2:
+                both_started.set()
+            await release.wait()
+            return await FakeClient().analyze(window=window, signals=signals)
+
+    runner = WindowAnalysisRunner(
+        acquisition=FakeAcquisition(raw, stored_signals),  # type: ignore[arg-type]
+        pipeline=FakePipeline(),  # type: ignore[arg-type]
+        client=ConcurrentSplitClient(),
+    )
+    window = type("Window", (), {
+        "start": datetime(2026, 8, 16, 9, tzinfo=UTC),
+        "end": datetime(2026, 8, 16, 10, tzinfo=UTC),
+    })()
+    signals = [
+        AnalysisSignal(
+            signal_id=signal.id,
+            title=signal.title,
+            text=signal.normalized_text,
+            published_at=signal.published_at,
+            source_type=signal.source_type,
+            evidence_visibility=signal.evidence_visibility,
+            public_provenance=signal.public_provenance,
+        )
+        for signal in stored_signals
+    ]
+    task = asyncio.create_task(
+        runner._analyze_resilient(window=window, signals=signals)  # noqa: SLF001
+    )
+
+    await asyncio.wait_for(both_started.wait(), timeout=1)
+    release.set()
+
+    response = await task
+    assert len(response.payload.signal_analyses) == 50
+
+
 def _terminal_run(
     *,
     status: PipelineRunStatus,

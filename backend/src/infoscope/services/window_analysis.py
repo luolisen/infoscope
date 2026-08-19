@@ -497,10 +497,20 @@ class WindowAnalysisRunner:
             [len(part) for part in parts],
             reason,
         )
-        responses = [
-            await self._analyze_resilient(window=window, signals=part)
-            for part in parts
-        ]
+        if reason == "WINDOW_BATCH_PROACTIVE_SPLIT":
+            responses = list(
+                await asyncio.gather(
+                    *(
+                        self._analyze_resilient(window=window, signals=part)
+                        for part in parts
+                    )
+                )
+            )
+        else:
+            responses = [
+                await self._analyze_resilient(window=window, signals=part)
+                for part in parts
+            ]
         providers = {response.provider for response in responses}
         models = {response.model for response in responses}
         if len(providers) != 1 or len(models) != 1:
