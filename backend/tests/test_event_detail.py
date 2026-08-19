@@ -278,6 +278,9 @@ class _MissingAccessDatabase:
     async def execute(self, statement):
         return _ScalarResult([])
 
+    async def get(self, model, identifier):
+        return None
+
 
 class _AllowAccess:
     async def require_all(self, user, event_ids) -> None:

@@ -123,6 +123,9 @@ kbd { border: 1px solid #bac2c3; border-radius: .2rem; padding: .1rem .35rem; co
 .ask-answer-boundary { color: #667375; font-size: .78rem; }
 @keyframes nav-indicator-enter { from { opacity: .25; transform: translateX(-.4rem); } to { opacity: 1; transform: translateX(0); } }
 .onboarding-hint--deferred { color: #93423c; }
+.personalization-notice { backdrop-filter: blur(18px); background: rgb(247 248 246 / 72%); border: 1px solid rgb(130 144 146 / 38%); border-radius: 1.25rem; box-shadow: 0 1rem 2.8rem rgb(23 32 34 / 8%); margin: 1.5rem 0 2rem; max-width: 52rem; padding: 1.15rem 1.3rem; }
+.personalization-notice h2 { font-family: Georgia, "Times New Roman", serif; font-size: 1.35rem; font-weight: 500; letter-spacing: -.025em; margin: .35rem 0; }
+.personalization-notice > p:last-child { color: #526062; line-height: 1.55; margin: 0; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }

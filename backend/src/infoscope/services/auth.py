@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
+from uuid import uuid4
 
 from fastapi import Depends, status
 from sqlalchemy import delete, select
@@ -62,8 +63,18 @@ class AuthService:
                     code="LOCAL_USER_CONFLICT",
                     message="The local user could not be created.",
                 ) from error
-        else:
+        elif not user.onboarding_completed:
             user.display_name = display_name
+        else:
+            visitor_username = f"visitor_{uuid4().hex}"
+            user = User(
+                username=visitor_username,
+                username_normalized=visitor_username,
+                display_name=display_name,
+                password_hash=await hash_password(new_session_token()),
+            )
+            self.database.add(user)
+            await self.database.flush()
 
         token = self._add_session(user)
         await self.database.commit()

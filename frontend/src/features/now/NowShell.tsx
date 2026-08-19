@@ -21,15 +21,25 @@ type StateFilter = (typeof stateFilters)[number]["value"];
 
 export function NowShell({ selectedEvents, onToggleEventSelection }: NowShellProps) {
   const [stateFilter, setStateFilter] = useState<StateFilter>("all");
-  const now = useQuery({ queryKey: nowQueryKey, queryFn: fetchNow });
+  const now = useQuery({
+    queryKey: nowQueryKey,
+    queryFn: fetchNow,
+    refetchInterval: (query) => query.state.data?.personalization?.mode === "historical_preview" ? 15_000 : false,
+  });
   if (now.isPending) return <main className="main-content"><p className="editorial-label">NOW / 加载中</p><p>正在整理当前信息窗口…</p></main>;
   if (now.isError) return <main className="main-content"><p className="editorial-label">NOW / 不可用</p><p role="alert">无法加载 NOW，请稍后重试。</p></main>;
   const { corpus_stats, items, window_stats } = now.data;
+  const personalization = now.data.personalization ?? { mode: "model", generation_status: "ready" };
   const visibleItems = stateFilter === "all" ? items : items.filter((event) => event.state === stateFilter);
   const activeFilterIndex = stateFilters.findIndex((filter) => filter.value === stateFilter);
   return <main className="main-content" id="now">
     <p className="editorial-label">NOW</p>
     <header className="now-header"><h1>此刻，什么值得关注。</h1><p>当前已有 Raw {corpus_stats.raw_information_count} 条 · 因子 {corpus_stats.signal_count} 个 · 当前 Event {window_stats.relevant_event_count} 个</p></header>
+    {personalization.mode === "historical_preview" && <section className="personalization-notice" role="status">
+      <p className="editorial-label">PERSONALIZATION / {personalization.generation_status === "failed" ? "稍后重试" : "生成中"}</p>
+      <h2>{personalization.generation_status === "failed" ? "完整个性化暂未完成" : "正在生成你的完整个性化视野"}</h2>
+      <p>{personalization.generation_status === "failed" ? "当前继续展示历史推演结果；下次更新会再次生成。" : "当前先展示基于历史个性化结果推演的内容。通常需要约 10–15 分钟，完成后将自动更新。"}</p>
+    </section>}
     {items.length > 0 && <div aria-label="按 Event 状态筛选" className="now-state-filter" role="toolbar" style={{ "--state-filter-index": activeFilterIndex } as CSSProperties}>
       <span aria-hidden="true" className="now-state-filter__indicator" />
       {stateFilters.map((filter) => <button aria-pressed={filter.value === stateFilter} key={filter.value} onClick={() => setStateFilter(filter.value)} type="button">{filter.label}</button>)}

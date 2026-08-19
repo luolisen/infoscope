@@ -1483,6 +1483,9 @@
             ],
             "title": "Next Cursor"
           },
+          "personalization": {
+            "$ref": "#/components/schemas/PersonalizationStatus"
+          },
           "window_stats": {
             "$ref": "#/components/schemas/WindowStats"
           }
@@ -1490,6 +1493,7 @@
         "required": [
           "window_stats",
           "corpus_stats",
+          "personalization",
           "items",
           "next_cursor"
         ],
@@ -1601,6 +1605,34 @@
           "focus_ids"
         ],
         "title": "OnboardingSelection",
+        "type": "object"
+      },
+      "PersonalizationStatus": {
+        "properties": {
+          "generation_status": {
+            "enum": [
+              "queued",
+              "running",
+              "ready",
+              "failed"
+            ],
+            "title": "Generation Status",
+            "type": "string"
+          },
+          "mode": {
+            "enum": [
+              "historical_preview",
+              "model"
+            ],
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode",
+          "generation_status"
+        ],
+        "title": "PersonalizationStatus",
         "type": "object"
       },
       "ResearchCapabilityResponse": {
