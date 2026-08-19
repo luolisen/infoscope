@@ -211,6 +211,16 @@ class SelectiveFailClient(FakeClient):
         return await super().analyze(window=window, signals=signals)
 
 
+class OversizedFailClient(FakeClient):
+    async def analyze(self, *, window, signals):
+        self.batch_sizes.append(len(signals))
+        if len(signals) > 10:
+            raise AnalysisError("ANALYSIS_REQUEST_FAILED")
+        response = await super().analyze(window=window, signals=signals)
+        self.batch_sizes.pop()
+        return response
+
+
 async def test_window_artifact_is_persisted_before_checkpoint_completion() -> None:
     raw = _raw()
     pipeline = FakePipeline()
@@ -430,6 +440,41 @@ async def test_batch_worker_refills_capacity_before_slowest_request_finishes() -
     release_slow.set()
 
     assert len(await task) == 3
+
+
+async def test_failed_large_model_request_is_split_and_merged_under_same_batch() -> None:
+    raw = _raw()
+    stored_signals = [_signal(raw) for _ in range(20)]
+    client = OversizedFailClient()
+    runner = WindowAnalysisRunner(
+        acquisition=FakeAcquisition(raw, stored_signals),  # type: ignore[arg-type]
+        pipeline=FakePipeline(),  # type: ignore[arg-type]
+        client=client,
+    )
+    window = type("Window", (), {
+        "start": datetime(2026, 8, 16, 9, tzinfo=UTC),
+        "end": datetime(2026, 8, 16, 10, tzinfo=UTC),
+    })()
+    signals = [
+        AnalysisSignal(
+            signal_id=signal.id,
+            title=signal.title,
+            text=signal.normalized_text,
+            published_at=signal.published_at,
+            source_type=signal.source_type,
+            evidence_visibility=signal.evidence_visibility,
+            public_provenance=signal.public_provenance,
+        )
+        for signal in stored_signals
+    ]
+
+    response = await runner._analyze_resilient(window=window, signals=signals)  # noqa: SLF001
+
+    assert client.batch_sizes == [20, 10, 10]
+    assert [item.signal_id for item in response.payload.signal_analyses] == [
+        signal.id for signal in stored_signals
+    ]
+    assert response.payload.unassigned_signal_ids == [signal.id for signal in stored_signals]
 
 
 def _terminal_run(
