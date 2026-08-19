@@ -1,5 +1,9 @@
 # Infoscope（观澜）最终开发交接 / dev_final.md
 
+> **功能冻结已生效（2026-08-19）**：严格禁止继续开发新功能。任何后续变更必须遵守
+> [RELEASE_FREEZE.md](RELEASE_FREEZE.md) 与 `Release freeze gate`；仅允许经 Alan 明确批准的
+> 发布阻断修复、安全修复、既有行为回归测试和非扩展性文档修正。
+
 > 状态：0.1 Demo 可用；PR #77 / #78 已合并；进入质量与路演收尾
 > 快照时间：2026-08-19（Asia/Shanghai）
 > 适用仓库：`SCOUT-Infoscope/infoscope`
@@ -226,15 +230,16 @@ git switch -c codex/<task-name> origin/main
 
 不得继续向 PR #77、PR #78 的历史 head 堆叠新功能。
 
-### D2 — 质量收尾
+### D2 — 冻结后的质量收尾
 
 当前优先级：
 
 1. 冻结 README 的目标用户、具体问题与用户结果。
 2. 更新过期交接快照，避免新聊天重复处理已合并 PR。
-3. 为 NOW、BRIEF、ARCHIVE、ASK Event rail 等错误态补真实重试入口。
-4. 使用隔离 test database 跑完整 PostgreSQL 集成套件。
-5. 冻结三分钟 `NOW → Event Detail → ASK` 路演与截图/录屏备用。
+3. 使用隔离 test database 跑完整 PostgreSQL 集成套件。
+4. 冻结三分钟 `NOW → Event Detail → ASK` 路演与截图/录屏备用。
+
+不得以“质量收尾”为名新增错误态入口、页面、API、模型、信息源或其他产品能力。
 
 ### D3 — Demo 验证
 
@@ -257,9 +262,10 @@ Settings → Maintenance status
 
 涉及真实 Provider 的 ASK/Research 测试必须遵守既有数据授权；路演优先准备无需 Grok 的 direct Ask。
 
-### D4 — 提交下一任务
+### D4 — 提交冻结后的修复
 
-每个质量修复使用独立 `codex/*` branch 和 PR；完成检查后再按明确指令合并。
+每个获准修复使用独立 `codex/*` branch 和 PR；必须携带 `release-approved`，通过
+`Release freeze gate`，完成检查并经人工批准后才能合并。任何新功能请求一律暂停到明确解除冻结之后。
 
 ---
 
@@ -298,10 +304,9 @@ Settings → Maintenance status
 codex/<task-name>
 ```
 
-Commit：
+Commit（冻结期间不允许 `feat`）：
 
 ```text
-feat(scope): summary
 fix(scope): summary
 docs: summary
 test(scope): summary
