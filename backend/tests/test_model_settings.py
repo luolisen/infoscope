@@ -33,6 +33,8 @@ def _settings() -> Settings:
         aiping_api_keys_group_1=SecretStr("aiping-one"),
         aiping_api_keys_group_2=SecretStr("aiping-two"),
         aiping_api_keys_group_3=SecretStr("aiping-three,aiping-four"),
+        aiping_api_keys_group_4=SecretStr("aiping-five"),
+        aiping_api_keys_group_5=SecretStr("aiping-six"),
         analysis_max_tokens=16_384,
         user_analysis_max_tokens=1_024,
     )
@@ -72,6 +74,8 @@ def test_fixed_catalog_maps_each_model_to_isolated_server_credentials() -> None:
         "aiping-two",
         "aiping-three",
         "aiping-four",
+        "aiping-five",
+        "aiping-six",
     )
     assert (kimi.provider, kimi.api_keys) == ("ai_ping", pooled_aiping_keys)
     assert (qwen.provider, qwen.api_keys) == ("ai_ping", pooled_aiping_keys)
@@ -99,6 +103,8 @@ def test_fixed_catalog_maps_each_model_to_isolated_server_credentials() -> None:
         "aiping-two",
         "aiping-three",
         "aiping-four",
+        "aiping-five",
+        "aiping-six",
     )
 
 
@@ -133,6 +139,8 @@ async def test_run_override_applies_to_user_analysis_without_reading_preference(
         "aiping-two",
         "aiping-three",
         "aiping-four",
+        "aiping-five",
+        "aiping-six",
     )
 
 

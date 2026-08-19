@@ -89,6 +89,8 @@ def _credentials(
             settings.aiping_api_keys_group_1,
             settings.aiping_api_keys_group_2,
             settings.aiping_api_keys_group_3,
+            settings.aiping_api_keys_group_4,
+            settings.aiping_api_keys_group_5,
         )
         if value is not None and value.get_secret_value().strip()
     )
