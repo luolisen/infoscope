@@ -338,7 +338,7 @@ async def test_successful_batches_are_cached_when_a_later_batch_fails() -> None:
     batches = [[signal] for signal in signals]
     hashes = [f"{index:x}" * 64 for index in range(4)]
     pipeline = FakePipeline()
-    failing = SelectiveFailClient(signals[3].signal_id)
+    failing = SelectiveFailClient(signals[1].signal_id)
     runner = WindowAnalysisRunner(
         acquisition=FakeAcquisition(raw, stored_signals),  # type: ignore[arg-type]
         pipeline=pipeline,  # type: ignore[arg-type]
@@ -358,7 +358,7 @@ async def test_successful_batches_are_cached_when_a_later_batch_fails() -> None:
             window_input_hash="f" * 64,
         )
 
-    assert set(pipeline.batch_cache) == set(hashes[:3])
+    assert set(pipeline.batch_cache) == {hashes[0], hashes[2], hashes[3]}
 
     retry_client = FakeClient()
     retry_runner = WindowAnalysisRunner(

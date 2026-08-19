@@ -546,16 +546,33 @@ class WindowAnalysisRunner:
 
         missing_iterator = iter(missing)
         cache_lock = asyncio.Lock()
-        failures: list[Exception] = []
+        batch_failures: list[Exception] = []
+        fatal_failures: list[Exception] = []
 
         async def analyze_worker() -> None:
-            while not failures:
+            while not fatal_failures:
                 try:
                     index = next(missing_iterator)
                 except StopIteration:
                     return
                 try:
                     response = await analyze_one(index, batches[index])
+                except asyncio.CancelledError:
+                    raise
+                except (AnalysisError, WindowAnalysisError) as error:
+                    batch_failures.append(error)
+                    logger.warning(
+                        "pipeline batch failed pipeline=%s window_start=%s window_end=%s "
+                        "batch_index=%d batch_count=%d error_code=%s",
+                        PIPELINE_NAME,
+                        window.start.isoformat(),
+                        window.end.isoformat(),
+                        index,
+                        len(batches),
+                        error.error_code,
+                    )
+                    continue
+                try:
                     # AsyncSession cannot be used concurrently. Serialize each completed cache
                     # write while allowing the remaining model requests to stay in flight.
                     async with cache_lock:
@@ -563,7 +580,7 @@ class WindowAnalysisRunner:
                 except asyncio.CancelledError:
                     raise
                 except Exception as error:
-                    failures.append(error)
+                    fatal_failures.append(error)
                     return
 
         workers = [
@@ -578,8 +595,10 @@ class WindowAnalysisRunner:
                     worker.cancel()
             await asyncio.gather(*workers, return_exceptions=True)
             raise
-        if failures:
-            raise failures[0]
+        if fatal_failures:
+            raise fatal_failures[0]
+        if batch_failures:
+            raise batch_failures[0]
         if any(response is None for response in responses):
             raise WindowAnalysisError("WINDOW_BATCH_RESPONSE_MISSING")
         return [response for response in responses if response is not None]
