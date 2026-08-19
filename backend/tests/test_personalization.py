@@ -102,6 +102,21 @@ def test_prefilter_uses_token_boundaries_and_selected_investment_market() -> Non
     )
 
 
+def test_historical_profile_similarity_uses_the_complete_selection() -> None:
+    target = _profile()
+    exact = _profile()
+    different_focus = exact.model_copy(update={"focus_ids": [FocusId.BREAKING_EVENTS]})
+    different_scope = _profile(scopes=[ScopeId.TECHNOLOGY])
+
+    exact_score = PersonalizationRepository._profile_similarity(target, exact)
+    focus_score = PersonalizationRepository._profile_similarity(target, different_focus)
+    scope_score = PersonalizationRepository._profile_similarity(target, different_scope)
+
+    assert exact_score == 1
+    assert exact_score > focus_score
+    assert exact_score > scope_score
+
+
 def test_input_requires_backend_display_order_and_hash_preserves_profile_order() -> None:
     newer = _event(display_time=datetime(2026, 8, 16, 2, tzinfo=UTC))
     older = _event(display_time=newer.display_time - timedelta(hours=1))

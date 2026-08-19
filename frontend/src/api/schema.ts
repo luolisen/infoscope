@@ -938,6 +938,7 @@ export interface components {
             items: components["schemas"]["EventSummary"][];
             /** Next Cursor */
             next_cursor: string | null;
+            personalization: components["schemas"]["PersonalizationStatus"];
             window_stats: components["schemas"]["WindowStats"];
         };
         /** OnboardingAnswers */
@@ -969,6 +970,19 @@ export interface components {
             investment_market_ids: components["schemas"]["InvestmentMarketId"][];
             /** Scope Ids */
             scope_ids: components["schemas"]["ScopeId"][];
+        };
+        /** PersonalizationStatus */
+        PersonalizationStatus: {
+            /**
+             * Generation Status
+             * @enum {string}
+             */
+            generation_status: "queued" | "running" | "ready" | "failed";
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "historical_preview" | "model";
         };
         /** ResearchCapabilityResponse */
         ResearchCapabilityResponse: {

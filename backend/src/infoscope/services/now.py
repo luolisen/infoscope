@@ -10,6 +10,7 @@ from fastapi import Depends, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from infoscope.analysis.personalization_schemas import canonical_hash
 from infoscope.db import get_session
 from infoscope.errors import ApiError
 from infoscope.models import (
@@ -20,7 +21,13 @@ from infoscope.models import (
     Signal,
     User,
 )
-from infoscope.schemas.now import CorpusStats, EventSummary, NowResponse, WindowStats
+from infoscope.schemas.now import (
+    CorpusStats,
+    EventSummary,
+    NowResponse,
+    PersonalizationStatus,
+    WindowStats,
+)
 from infoscope.services.personalization import PersonalizationRepository
 
 
@@ -33,7 +40,11 @@ class NowService:
         artifact: PersonalizationArtifact | None
         after: tuple[datetime, UUID] | None = None
         if cursor is None:
-            artifact = await self.personalization.latest_artifact(user.id)
+            profile_hash = canonical_hash(await self.personalization.profile(user.id))
+            artifact = await self.personalization.latest_artifact(
+                user.id,
+                profile_hash=profile_hash,
+            )
         else:
             artifact_id, display_time, event_id = self._decode_cursor(cursor)
             artifact = await self.database.get(PersonalizationArtifact, artifact_id)
@@ -42,6 +53,9 @@ class NowService:
             after = (display_time, event_id)
         corpus_stats = await self._corpus_stats()
         if artifact is None:
+            preview = await self.personalization.historical_preview(user.id, limit=100)
+            page = preview[:limit]
+            items = await self._event_summaries(user.id, page)
             window_start, window_end, raw_count, signal_count = (
                 await self.personalization.window_stats()
             )
@@ -51,11 +65,18 @@ class NowService:
                     window_ended_at=window_end,
                     raw_information_count=raw_count,
                     signal_count=signal_count,
-                    event_count=0,
-                    relevant_event_count=0,
+                    event_count=len(preview),
+                    relevant_event_count=len(preview),
                 ),
                 corpus_stats=corpus_stats,
-                items=[],
+                personalization=PersonalizationStatus(
+                    mode="historical_preview",
+                    generation_status=await self.personalization.generation_status(
+                        user.id,
+                        profile_hash,
+                    ),
+                ),
+                items=items,
                 next_cursor=None,
             )
         query = select(PersonalizedEvent).where(
@@ -82,37 +103,7 @@ class NowService:
             ).scalars()
         )
         page, has_more = rows[:limit], len(rows) > limit
-        event_ids = [item.event_id for item in page]
-        saved_ids = (
-            set(
-                (
-                    await self.database.execute(
-                        select(EventSave.event_id).where(
-                            EventSave.user_id == user.id,
-                            EventSave.event_id.in_(event_ids),
-                        )
-                    )
-                ).scalars()
-            )
-            if event_ids
-            else set()
-        )
-        items = [
-            EventSummary(
-                id=item.event_id,
-                title=item.snapshot_title,
-                overview=item.snapshot_overview,
-                state=item.snapshot_state,
-                display_time=item.snapshot_display_time,
-                updated_at=item.snapshot_event_updated_at,
-                why_it_matters=item.why_it_matters or "",
-                new_claim_count=item.snapshot_new_claim_count,
-                conflict_count=item.snapshot_conflict_count,
-                topics=item.snapshot_topics,
-                saved=item.event_id in saved_ids,
-            )
-            for item in page
-        ]
+        items = await self._event_summaries(user.id, page)
         next_cursor = None
         if has_more and page:
             last = page[-1]
@@ -131,9 +122,47 @@ class NowService:
                 relevant_event_count=artifact.relevant_event_count,
             ),
             corpus_stats=corpus_stats,
+            personalization=PersonalizationStatus(mode="model", generation_status="ready"),
             items=items,
             next_cursor=next_cursor,
         )
+
+    async def _event_summaries(
+        self,
+        user_id: UUID,
+        page: list[PersonalizedEvent],
+    ) -> list[EventSummary]:
+        event_ids = [item.event_id for item in page]
+        saved_ids = (
+            set(
+                (
+                    await self.database.execute(
+                        select(EventSave.event_id).where(
+                            EventSave.user_id == user_id,
+                            EventSave.event_id.in_(event_ids),
+                        )
+                    )
+                ).scalars()
+            )
+            if event_ids
+            else set()
+        )
+        return [
+            EventSummary(
+                id=item.event_id,
+                title=item.snapshot_title,
+                overview=item.snapshot_overview,
+                state=item.snapshot_state,
+                display_time=item.snapshot_display_time,
+                updated_at=item.snapshot_event_updated_at,
+                why_it_matters=item.why_it_matters or "",
+                new_claim_count=item.snapshot_new_claim_count,
+                conflict_count=item.snapshot_conflict_count,
+                topics=item.snapshot_topics,
+                saved=item.event_id in saved_ids,
+            )
+            for item in page
+        ]
 
     async def _corpus_stats(self) -> CorpusStats:
         raw_count = (

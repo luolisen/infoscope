@@ -1,5 +1,6 @@
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -46,8 +47,14 @@ class EventSummary(BaseModel):
     saved: bool
 
 
+class PersonalizationStatus(BaseModel):
+    mode: Literal["historical_preview", "model"]
+    generation_status: Literal["queued", "running", "ready", "failed"]
+
+
 class NowResponse(BaseModel):
     window_stats: WindowStats
     corpus_stats: CorpusStats
+    personalization: PersonalizationStatus
     items: list[EventSummary]
     next_cursor: str | None

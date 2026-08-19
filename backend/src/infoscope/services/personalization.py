@@ -309,6 +309,115 @@ class PersonalizationRepository:
         value = PersonalizationInput(user_id=user.id, profile=profile, events=candidates)
         return value
 
+    async def profile(self, user_id: UUID) -> PersonalizationProfile:
+        user = await self.database.get(User, user_id)
+        if user is None or not user.onboarding_completed:
+            raise PersonalizationError("PERSONALIZATION_USER_NOT_READY")
+        try:
+            return PersonalizationProfile(
+                scope_ids=[ScopeId(value) for value in user.scope_ids],
+                investment_market_ids=[
+                    InvestmentMarketId(value) for value in user.investment_market_ids
+                ],
+                focus_ids=[FocusId(value) for value in user.focus_ids],
+            )
+        except (ValueError, TypeError) as error:
+            raise PersonalizationError("PERSONALIZATION_PROFILE_INVALID") from error
+
+    async def historical_preview(
+        self,
+        user_id: UUID,
+        *,
+        limit: int = 100,
+    ) -> list[PersonalizedEvent]:
+        """Rank prior model decisions from profiles nearest to the requested profile."""
+        target = await self.profile(user_id)
+        rows = (
+            await self.database.execute(
+                select(PersonalizationArtifact, PersonalizationRun.profile_hash)
+                .join(
+                    PersonalizationRun,
+                    PersonalizationRun.id == PersonalizationArtifact.created_by_run_id,
+                )
+                .where(
+                    PersonalizationArtifact.artifact_kind == "model",
+                    PersonalizationRun.status == "completed",
+                )
+                .order_by(PersonalizationArtifact.created_at.desc())
+                .limit(64)
+            )
+        ).all()
+        nearest: list[tuple[float, PersonalizationArtifact]] = []
+        seen_profiles: set[str] = set()
+        for artifact, profile_hash in rows:
+            if profile_hash in seen_profiles:
+                continue
+            seen_profiles.add(profile_hash)
+            try:
+                source = PersonalizationProfile.model_validate(artifact.input_payload["profile"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            nearest.append((self._profile_similarity(target, source), artifact))
+        nearest.sort(key=lambda item: (item[0], item[1].created_at), reverse=True)
+        selected = [(score, artifact) for score, artifact in nearest[:5] if score > 0]
+        if not selected and nearest:
+            selected = [(0.05, nearest[0][1])]
+        if not selected:
+            return []
+
+        similarity = {artifact.id: score for score, artifact in selected}
+        event_rows = list(
+            (
+                await self.database.execute(
+                    select(PersonalizedEvent).where(
+                        PersonalizedEvent.artifact_id.in_(similarity),
+                        PersonalizedEvent.relevant.is_(True),
+                    )
+                )
+            ).scalars()
+        )
+        priority_weight = {"critical": 1.4, "high": 1.2, "normal": 1.0, "low": 0.8}
+        scores: dict[UUID, float] = {}
+        representatives: dict[UUID, tuple[float, PersonalizedEvent]] = {}
+        target_scopes = {item.value for item in target.scope_ids}
+        target_focus = {item.value for item in target.focus_ids}
+        for event in event_rows:
+            scope_overlap = len(
+                target_scopes.intersection(event.matched_scope_ids)
+            ) / len(target_scopes)
+            focus_overlap = len(
+                target_focus.intersection(event.matched_focus_ids)
+            ) / len(target_focus)
+            contribution = similarity[event.artifact_id] * priority_weight[event.priority]
+            contribution *= 1 + (0.25 * scope_overlap) + (0.25 * focus_overlap)
+            scores[event.event_id] = scores.get(event.event_id, 0.0) + contribution
+            prior = representatives.get(event.event_id)
+            if prior is None or contribution > prior[0]:
+                representatives[event.event_id] = (contribution, event)
+        ordered = sorted(
+            representatives.values(),
+            key=lambda item: (scores[item[1].event_id], item[1].snapshot_display_time),
+            reverse=True,
+        )
+        return [event for _score, event in ordered[:limit]]
+
+    @staticmethod
+    def _profile_similarity(
+        target: PersonalizationProfile,
+        source: PersonalizationProfile,
+    ) -> float:
+        def jaccard(left, right) -> float:
+            left_set, right_set = set(left), set(right)
+            if not left_set and not right_set:
+                return 1.0
+            return len(left_set & right_set) / len(left_set | right_set)
+
+        return (
+            0.5 * jaccard(target.scope_ids, source.scope_ids)
+            + 0.4 * jaccard(target.focus_ids, source.focus_ids)
+            + 0.1 * jaccard(target.investment_market_ids, source.investment_market_ids)
+        )
+
     async def create_or_reuse(
         self, value: PersonalizationInput, *, max_attempts: int
     ) -> PersonalizationRun:
@@ -544,7 +653,18 @@ class PersonalizationRepository:
         ).all()
         return dict(rows)
 
-    async def latest_artifact(self, user_id: UUID) -> PersonalizationArtifact | None:
+    async def latest_artifact(
+        self,
+        user_id: UUID,
+        *,
+        profile_hash: str | None = None,
+    ) -> PersonalizationArtifact | None:
+        conditions = [
+            PersonalizationArtifact.user_id == user_id,
+            PersonalizationRun.status == "completed",
+        ]
+        if profile_hash is not None:
+            conditions.append(PersonalizationRun.profile_hash == profile_hash)
         return (
             await self.database.execute(
                 select(PersonalizationArtifact)
@@ -552,10 +672,7 @@ class PersonalizationRepository:
                     PersonalizationRun,
                     PersonalizationRun.id == PersonalizationArtifact.created_by_run_id,
                 )
-                .where(
-                    PersonalizationArtifact.user_id == user_id,
-                    PersonalizationRun.status == "completed",
-                )
+                .where(*conditions)
                 .order_by(
                     PersonalizationArtifact.created_at.desc(), PersonalizationArtifact.id.desc()
                 )
@@ -563,10 +680,26 @@ class PersonalizationRepository:
             )
         ).scalar_one_or_none()
 
+    async def generation_status(self, user_id: UUID, profile_hash: str) -> str:
+        run_status = await self.database.scalar(
+            select(PersonalizationRun.status)
+            .where(
+                PersonalizationRun.user_id == user_id,
+                PersonalizationRun.profile_hash == profile_hash,
+            )
+            .order_by(PersonalizationRun.created_at.desc())
+            .limit(1)
+        )
+        if run_status == "running":
+            return "running"
+        if run_status == "failed":
+            return "failed"
+        return "queued"
+
     async def ordered_visible_event_ids(self, user_id: UUID) -> list[UUID]:
         artifact = await self.latest_artifact(user_id)
         if artifact is None:
-            raise PersonalizationError("PERSONALIZATION_SNAPSHOT_UNAVAILABLE")
+            return [item.event_id for item in await self.historical_preview(user_id)]
         return list(
             (
                 await self.database.execute(
@@ -585,7 +718,9 @@ class PersonalizationRepository:
     async def is_currently_visible(self, user_id: UUID, event_id: UUID) -> bool:
         artifact = await self.latest_artifact(user_id)
         if artifact is None:
-            raise PersonalizationError("PERSONALIZATION_SNAPSHOT_UNAVAILABLE")
+            return event_id in {
+                item.event_id for item in await self.historical_preview(user_id)
+            }
         return bool(
             await self.database.scalar(
                 select(PersonalizedEvent.id).where(
@@ -615,7 +750,14 @@ class PersonalizationRepository:
             )
             .limit(1)
         )
-        return bool(list(result.scalars()))
+        if list(result.scalars()):
+            return True
+        try:
+            return event_id in {
+                item.event_id for item in await self.historical_preview(user_id)
+            }
+        except PersonalizationError:
+            return False
 
     @staticmethod
     def validate_output(payload: PersonalizationPayload, value: PersonalizationInput) -> None:

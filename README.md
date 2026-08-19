@@ -32,6 +32,12 @@ Raw → Normalize → Signal → Deduplication → Event → Claims / Timeline /
 
 模型回答不直接成为 Evidence；Research 结果必须经过既有事实管线后才能更新 Event。
 
+## 快速首屏与正式个性化
+
+用户提交 Scope、投资子类和 Focus 后，NOW 会先从已经完成的模型个性化历史中寻找最接近的完整 Profile，并按历史相关性与优先级生成快速预览。这不是关键词或固定规则匹配；不同的 Scope/Focus 组合拥有独立的 Profile Signature、历史排序和后台生成任务，结果可以合理重叠，但不会把同一份个性化产物冒充所有组合的答案。
+
+正式 Personalization 会同时在后台运行，通常需要约 10–15 分钟。完成后，NOW 自动用该组合的正式模型产物整体替换历史预览；生成期间或模型暂时失败时，预览仍保持可用。历史预览只服务快速首屏，不会成为 Evidence、Brief 输入或 Event 回写依据。
+
 ## 启动本地 Demo
 
 需要 Docker、Python、[uv](https://docs.astral.sh/uv/)、Node.js 和 pnpm。

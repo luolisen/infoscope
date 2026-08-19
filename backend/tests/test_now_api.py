@@ -10,7 +10,7 @@ from infoscope.api.app import app
 from infoscope.api.dependencies import get_ready_user
 from infoscope.errors import ApiError
 from infoscope.models import User
-from infoscope.schemas.now import CorpusStats, NowResponse, WindowStats
+from infoscope.schemas.now import CorpusStats, NowResponse, PersonalizationStatus, WindowStats
 from infoscope.services.now import NowService, get_now_service
 
 
@@ -41,6 +41,7 @@ class FixedNowService:
                 relevant_event_count=0,
             ),
             corpus_stats=CorpusStats(raw_information_count=12, signal_count=34),
+            personalization=PersonalizationStatus(mode="model", generation_status="ready"),
             items=[],
             next_cursor=None,
         )
@@ -69,6 +70,7 @@ async def test_now_returns_the_frozen_empty_contract() -> None:
             "raw_information_count": 12,
             "signal_count": 34,
         },
+        "personalization": {"mode": "model", "generation_status": "ready"},
         "items": [],
         "next_cursor": None,
     }

@@ -138,7 +138,7 @@ async def test_logout_requires_a_valid_session() -> None:
     os.environ.get("INFOSCOPE_POSTGRES_INTEGRATION") != "1",
     reason="requires the local PostgreSQL integration database",
 )
-async def test_local_access_reuses_profile_and_only_updates_display_name() -> None:
+async def test_local_access_creates_an_isolated_visitor_after_local_onboarding() -> None:
     internal_username = f"local_{uuid4().hex}"
     settings = Settings(_env_file=None, local_user_username=internal_username)
 
@@ -161,15 +161,19 @@ async def test_local_access_reuses_profile_and_only_updates_display_name() -> No
             second, _ = await service.local_access("第二次称呼")
             await database.refresh(user)
 
-            assert second.state == SessionState.READY
+            assert second.state == SessionState.ONBOARDING_REQUIRED
             assert second.user == SessionUser(display_name="第二次称呼")
+            assert user.display_name == "第一次称呼"
             assert user.scope_ids == ["ai", "science"]
             assert user.focus_ids == ["major_changes"]
             assert user.onboarding_completed is True
     finally:
         async with session_factory() as database:
             await database.execute(
-                delete(User).where(User.username_normalized == internal_username.casefold())
+                delete(User).where(
+                    (User.username_normalized == internal_username.casefold())
+                    | User.username_normalized.like("visitor_%")
+                )
             )
             await database.commit()
         await close_database()
